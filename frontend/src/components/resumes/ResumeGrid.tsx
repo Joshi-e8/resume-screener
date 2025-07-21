@@ -1,234 +1,438 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useMemo } from "react";
+import { Grid, List, Filter, SortAsc, Search } from "lucide-react";
+import { Resume, allMockResumes } from "@/data/mockResumes";
 import { ResumeCard } from "./ResumeCard";
-import { ChevronLeft, ChevronRight, FileX } from "lucide-react";
+import { ResumeListView } from "./ResumeListView";
+import { FilterSidebar } from "./FilterSidebar";
+import { FilterTags } from "./FilterTags";
+import { EnhancedSearch } from "./EnhancedSearch";
+import { ResumeDetailModal } from "./ResumeDetailModal";
+import {
+  filterResumesAdvanced,
+  generateSearchSuggestions,
+  saveSearchToHistory,
+  getSearchHistory,
+  clearSearchHistory
+} from "@/lib/searchUtils";
 
-interface Resume {
-  id: string;
-  fileName: string;
-  candidateName: string;
-  email: string;
-  phone?: string;
-  location?: string;
-  uploadDate: Date;
-  status: 'processing' | 'completed' | 'error' | 'pending';
-  summary?: string;
-  experience?: number;
-  education?: string;
-  skills: string[];
-  fileSize: number;
-  fileType: string;
-}
+type ViewMode = 'grid' | 'list';
+type SortOption = 'name' | 'date' | 'experience' | 'match';
+type SortOrder = 'asc' | 'desc';
 
 interface ResumeGridProps {
-  viewMode: 'grid' | 'list';
-  searchQuery: string;
+  initialSearchQuery?: string;
 }
 
-// Mock data - will be replaced with Redux store data
-const mockResumes: Resume[] = [
-  {
-    id: "1",
-    fileName: "john_doe_resume.pdf",
-    candidateName: "John Doe",
-    email: "john.doe@email.com",
-    phone: "+1 (555) 123-4567",
-    location: "San Francisco, CA",
-    uploadDate: new Date("2024-01-15"),
-    status: "completed",
-    summary: "Experienced software engineer with 5+ years in full-stack development",
-    experience: 5,
-    education: "Bachelor's in Computer Science",
-    skills: ["JavaScript", "React", "Node.js", "Python", "AWS"],
-    fileSize: 2.4,
-    fileType: "PDF"
-  },
-  {
-    id: "2",
-    fileName: "jane_smith_cv.pdf",
-    candidateName: "Jane Smith",
-    email: "jane.smith@email.com",
-    phone: "+1 (555) 987-6543",
-    location: "New York, NY",
-    uploadDate: new Date("2024-01-14"),
-    status: "completed",
-    summary: "Senior UX Designer with expertise in user research and design systems",
-    experience: 7,
-    education: "Master's in Design",
-    skills: ["Figma", "Sketch", "User Research", "Prototyping", "Design Systems"],
-    fileSize: 1.8,
-    fileType: "PDF"
-  },
-  {
-    id: "3",
-    fileName: "mike_johnson_resume.docx",
-    candidateName: "Mike Johnson",
-    email: "mike.johnson@email.com",
-    location: "Austin, TX",
-    uploadDate: new Date("2024-01-13"),
-    status: "processing",
-    experience: 3,
-    skills: ["Java", "Spring Boot", "MySQL", "Docker"],
-    fileSize: 1.2,
-    fileType: "DOCX"
-  },
-  {
-    id: "4",
-    fileName: "sarah_wilson_cv.pdf",
-    candidateName: "Sarah Wilson",
-    email: "sarah.wilson@email.com",
-    phone: "+1 (555) 456-7890",
-    location: "Seattle, WA",
-    uploadDate: new Date("2024-01-12"),
-    status: "error",
-    summary: "Data scientist with machine learning and analytics expertise",
-    experience: 4,
-    education: "PhD in Data Science",
-    skills: ["Python", "TensorFlow", "SQL", "R", "Machine Learning"],
-    fileSize: 3.1,
-    fileType: "PDF"
-  },
-  {
-    id: "5",
-    fileName: "alex_brown_resume.pdf",
-    candidateName: "Alex Brown",
-    email: "alex.brown@email.com",
-    location: "Boston, MA",
-    uploadDate: new Date("2024-01-11"),
-    status: "pending",
-    summary: "Product manager with experience in agile development and user analytics",
-    experience: 6,
-    education: "MBA in Business Administration",
-    skills: ["Product Management", "Agile", "Analytics", "Roadmapping"],
-    fileSize: 2.0,
-    fileType: "PDF"
-  },
-  {
-    id: "6",
-    fileName: "emma_davis_cv.pdf",
-    candidateName: "Emma Davis",
-    email: "emma.davis@email.com",
-    phone: "+1 (555) 321-0987",
-    location: "Los Angeles, CA",
-    uploadDate: new Date("2024-01-10"),
-    status: "completed",
-    summary: "Frontend developer specializing in React and modern web technologies",
-    experience: 3,
-    education: "Bachelor's in Computer Science",
-    skills: ["React", "TypeScript", "CSS", "Next.js", "Tailwind"],
-    fileSize: 1.5,
-    fileType: "PDF"
-  }
-];
-
-export function ResumeGrid({ viewMode, searchQuery }: ResumeGridProps) {
+export function ResumeGrid({ initialSearchQuery = '' }: ResumeGridProps) {
+  const [viewMode, setViewMode] = useState<ViewMode>('grid');
+  const [sortBy, setSortBy] = useState<SortOption>('date');
+  const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = viewMode === 'grid' ? 12 : 10;
+  const [searchQuery, setSearchQuery] = useState(initialSearchQuery);
+  const [showFilters, setShowFilters] = useState(false);
+  const [selectedFilters, setSelectedFilters] = useState<{
+    status?: Resume['status'][];
+    experience?: [number, number];
+    skills?: string[];
+    location?: string[];
+    dateRange?: [Date | null, Date | null];
+  }>({});
+  const [recentSearches, setRecentSearches] = useState<string[]>([]);
+  const [selectedResume, setSelectedResume] = useState<Resume | null>(null);
+  const [showModal, setShowModal] = useState(false);
+  const itemsPerPage = 12;
 
-  // Filter resumes based on search query
-  const filteredResumes = mockResumes.filter(resume => {
-    const searchLower = searchQuery.toLowerCase();
-    return (
-      resume.candidateName.toLowerCase().includes(searchLower) ||
-      resume.email.toLowerCase().includes(searchLower) ||
-      resume.skills.some(skill => skill.toLowerCase().includes(searchLower)) ||
-      (resume.summary && resume.summary.toLowerCase().includes(searchLower))
-    );
+  // Load recent searches on mount
+  useEffect(() => {
+    setRecentSearches(getSearchHistory());
+  }, []);
+
+  // Generate search suggestions
+  const searchSuggestions = useMemo(() =>
+    generateSearchSuggestions(allMockResumes),
+    []
+  );
+
+  // Filter and search resumes with advanced search
+  const filteredResumes = useMemo(() => {
+    let results = filterResumesAdvanced(allMockResumes, searchQuery);
+
+    // Apply additional filters
+    results = results.filter(resume => {
+      // Status filter
+      if (selectedFilters.status?.length && !selectedFilters.status.includes(resume.status)) {
+        return false;
+      }
+
+      // Experience filter
+      if (selectedFilters.experience) {
+        const [minExp, maxExp] = selectedFilters.experience;
+        if (resume.experience < minExp || resume.experience > maxExp) {
+          return false;
+        }
+      }
+
+      // Skills filter
+      if (selectedFilters.skills?.length) {
+        const hasMatchingSkill = selectedFilters.skills.some(skill =>
+          resume.skills.some(resumeSkill =>
+            resumeSkill.toLowerCase().includes(skill.toLowerCase())
+          )
+        );
+        if (!hasMatchingSkill) return false;
+      }
+
+      // Location filter
+      if (selectedFilters.location?.length) {
+        const hasMatchingLocation = selectedFilters.location.some(location =>
+          resume.location.toLowerCase().includes(location.toLowerCase())
+        );
+        if (!hasMatchingLocation) return false;
+      }
+
+      // Date range filter
+      if (selectedFilters.dateRange?.[0] || selectedFilters.dateRange?.[1]) {
+        const uploadDate = new Date(resume.uploadDate);
+        const startDate = selectedFilters.dateRange[0];
+        const endDate = selectedFilters.dateRange[1];
+
+        if (startDate && uploadDate < startDate) return false;
+        if (endDate && uploadDate > endDate) return false;
+      }
+
+      return true;
+    });
+
+    return results;
+  }, [searchQuery, selectedFilters]);
+
+  // Sort resumes
+  const sortedResumes = [...filteredResumes].sort((a, b) => {
+    let comparison = 0;
+    
+    switch (sortBy) {
+      case 'name':
+        comparison = a.name.localeCompare(b.name);
+        break;
+      case 'date':
+        comparison = new Date(a.uploadDate).getTime() - new Date(b.uploadDate).getTime();
+        break;
+      case 'experience':
+        comparison = a.experience - b.experience;
+        break;
+      case 'match':
+        comparison = (a.matchScore || 0) - (b.matchScore || 0);
+        break;
+    }
+    
+    return sortOrder === 'asc' ? comparison : -comparison;
   });
 
   // Pagination
-  const totalPages = Math.ceil(filteredResumes.length / itemsPerPage);
+  const totalPages = Math.ceil(sortedResumes.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
-  const paginatedResumes = filteredResumes.slice(startIndex, startIndex + itemsPerPage);
+  const paginatedResumes = sortedResumes.slice(startIndex, startIndex + itemsPerPage);
 
-  const goToPage = (page: number) => {
-    setCurrentPage(Math.max(1, Math.min(page, totalPages)));
+  // Handler functions
+  const handleSearchChange = (value: string) => {
+    setSearchQuery(value);
+    setCurrentPage(1);
+    if (value.trim()) {
+      saveSearchToHistory(value);
+      setRecentSearches(getSearchHistory());
+    }
   };
 
-  if (filteredResumes.length === 0) {
-    return (
-      <div className="bg-white rounded-2xl border border-gray-100 p-12 text-center shadow-sm">
-        <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
-          <FileX className="w-8 h-8 text-gray-400" />
-        </div>
-        <h3 className="text-lg font-semibold text-gray-900 mb-2">No resumes found</h3>
-        <p className="text-gray-600 mb-6">
-          {searchQuery 
-            ? `No resumes match your search for "${searchQuery}"`
-            : "No resumes have been uploaded yet"
-          }
-        </p>
-        {!searchQuery && (
-          <button className="px-6 py-3 bg-yellow-500 text-white font-medium rounded-xl hover:bg-yellow-600 transition-all duration-200">
-            Upload Your First Resume
-          </button>
-        )}
-      </div>
-    );
-  }
+  const handleFiltersChange = (newFilters: typeof selectedFilters) => {
+    setSelectedFilters(newFilters);
+    setCurrentPage(1);
+  };
+
+  const handleRemoveFilter = (filterType: string, value?: string) => {
+    const newFilters = { ...selectedFilters };
+
+    if (filterType === 'status' && value) {
+      newFilters.status = newFilters.status?.filter(s => s !== value);
+      if (newFilters.status?.length === 0) delete newFilters.status;
+    } else if (filterType === 'experience') {
+      delete newFilters.experience;
+    } else if (filterType === 'skills' && value) {
+      newFilters.skills = newFilters.skills?.filter(s => s !== value);
+      if (newFilters.skills?.length === 0) delete newFilters.skills;
+    } else if (filterType === 'location' && value) {
+      newFilters.location = newFilters.location?.filter(l => l !== value);
+      if (newFilters.location?.length === 0) delete newFilters.location;
+    } else if (filterType === 'dateRange') {
+      delete newFilters.dateRange;
+    }
+
+    setSelectedFilters(newFilters);
+    setCurrentPage(1);
+  };
+
+  const handleClearAllFilters = () => {
+    setSelectedFilters({});
+    setCurrentPage(1);
+  };
+
+  const handleRecentSearchClick = (search: string) => {
+    setSearchQuery(search);
+    setCurrentPage(1);
+  };
+
+  const handleClearRecentSearches = () => {
+    clearSearchHistory();
+    setRecentSearches([]);
+  };
+
+  const handleView = (resume: Resume) => {
+    setSelectedResume(resume);
+    setShowModal(true);
+  };
+
+  const handleCloseModal = () => {
+    setShowModal(false);
+    setSelectedResume(null);
+  };
+
+  const handleDownload = (resume: Resume) => {
+    console.log('Download resume:', resume.id);
+    // TODO: Implement download functionality
+  };
+
+  const handleDelete = (resume: Resume) => {
+    console.log('Delete resume:', resume.id);
+    // TODO: Implement delete functionality
+  };
+
+  const handleStatusChange = (resume: Resume, status: Resume['status']) => {
+    console.log('Change status:', resume.id, status);
+    // TODO: Implement status change
+  };
 
   return (
     <div className="space-y-6">
-      {/* Results Header */}
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-gray-600">
-          Showing {startIndex + 1}-{Math.min(startIndex + itemsPerPage, filteredResumes.length)} of {filteredResumes.length} resumes
-        </p>
-        <div className="text-sm text-gray-500">
-          Page {currentPage} of {totalPages}
-        </div>
-      </div>
-
-      {/* Resume Grid/List */}
-      <div className={
-        viewMode === 'grid' 
-          ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6"
-          : "space-y-4"
-      }>
-        {paginatedResumes.map((resume) => (
-          <ResumeCard 
-            key={resume.id} 
-            resume={resume} 
-            viewMode={viewMode}
+      {/* Enhanced Search */}
+      <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
+        <div className="flex flex-col lg:flex-row gap-4">
+          <EnhancedSearch
+            value={searchQuery}
+            onChange={handleSearchChange}
+            suggestions={searchSuggestions}
+            recentSearches={recentSearches}
+            onRecentSearchClick={handleRecentSearchClick}
+            onClearRecentSearches={handleClearRecentSearches}
           />
-        ))}
-      </div>
 
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-center gap-2 pt-6">
-          <button
-            onClick={() => goToPage(currentPage - 1)}
-            disabled={currentPage === 1}
-            className="p-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
-          >
-            <ChevronLeft className="w-4 h-4" />
-          </button>
-          
-          {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+          <div className="flex items-center gap-3">
             <button
-              key={page}
-              onClick={() => goToPage(page)}
-              className={`px-3 py-2 rounded-lg font-medium transition-all duration-200 ${
-                page === currentPage
-                  ? 'bg-yellow-500 text-white'
-                  : 'text-gray-600 hover:bg-gray-50'
+              onClick={() => setShowFilters(!showFilters)}
+              className={`inline-flex items-center px-4 py-3 border rounded-xl font-medium transition-all duration-200 ${
+                showFilters || Object.keys(selectedFilters).length > 0
+                  ? 'border-yellow-500 text-yellow-600 bg-yellow-50'
+                  : 'border-gray-200 text-gray-700 hover:bg-gray-50'
               }`}
             >
-              {page}
+              <Filter className="w-4 h-4 mr-2" />
+              Filters
+              {Object.keys(selectedFilters).length > 0 && (
+                <span className="ml-2 px-2 py-0.5 bg-yellow-200 text-yellow-800 text-xs rounded-full">
+                  {Object.keys(selectedFilters).length}
+                </span>
+              )}
             </button>
-          ))}
-          
-          <button
-            onClick={() => goToPage(currentPage + 1)}
-            disabled={currentPage === totalPages}
-            className="p-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
-          >
-            <ChevronRight className="w-4 h-4" />
-          </button>
+          </div>
         </div>
-      )}
+      </div>
+
+      {/* Filter Tags */}
+      <FilterTags
+        filters={selectedFilters}
+        onRemoveFilter={handleRemoveFilter}
+        onClearAll={handleClearAllFilters}
+      />
+
+      {/* Header Controls */}
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+        <div className="flex items-center gap-4">
+          <h2 className="text-xl font-semibold text-gray-900">
+            {filteredResumes.length} Resume{filteredResumes.length !== 1 ? 's' : ''}
+          </h2>
+
+          {searchQuery && (
+            <div className="flex items-center gap-2 px-3 py-1 bg-yellow-100 text-yellow-800 rounded-full text-sm">
+              <Search className="w-4 h-4" />
+              <span>&quot;{searchQuery}&quot;</span>
+            </div>
+          )}
+        </div>
+
+        <div className="flex items-center gap-3">
+          {/* Sort Dropdown */}
+          <div className="flex items-center gap-2">
+            <SortAsc className="w-4 h-4 text-gray-500" />
+            <select
+              value={`${sortBy}-${sortOrder}`}
+              onChange={(e) => {
+                const [newSortBy, newSortOrder] = e.target.value.split('-') as [SortOption, SortOrder];
+                setSortBy(newSortBy);
+                setSortOrder(newSortOrder);
+              }}
+              className="text-sm border border-gray-200 rounded-lg px-3 py-2 focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+            >
+              <option value="date-desc">Newest First</option>
+              <option value="date-asc">Oldest First</option>
+              <option value="name-asc">Name A-Z</option>
+              <option value="name-desc">Name Z-A</option>
+              <option value="experience-desc">Most Experience</option>
+              <option value="experience-asc">Least Experience</option>
+              <option value="match-desc">Best Match</option>
+              <option value="match-asc">Lowest Match</option>
+            </select>
+          </div>
+
+          {/* View Mode Toggle */}
+          <div className="flex items-center border border-gray-200 rounded-lg p-1">
+            <button
+              onClick={() => setViewMode('grid')}
+              className={`p-2 rounded-md transition-all duration-200 ${
+                viewMode === 'grid'
+                  ? 'bg-yellow-500 text-white shadow-sm'
+                  : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              <Grid className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => setViewMode('list')}
+              className={`p-2 rounded-md transition-all duration-200 ${
+                viewMode === 'list'
+                  ? 'bg-yellow-500 text-white shadow-sm'
+                  : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              <List className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Main Content with Sidebar */}
+      <div className="flex gap-6">
+        {/* Resume Grid/List */}
+        <div className="flex-1">
+          {paginatedResumes.length === 0 ? (
+            <div className="text-center py-12">
+              <div className="w-16 h-16 mx-auto bg-gray-100 rounded-full flex items-center justify-center mb-4">
+                <Search className="w-8 h-8 text-gray-400" />
+              </div>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">No resumes found</h3>
+              <p className="text-gray-600">
+                {searchQuery || Object.keys(selectedFilters).length > 0
+                  ? 'Try adjusting your search or filters'
+                  : 'Upload some resumes to get started'
+                }
+              </p>
+            </div>
+          ) : (
+            <>
+              {viewMode === 'grid' ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {paginatedResumes.map((resume) => (
+                    <ResumeCard
+                      key={resume.id}
+                      resume={resume}
+                      onView={handleView}
+                      onDownload={handleDownload}
+                      onDelete={handleDelete}
+                      onStatusChange={handleStatusChange}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <ResumeListView
+                  resumes={paginatedResumes}
+                  onView={handleView}
+                  onDownload={handleDownload}
+                  onDelete={handleDelete}
+                  onStatusChange={handleStatusChange}
+                />
+              )}
+
+              {/* Pagination */}
+              {totalPages > 1 && (
+                <div className="flex items-center justify-center gap-2 mt-8">
+                  <button
+                    onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+                    disabled={currentPage === 1}
+                    className="px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Previous
+                  </button>
+
+                  {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+                    <button
+                      key={page}
+                      onClick={() => setCurrentPage(page)}
+                      className={`px-3 py-2 text-sm font-medium rounded-lg ${
+                        currentPage === page
+                          ? 'bg-yellow-500 text-white'
+                          : 'text-gray-500 bg-white border border-gray-300 hover:bg-gray-50'
+                      }`}
+                    >
+                      {page}
+                    </button>
+                  ))}
+
+                  <button
+                    onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+                    disabled={currentPage === totalPages}
+                    className="px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Next
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
+        {/* Filter Sidebar */}
+        {showFilters && (
+          <div className="w-80 flex-shrink-0">
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm">
+              <FilterSidebar
+                isOpen={showFilters}
+                onClose={() => setShowFilters(false)}
+                filters={selectedFilters}
+                onFiltersChange={handleFiltersChange}
+                onClearAll={handleClearAllFilters}
+              />
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Mobile Filter Sidebar */}
+      <FilterSidebar
+        isOpen={showFilters}
+        onClose={() => setShowFilters(false)}
+        filters={selectedFilters}
+        onFiltersChange={handleFiltersChange}
+        onClearAll={handleClearAllFilters}
+      />
+
+      {/* Resume Detail Modal */}
+      <ResumeDetailModal
+        resume={selectedResume}
+        isOpen={showModal}
+        onClose={handleCloseModal}
+        onDownload={handleDownload}
+        onDelete={handleDelete}
+        onStatusChange={handleStatusChange}
+      />
     </div>
   );
 }
