@@ -132,6 +132,10 @@ body {
   animation: bounceGentle 2s infinite;
 }
 
+.animate-fade-in-up {
+  animation: fadeInUp 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
 /* Keyframes */
 @keyframes fadeIn {
   from {
@@ -161,6 +165,17 @@ body {
   }
   50% {
     transform: translateY(-5px);
+  }
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 
@@ -198,4 +213,86 @@ body {
 ::-moz-selection {
   background-color: rgba(255, 199, 0, 0.3);
   color: #1a1a1a;
+}
+
+/* Mobile touch optimizations */
+@media (max-width: 768px) {
+  /* Increase touch targets */
+  button, a, input, select, textarea {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  /* Improve tap highlighting */
+  button, a {
+    -webkit-tap-highlight-color: rgba(255, 199, 0, 0.2);
+  }
+
+  /* Prevent zoom on input focus */
+  input, select, textarea {
+    font-size: 16px;
+  }
+
+  /* Smooth scrolling for mobile */
+  * {
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+/* Touch-friendly utilities */
+.touch-manipulation {
+  touch-action: manipulation;
+}
+
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+/* Mobile-specific animations */
+@media (prefers-reduced-motion: no-preference) {
+  .mobile-slide-up {
+    animation: mobileSlideUp 0.3s ease-out;
+  }
+
+  .mobile-fade-in {
+    animation: mobileFadeIn 0.2s ease-out;
+  }
+}
+
+@keyframes mobileSlideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes mobileFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Responsive text utilities */
+@media (max-width: 640px) {
+  .text-responsive {
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+  }
+
+  .text-responsive-lg {
+    font-size: 1rem;
+    line-height: 1.5rem;
+  }
 }

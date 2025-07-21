@@ -5,6 +5,13 @@ export interface SearchHighlight {
   isHighlighted: boolean;
 }
 
+export interface SearchSuggestion {
+  text: string;
+  type: 'skill' | 'location' | 'title' | 'name' | 'experience';
+  count?: number;
+  trending?: boolean;
+}
+
 /**
  * Highlights search terms in text
  */
@@ -124,33 +131,72 @@ export function filterResumesAdvanced(resumes: Resume[], searchQuery: string): R
 /**
  * Generate search suggestions based on resume data
  */
-export function generateSearchSuggestions(resumes: Resume[]): string[] {
-  const suggestions = new Set<string>();
-  
+export function generateSearchSuggestions(resumes: Resume[]): SearchSuggestion[] {
+  const skillCounts = new Map<string, number>();
+  const locationCounts = new Map<string, number>();
+  const titleCounts = new Map<string, number>();
+
   resumes.forEach(resume => {
-    // Add skills
-    resume.skills.forEach(skill => suggestions.add(skill));
-    
-    // Add job titles
-    suggestions.add(resume.title);
-    
-    // Add locations (city only)
-    const city = resume.location.split(',')[0];
-    suggestions.add(city);
-    
-    // Add experience ranges
-    if (resume.experience >= 5) {
-      suggestions.add('senior');
-    }
-    if (resume.experience <= 2) {
-      suggestions.add('junior');
-    }
-    if (resume.experience >= 3 && resume.experience <= 5) {
-      suggestions.add('mid-level');
-    }
+    // Count skills
+    resume.skills.forEach(skill => {
+      skillCounts.set(skill, (skillCounts.get(skill) || 0) + 1);
+    });
+
+    // Count job titles
+    titleCounts.set(resume.title, (titleCounts.get(resume.title) || 0) + 1);
+
+    // Count locations (city only)
+    const city = resume.location.split(',')[0].trim();
+    locationCounts.set(city, (locationCounts.get(city) || 0) + 1);
   });
-  
-  return Array.from(suggestions).sort();
+
+  const suggestions: SearchSuggestion[] = [];
+
+  // Add top skills
+  Array.from(skillCounts.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 8)
+    .forEach(([skill, count]) => {
+      suggestions.push({
+        text: skill,
+        type: 'skill',
+        count,
+        trending: count > 3
+      });
+    });
+
+  // Add top locations
+  Array.from(locationCounts.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .forEach(([location, count]) => {
+      suggestions.push({
+        text: location,
+        type: 'location',
+        count
+      });
+    });
+
+  // Add top titles
+  Array.from(titleCounts.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .forEach(([title, count]) => {
+      suggestions.push({
+        text: title,
+        type: 'title',
+        count
+      });
+    });
+
+  // Add experience level suggestions
+  suggestions.push(
+    { text: 'Senior', type: 'experience', trending: true },
+    { text: 'Junior', type: 'experience' },
+    { text: 'Mid-level', type: 'experience' }
+  );
+
+  return suggestions;
 }
 
 /**
