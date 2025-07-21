@@ -1,7 +1,7 @@
 import { FileText, Briefcase, Users, Clock } from "lucide-react";
 
 interface DashboardStatsProps {
-  stats: {
+  stats?: {
     totalResumes: number;
     activeJobs: number;
     totalMatches: number;
@@ -10,10 +10,19 @@ interface DashboardStatsProps {
 }
 
 export function DashboardStats({ stats }: DashboardStatsProps) {
+  // Default stats if none provided
+  const defaultStats = {
+    totalResumes: 247,
+    activeJobs: 12,
+    totalMatches: 156,
+    pendingReviews: 8,
+  };
+
+  const currentStats = stats || defaultStats;
   const statCards = [
     {
       title: "Total Resumes",
-      value: stats.totalResumes,
+      value: currentStats.totalResumes,
       icon: FileText,
       color: "text-blue-600",
       bgColor: "bg-blue-50",
@@ -22,7 +31,7 @@ export function DashboardStats({ stats }: DashboardStatsProps) {
     },
     {
       title: "Active Jobs",
-      value: stats.activeJobs,
+      value: currentStats.activeJobs,
       icon: Briefcase,
       color: "text-green-600",
       bgColor: "bg-green-50",
@@ -31,7 +40,7 @@ export function DashboardStats({ stats }: DashboardStatsProps) {
     },
     {
       title: "Total Matches",
-      value: stats.totalMatches,
+      value: currentStats.totalMatches,
       icon: Users,
       color: "text-purple-600",
       bgColor: "bg-purple-50",
@@ -40,7 +49,7 @@ export function DashboardStats({ stats }: DashboardStatsProps) {
     },
     {
       title: "Pending Reviews",
-      value: stats.pendingReviews,
+      value: currentStats.pendingReviews,
       icon: Clock,
       color: "text-orange-600",
       bgColor: "bg-orange-50",
@@ -54,15 +63,15 @@ export function DashboardStats({ stats }: DashboardStatsProps) {
       {statCards.map((card, index) => (
         <div
           key={card.title}
-          className="card animate-fade-in"
+          className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm transition-all duration-200 hover:shadow-md"
           style={{ animationDelay: `${index * 0.1}s` }}
         >
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-text-gray">
+              <p className="text-sm font-medium text-gray-600">
                 {card.title}
               </p>
-              <p className="text-2xl font-bold text-text-dark mt-1">
+              <p className="text-2xl font-bold text-gray-900 mt-1">
                 {card.value}
               </p>
               <div className="flex items-center mt-2">
@@ -75,7 +84,7 @@ export function DashboardStats({ stats }: DashboardStatsProps) {
                 >
                   {card.change}
                 </span>
-                <span className="text-xs text-text-light ml-1">
+                <span className="text-xs text-gray-500 ml-1">
                   from last month
                 </span>
               </div>
