@@ -34,17 +34,17 @@ export function QuickActions() {
   ];
 
   return (
-    <div className="card">
-      <h2 className="text-lg font-semibold text-text-dark mb-6">
+    <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
+      <h2 className="text-lg font-semibold text-gray-900 mb-6">
         Quick Actions
       </h2>
-      
+
       <div className="space-y-3">
         {actions.map((action, index) => (
           <Link
             key={action.title}
             href={action.href}
-            className="block p-4 rounded-lg border border-gray-200 hover:border-accent-pink transition-all duration-200 group animate-fade-in"
+            className="block p-4 rounded-lg border border-gray-200 hover:border-yellow-500 transition-all duration-200 group"
             style={{ animationDelay: `${index * 0.1}s` }}
           >
             <div className="flex items-center space-x-3">
@@ -52,10 +52,10 @@ export function QuickActions() {
                 <action.icon className="w-5 h-5" />
               </div>
               <div className="flex-1">
-                <h3 className="text-sm font-medium text-text-dark group-hover:text-accent-pink transition-colors">
+                <h3 className="text-sm font-medium text-gray-900 group-hover:text-yellow-600 transition-colors">
                   {action.title}
                 </h3>
-                <p className="text-xs text-text-gray">
+                <p className="text-xs text-gray-600">
                   {action.description}
                 </p>
               </div>
@@ -67,14 +67,14 @@ export function QuickActions() {
       {/* Additional Info */}
       <div className="mt-6 p-4 bg-gradient-to-r from-yellow-50 to-orange-50 rounded-lg border border-yellow-200">
         <div className="flex items-start space-x-3">
-          <div className="w-8 h-8 rounded-full gradient-primary flex items-center justify-center flex-shrink-0">
+          <div className="w-8 h-8 rounded-full bg-gradient-to-r from-yellow-400 to-yellow-500 flex items-center justify-center flex-shrink-0">
             <span className="text-white text-sm font-bold">💡</span>
           </div>
           <div>
-            <h4 className="text-sm font-medium text-text-dark">
+            <h4 className="text-sm font-medium text-gray-900">
               Pro Tip
             </h4>
-            <p className="text-xs text-text-gray mt-1">
+            <p className="text-xs text-gray-600 mt-1">
               Upload multiple resumes at once using our bulk upload feature for faster processing.
             </p>
           </div>
