@@ -1,4 +1,4 @@
-import { FileText, Briefcase, Users, Clock } from "lucide-react";
+import { FileText, Briefcase, Users, Clock, TrendingUp, TrendingDown, ArrowUpRight, ArrowDownRight } from "lucide-react";
 
 interface DashboardStatsProps {
   stats?: {
@@ -63,20 +63,37 @@ export function DashboardStats({ stats }: DashboardStatsProps) {
       {statCards.map((card, index) => (
         <div
           key={card.title}
-          className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm transition-all duration-200 hover:shadow-md"
-          style={{ animationDelay: `${index * 0.1}s` }}
+          className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm transition-all duration-300 hover:shadow-lg hover:scale-105 hover:border-gray-200 cursor-pointer group"
+          style={{
+            animationDelay: `${index * 0.1}s`,
+            animation: 'fadeInUp 0.6s ease-out forwards'
+          }}
         >
           <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-600">
-                {card.title}
+            <div className="flex-1">
+              <div className="flex items-center gap-2 mb-2">
+                <p className="text-sm font-medium text-gray-600 group-hover:text-gray-700 transition-colors">
+                  {card.title}
+                </p>
+                {card.changeType === "increase" ? (
+                  <TrendingUp className="w-3 h-3 text-green-500" />
+                ) : (
+                  <TrendingDown className="w-3 h-3 text-red-500" />
+                )}
+              </div>
+
+              <p className="text-3xl font-bold text-gray-900 mb-3 group-hover:text-gray-800 transition-colors">
+                {card.value.toLocaleString()}
               </p>
-              <p className="text-2xl font-bold text-gray-900 mt-1">
-                {card.value}
-              </p>
-              <div className="flex items-center mt-2">
+
+              <div className="flex items-center gap-1">
+                {card.changeType === "increase" ? (
+                  <ArrowUpRight className="w-3 h-3 text-green-600" />
+                ) : (
+                  <ArrowDownRight className="w-3 h-3 text-red-600" />
+                )}
                 <span
-                  className={`text-xs font-medium ${
+                  className={`text-sm font-semibold ${
                     card.changeType === "increase"
                       ? "text-green-600"
                       : "text-red-600"
@@ -84,13 +101,27 @@ export function DashboardStats({ stats }: DashboardStatsProps) {
                 >
                   {card.change}
                 </span>
-                <span className="text-xs text-gray-500 ml-1">
+                <span className="text-sm text-gray-500">
                   from last month
                 </span>
               </div>
+
+              {/* Progress bar */}
+              <div className="mt-3 w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all duration-1000 ease-out ${
+                    card.changeType === "increase" ? "bg-green-400" : "bg-red-400"
+                  }`}
+                  style={{
+                    width: `${Math.min(Math.abs(parseInt(card.change.replace(/[^0-9]/g, '')) || 50), 100)}%`,
+                    animationDelay: `${index * 0.2 + 0.5}s`
+                  }}
+                />
+              </div>
             </div>
-            <div className={`p-3 rounded-lg ${card.bgColor}`}>
-              <card.icon className={`w-6 h-6 ${card.color}`} />
+
+            <div className={`p-4 rounded-xl ${card.bgColor} group-hover:scale-110 transition-all duration-300 ml-4`}>
+              <card.icon className={`w-7 h-7 ${card.color} group-hover:animate-pulse`} />
             </div>
           </div>
         </div>

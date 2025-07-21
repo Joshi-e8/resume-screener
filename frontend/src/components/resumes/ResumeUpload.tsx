@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useMemo } from "react";
-import { Upload, FileText, X, AlertCircle, CheckCircle, Archive, Files, File } from "lucide-react";
+import { Upload, FileText, X, AlertCircle, CheckCircle, Archive, Files, File, Loader2, CloudUpload, Zap } from "lucide-react";
 
 interface ResumeUploadProps {
   onFilesUploaded: (files: File[]) => void;
@@ -16,6 +16,8 @@ export function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
   const [uploadProgress, setUploadProgress] = useState<{ [key: string]: number }>({});
   const [errors, setErrors] = useState<string[]>([]);
   const [zipContents, setZipContents] = useState<File[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadSuccess, setUploadSuccess] = useState(false);
 
   const allowedTypes = useMemo(() => ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'], []);
   const allowedZipTypes = useMemo(() => ['application/zip', 'application/x-zip-compressed'], []);
@@ -161,17 +163,34 @@ export function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
   const handleUpload = async () => {
     if (selectedFiles.length === 0) return;
 
-    // Simulate upload process
-    for (const file of selectedFiles) {
-      await simulateUpload(file);
-    }
+    setIsUploading(true);
+    setUploadSuccess(false);
+    setErrors([]);
 
-    // Call the callback with uploaded files
-    onFilesUploaded(selectedFiles);
-    
-    // Clear selected files
-    setSelectedFiles([]);
-    setUploadProgress({});
+    try {
+      // Simulate upload process
+      for (const file of selectedFiles) {
+        await simulateUpload(file);
+      }
+
+      // Call the callback with uploaded files
+      onFilesUploaded(selectedFiles);
+
+      // Show success state
+      setUploadSuccess(true);
+
+      // Clear selected files after a delay
+      setTimeout(() => {
+        setSelectedFiles([]);
+        setUploadProgress({});
+        setUploadSuccess(false);
+        setZipContents([]);
+      }, 2000);
+    } catch {
+      setErrors(['Upload failed. Please try again.']);
+    } finally {
+      setIsUploading(false);
+    }
   };
 
   return (
@@ -188,10 +207,10 @@ export function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
               setErrors([]);
               setZipContents([]);
             }}
-            className={`p-4 rounded-xl border-2 transition-all duration-200 text-left ${
+            className={`p-4 rounded-xl border-2 transition-all duration-300 text-left transform hover:scale-105 ${
               uploadMode === 'single'
-                ? 'border-yellow-500 bg-yellow-50'
-                : 'border-gray-200 hover:border-gray-300'
+                ? 'border-yellow-500 bg-yellow-50 shadow-lg scale-105'
+                : 'border-gray-200 hover:border-gray-300 hover:shadow-md'
             }`}
           >
             <div className="flex items-center gap-3 mb-2">
@@ -212,10 +231,10 @@ export function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
               setErrors([]);
               setZipContents([]);
             }}
-            className={`p-4 rounded-xl border-2 transition-all duration-200 text-left ${
+            className={`p-4 rounded-xl border-2 transition-all duration-300 text-left transform hover:scale-105 ${
               uploadMode === 'multiple'
-                ? 'border-yellow-500 bg-yellow-50'
-                : 'border-gray-200 hover:border-gray-300'
+                ? 'border-yellow-500 bg-yellow-50 shadow-lg scale-105'
+                : 'border-gray-200 hover:border-gray-300 hover:shadow-md'
             }`}
           >
             <div className="flex items-center gap-3 mb-2">
@@ -237,10 +256,10 @@ export function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
               setErrors([]);
               setZipContents([]);
             }}
-            className={`p-4 rounded-xl border-2 transition-all duration-200 text-left ${
+            className={`p-4 rounded-xl border-2 transition-all duration-300 text-left transform hover:scale-105 ${
               uploadMode === 'zip'
-                ? 'border-yellow-500 bg-yellow-50'
-                : 'border-gray-200 hover:border-gray-300'
+                ? 'border-yellow-500 bg-yellow-50 shadow-lg scale-105'
+                : 'border-gray-200 hover:border-gray-300 hover:shadow-md'
             }`}
           >
             <div className="flex items-center gap-3 mb-2">
@@ -302,10 +321,12 @@ export function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
-        className={`relative border-2 border-dashed rounded-2xl p-8 text-center transition-all duration-200 ${
+        className={`relative border-2 border-dashed rounded-2xl p-8 text-center transition-all duration-300 transform ${
           isDragOver
-            ? 'border-yellow-400 bg-yellow-50'
-            : 'border-gray-300 hover:border-gray-400'
+            ? 'border-yellow-400 bg-yellow-50 scale-105 shadow-lg'
+            : uploadSuccess
+            ? 'border-green-400 bg-green-50'
+            : 'border-gray-300 hover:border-gray-400 hover:bg-gray-50'
         }`}
       >
         <input
@@ -317,8 +338,18 @@ export function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
         />
 
         <div className="space-y-4">
-          <div className="w-16 h-16 bg-yellow-100 rounded-2xl flex items-center justify-center mx-auto">
-            {uploadMode === 'zip' ? (
+          <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mx-auto transition-all duration-300 ${
+            isDragOver
+              ? 'bg-yellow-200 scale-110'
+              : uploadSuccess
+              ? 'bg-green-200'
+              : 'bg-yellow-100'
+          }`}>
+            {uploadSuccess ? (
+              <CheckCircle className="w-8 h-8 text-green-600" />
+            ) : isDragOver ? (
+              <CloudUpload className="w-8 h-8 text-yellow-600 animate-bounce" />
+            ) : uploadMode === 'zip' ? (
               <Archive className="w-8 h-8 text-yellow-600" />
             ) : (
               <Upload className="w-8 h-8 text-yellow-600" />
@@ -326,20 +357,42 @@ export function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
           </div>
 
           <div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">
-              {uploadMode === 'single' && 'Drop your resume file here'}
-              {uploadMode === 'multiple' && 'Drop your resume files here'}
-              {uploadMode === 'zip' && 'Drop your ZIP file here'}
+            <h3 className={`text-lg font-semibold mb-2 transition-colors duration-300 ${
+              isDragOver
+                ? 'text-yellow-700'
+                : uploadSuccess
+                ? 'text-green-700'
+                : 'text-gray-900'
+            }`}>
+              {uploadSuccess ? (
+                'Files uploaded successfully!'
+              ) : isDragOver ? (
+                'Release to upload files'
+              ) : (
+                <>
+                  {uploadMode === 'single' && 'Drop your resume file here'}
+                  {uploadMode === 'multiple' && 'Drop your resume files here'}
+                  {uploadMode === 'zip' && 'Drop your ZIP file here'}
+                </>
+              )}
             </h3>
-            <p className="text-gray-600 mb-4">
-              or <span className="text-yellow-600 font-medium">browse</span> to choose
-              {uploadMode === 'single' ? ' a file' : uploadMode === 'zip' ? ' a ZIP file' : ' files'}
-            </p>
-            <p className="text-sm text-gray-500">
-              {uploadMode === 'single' && 'Supports PDF, DOC, DOCX • Max 10MB'}
-              {uploadMode === 'multiple' && 'Supports PDF, DOC, DOCX • Max 10MB per file'}
-              {uploadMode === 'zip' && 'Supports ZIP files • Max 50MB'}
-            </p>
+            {!uploadSuccess && (
+              <>
+                <p className={`mb-4 transition-colors duration-300 ${
+                  isDragOver ? 'text-yellow-700' : 'text-gray-600'
+                }`}>
+                  or <span className="text-yellow-600 font-medium">browse</span> to choose
+                  {uploadMode === 'single' ? ' a file' : uploadMode === 'zip' ? ' a ZIP file' : ' files'}
+                </p>
+                <p className={`text-sm transition-colors duration-300 ${
+                  isDragOver ? 'text-yellow-600' : 'text-gray-500'
+                }`}>
+                  {uploadMode === 'single' && 'Supports PDF, DOC, DOCX • Max 10MB'}
+                  {uploadMode === 'multiple' && 'Supports PDF, DOC, DOCX • Max 10MB per file'}
+                  {uploadMode === 'zip' && 'Supports ZIP files • Max 50MB'}
+                </p>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -431,23 +484,36 @@ export function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
                 
                 <div className="flex items-center gap-3">
                   {uploadProgress[file.name] !== undefined ? (
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-3">
                       {uploadProgress[file.name] === 100 ? (
-                        <CheckCircle className="w-5 h-5 text-green-500" />
+                        <div className="flex items-center gap-2 animate-bounce">
+                          <CheckCircle className="w-5 h-5 text-green-500" />
+                          <span className="text-sm font-medium text-green-600">Complete!</span>
+                        </div>
                       ) : (
-                        <div className="w-8 h-8 relative">
-                          <div className="w-full h-full rounded-full border-2 border-gray-200"></div>
-                          <div 
-                            className="absolute inset-0 rounded-full border-2 border-yellow-500 border-t-transparent animate-spin"
-                            style={{ 
-                              background: `conic-gradient(#eab308 ${uploadProgress[file.name]}%, transparent 0)` 
-                            }}
-                          ></div>
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 relative">
+                            <div className="w-full h-full rounded-full border-2 border-gray-200"></div>
+                            <div className="absolute inset-0 rounded-full border-2 border-yellow-500 border-t-transparent animate-spin"></div>
+                            <div className="absolute inset-0 flex items-center justify-center">
+                              <span className="text-xs font-medium text-yellow-600">
+                                {Math.round(uploadProgress[file.name] || 0)}%
+                              </span>
+                            </div>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="w-full bg-gray-200 rounded-full h-2">
+                              <div
+                                className="bg-gradient-to-r from-yellow-400 to-yellow-500 h-2 rounded-full transition-all duration-300 ease-out"
+                                style={{ width: `${uploadProgress[file.name] || 0}%` }}
+                              ></div>
+                            </div>
+                            <span className="text-xs text-gray-500 mt-1">
+                              Uploading... {Math.round(uploadProgress[file.name] || 0)}%
+                            </span>
+                          </div>
                         </div>
                       )}
-                      <span className="text-sm text-gray-600">
-                        {Math.round(uploadProgress[file.name] || 0)}%
-                      </span>
                     </div>
                   ) : (
                     <button
@@ -466,10 +532,31 @@ export function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
           <div className="mt-6 flex justify-end">
             <button
               onClick={handleUpload}
-              disabled={Object.keys(uploadProgress).length > 0}
-              className="px-6 py-3 bg-yellow-500 text-white font-medium rounded-xl hover:bg-yellow-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
+              disabled={isUploading || Object.keys(uploadProgress).length > 0 || uploadSuccess}
+              className={`px-6 py-3 font-medium rounded-xl transition-all duration-300 transform hover:scale-105 disabled:scale-100 disabled:cursor-not-allowed flex items-center gap-2 ${
+                uploadSuccess
+                  ? 'bg-green-500 text-white'
+                  : isUploading
+                  ? 'bg-yellow-400 text-white'
+                  : 'bg-yellow-500 text-white hover:bg-yellow-600'
+              } ${isUploading ? 'animate-pulse' : ''}`}
             >
-              Upload {selectedFiles.length} File{selectedFiles.length !== 1 ? 's' : ''}
+              {uploadSuccess ? (
+                <>
+                  <CheckCircle className="w-4 h-4" />
+                  Upload Complete!
+                </>
+              ) : isUploading ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Uploading...
+                </>
+              ) : (
+                <>
+                  <Zap className="w-4 h-4" />
+                  Upload {selectedFiles.length} File{selectedFiles.length !== 1 ? 's' : ''}
+                </>
+              )}
             </button>
           </div>
         </div>

@@ -4,6 +4,7 @@ import { DashboardSearch } from "@/components/dashboard/DashboardSearch";
 import { DashboardStats } from "@/components/dashboard/DashboardStats";
 import { QuickActions } from "@/components/dashboard/QuickActions";
 import { RecentActivity } from "@/components/dashboard/RecentActivity";
+import { InteractiveChart, resumeAnalyticsData, skillsAnalyticsData } from "@/components/dashboard/InteractiveChart";
 
 export default function DashboardPage() {
   return (
@@ -25,6 +26,20 @@ export default function DashboardPage() {
 
       {/* Stats Cards */}
       <DashboardStats />
+
+      {/* Analytics Charts */}
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+        <InteractiveChart
+          title="Resume Pipeline"
+          data={resumeAnalyticsData}
+          type="bar"
+        />
+        <InteractiveChart
+          title="Top Skills"
+          data={skillsAnalyticsData}
+          type="bar"
+        />
+      </div>
 
       {/* Quick Actions and Recent Activity */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
