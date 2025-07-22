@@ -76,13 +76,13 @@ async def login(login_data: LoginRequest) -> Any:
         "user": UserResponse.from_orm(user)
     }
 
-@router.post("/register", response_model=UserResponse)
+@router.post("/register", response_model=Token)
 async def register(user_data: RegisterRequest) -> Any:
     """
-    Create new user account
+    Create new user account and return access token
     """
     user_service = UserService()
-    
+
     # Check if user already exists
     existing_user = await user_service.get_user_by_email(user_data.email)
     if existing_user:
@@ -90,7 +90,7 @@ async def register(user_data: RegisterRequest) -> Any:
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="User with this email already exists"
         )
-    
+
     # Create new user
     user_create = UserCreate(
         email=user_data.email,
@@ -98,9 +98,21 @@ async def register(user_data: RegisterRequest) -> Any:
         full_name=user_data.full_name,
         company_name=user_data.company_name
     )
-    
+
     user = await user_service.create_user(user_create)
-    return UserResponse.from_orm(user)
+
+    # Generate access token for immediate login
+    access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(
+        data={"sub": str(user.id)}, expires_delta=access_token_expires
+    )
+
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "expires_in": settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        "user": UserResponse.from_orm(user)
+    }
 
 @router.post("/refresh-token", response_model=Token)
 async def refresh_token(current_user: User = Depends(get_current_user)) -> Any:
