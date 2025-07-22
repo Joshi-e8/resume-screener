@@ -14,7 +14,8 @@ import {
   ChevronRight,
   Settings as SettingsIcon,
   Check,
-  AlertTriangle
+  AlertTriangle,
+  ExternalLink
 } from "lucide-react";
 import Link from "next/link";
 
@@ -55,13 +56,22 @@ const settingsSections: SettingsSection[] = [
     badge: '5 members'
   },
   {
+    id: 'job-boards',
+    title: 'Job Board Integrations',
+    description: 'Connect job boards for multi-platform posting',
+    icon: ExternalLink,
+    href: '/dashboard/settings/job-boards',
+    status: 'complete',
+    badge: '3 connected'
+  },
+  {
     id: 'integrations',
-    title: 'Integrations & API',
-    description: 'Connect third-party services and manage API keys',
+    title: 'API & Services',
+    description: 'Manage API keys and external services',
     icon: Key,
     href: '/dashboard/settings/integrations',
     status: 'warning',
-    badge: '3 connected'
+    badge: '2 active'
   },
   {
     id: 'notifications',
