@@ -4,13 +4,46 @@ import { useState } from "react";
 import { ArrowLeft, Upload, FileText, AlertCircle } from "lucide-react";
 import Link from "next/link";
 import { ResumeUpload } from "@/components/resumes/ResumeUpload";
+import { useToast } from "@/components/ui/Toast";
+import { LinearProgress } from "@/components/ui/ProgressIndicator";
+import { useShortcut } from "@/components/ui/KeyboardShortcuts";
 
 export default function ResumeUploadPage() {
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const { showToast } = useToast();
 
   const handleFilesUploaded = (files: File[]) => {
     setUploadedFiles(prev => [...prev, ...files]);
+    showToast({
+      type: 'success',
+      title: 'Files uploaded successfully',
+      message: `${files.length} file(s) have been uploaded and are being processed.`
+    });
+
+    // Simulate processing progress
+    setUploadProgress(0);
+    const interval = setInterval(() => {
+      setUploadProgress(prev => {
+        if (prev >= 100) {
+          clearInterval(interval);
+          return 100;
+        }
+        return prev + 10;
+      });
+    }, 500);
   };
+
+  // Keyboard shortcuts
+  useShortcut('ctrl+u', () => {
+    // Focus upload area or trigger upload
+    const uploadButton = document.querySelector('[data-upload-trigger]') as HTMLElement;
+    if (uploadButton) uploadButton.click();
+  }, {
+    description: 'Upload files',
+    category: 'Resume Management',
+    dependencies: []
+  });
 
   return (
     <div className="space-y-6">
@@ -79,9 +112,17 @@ export default function ResumeUploadPage() {
       {/* Upload Progress/Results */}
       {uploadedFiles.length > 0 && (
         <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
-          <h3 className="font-semibold text-gray-900 mb-4">
-            Uploaded Files ({uploadedFiles.length})
-          </h3>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-semibold text-gray-900">
+              Uploaded Files ({uploadedFiles.length})
+            </h3>
+            <LinearProgress
+              value={uploadProgress}
+              label="Processing"
+              className="w-48"
+              size="sm"
+            />
+          </div>
           <div className="space-y-3">
             {uploadedFiles.map((file, index) => (
               <div
