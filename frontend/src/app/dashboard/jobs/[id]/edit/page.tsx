@@ -389,7 +389,7 @@ export default function EditJobPage() {
                   type="text"
                   value={currentSkill}
                   onChange={(e) => setCurrentSkill(e.target.value)}
-                  onKeyPress={(e) => {
+                  onKeyDown={(e) => {
                     if (e.key === 'Enter') {
                       e.preventDefault();
                       addSkill();
