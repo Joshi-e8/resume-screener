@@ -6,6 +6,10 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from beanie import init_beanie
 from app.core.config import settings
 from app.models.resume import UploadedResume, JobDescription, ResumeAnalysis
+from app.models.user import User
+from app.models.job import Job
+from app.models.candidate import Candidate
+from app.models.analytics import AnalyticsEvent, DailyMetrics, PlatformMetrics, UserUsageStats
 import logging
 
 logger = logging.getLogger(__name__)
@@ -62,9 +66,19 @@ async def init_database():
         await init_beanie(
             database=client[settings.MONGODB_DB_NAME],
             document_models=[
+                # Core models
+                User,
+                Job,
+                Candidate,
+                # Resume models
                 UploadedResume,
                 JobDescription,
-                ResumeAnalysis
+                ResumeAnalysis,
+                # Analytics models
+                AnalyticsEvent,
+                DailyMetrics,
+                PlatformMetrics,
+                UserUsageStats
             ]
         )
 

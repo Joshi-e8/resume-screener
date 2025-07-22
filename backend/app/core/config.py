@@ -3,40 +3,115 @@ Application configuration settings
 """
 
 from pydantic_settings import BaseSettings
-from typing import List
+from typing import List, Optional
 import os
 
 
 class Settings(BaseSettings):
-    # Database
+    """Application settings loaded from environment variables"""
+
+    # Database Configuration
     MONGODB_URL: str
     MONGODB_DB_NAME: str
 
-    # GROQ API
-    GROQ_API_KEY: str
-
-    # Server
+    # Server Configuration
     BACKEND_HOST: str = "localhost"
     BACKEND_PORT: int = 8000
+    BACKEND_URL: str = "http://localhost:8000"
     CORS_ORIGINS: str = "http://localhost:3000"
 
-    # File Upload
+    # Security Configuration
+    SECRET_KEY: str
+    ALGORITHM: str = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    API_V1_STR: str = "/api/v1"
+    API_RATE_LIMIT: int = 100
+
+    # AI Services Configuration
+    GROQ_API_KEY: Optional[str] = None
+    OPENAI_API_KEY: Optional[str] = None
+
+    # LinkedIn Integration
+    LINKEDIN_CLIENT_ID: Optional[str] = None
+    LINKEDIN_CLIENT_SECRET: Optional[str] = None
+    LINKEDIN_REDIRECT_URI: Optional[str] = None
+
+    # Indeed Integration
+    INDEED_API_KEY: Optional[str] = None
+    INDEED_PUBLISHER_ID: Optional[str] = None
+
+    # Glassdoor Integration
+    GLASSDOOR_API_KEY: Optional[str] = None
+    GLASSDOOR_PARTNER_ID: Optional[str] = None
+
+    # ZipRecruiter Integration
+    ZIPRECRUITER_API_KEY: Optional[str] = None
+    ZIPRECRUITER_ACCOUNT_ID: Optional[str] = None
+
+    # File Upload Configuration
     MAX_FILE_SIZE: int = 10485760  # 10MB
     UPLOAD_DIR: str = "./uploads"
-    ALLOWED_EXTENSIONS: List[str] = [".pdf", ".doc", ".docx"]
+    ALLOWED_EXTENSIONS: str = ".pdf,.doc,.docx,.txt"
 
-    # Security
-    SECRET_KEY: str = "your-secret-key-change-in-production"
-    ALGORITHM: str = "HS256"
+    # Redis Cache Configuration
+    REDIS_URL: str = "redis://localhost:6379"
+    CACHE_EXPIRE_SECONDS: int = 3600
 
-    # Development
+    # Email Configuration
+    SMTP_HOST: Optional[str] = None
+    SMTP_PORT: int = 587
+    SMTP_USER: Optional[str] = None
+    SMTP_PASSWORD: Optional[str] = None
+    EMAIL_FROM: str = "noreply@resumescreener.com"
+
+    # Development Settings
     DEBUG: bool = True
     LOG_LEVEL: str = "INFO"
-    
+    ENVIRONMENT: str = "development"
+
+    # Job Board Settings
+    DEFAULT_JOB_EXPIRY_DAYS: int = 30
+    MAX_JOBS_PER_USER: int = 50
+    MAX_CANDIDATES_PER_USER: int = 1000
+
+    # Analytics Configuration
+    ANALYTICS_RETENTION_DAYS: int = 365
+    ENABLE_ANALYTICS: bool = True
+
+    # Security Headers
+    ENABLE_CORS: bool = True
+    ENABLE_RATE_LIMITING: bool = True
+    ENABLE_HTTPS_REDIRECT: bool = False
+
+    @property
+    def allowed_extensions_list(self) -> List[str]:
+        """Convert comma-separated extensions to list"""
+        return [ext.strip() for ext in self.ALLOWED_EXTENSIONS.split(",")]
+
+    @property
+    def cors_origins_list(self) -> List[str]:
+        """Convert comma-separated origins to list"""
+        return [origin.strip() for origin in self.CORS_ORIGINS.split(",")]
+
+    @property
+    def is_production(self) -> bool:
+        """Check if running in production environment"""
+        return self.ENVIRONMENT.lower() == "production"
+
+    @property
+    def is_development(self) -> bool:
+        """Check if running in development environment"""
+        return self.ENVIRONMENT.lower() == "development"
+
+    def get_database_url(self) -> str:
+        """Get the complete database URL"""
+        return f"{self.MONGODB_URL}/{self.MONGODB_DB_NAME}"
+
     class Config:
-        env_file = "../.env"  # Look for .env in parent directory
+        env_file = ".env"
+        env_file_encoding = "utf-8"
         case_sensitive = True
-        extra = "ignore"  # Ignore extra fields from .env
+        extra = "ignore"
 
 
 # Create settings instance
