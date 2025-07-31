@@ -3,8 +3,8 @@
 Test configuration loading from .env file
 """
 
-import sys
 import os
+import sys
 
 # Add the app directory to Python path
 sys.path.append(os.path.join(os.path.dirname(__file__), '.'))

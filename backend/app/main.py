@@ -2,15 +2,16 @@
 Resume Screener FastAPI Application
 """
 
+import os
 from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-import os
 
-from app.core.config import settings
-from app.core.database import init_database, close_mongo_connection
 from app.api.api import api_router
+from app.core.config import settings
+from app.core.database import close_mongo_connection, init_database
 
 
 @asynccontextmanager
@@ -43,10 +44,12 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+print(settings.CORS_ORIGINS)
+
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.CORS_ORIGINS],  # Convert string to list
+    allow_origins=settings.CORS_ORIGINS.split(","),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

@@ -4,8 +4,8 @@ import { Upload, Plus, BarChart3, Settings, ArrowRight, Sparkles } from "lucide-
 export function QuickActions() {
   const actions = [
     {
-      title: "Upload Resume",
-      description: "Add new resumes to screen",
+      title: "AI Resume Screening",
+      description: "Upload from LinkedIn, Indeed, 20+ platforms",
       icon: Upload,
       href: "/dashboard/resumes/upload",
       color: "text-blue-600 bg-blue-50 hover:bg-blue-100",
@@ -18,8 +18,8 @@ export function QuickActions() {
       color: "text-green-600 bg-green-50 hover:bg-green-100",
     },
     {
-      title: "View Analytics",
-      description: "Check screening metrics",
+      title: "Performance Analytics",
+      description: "Track hiring metrics across all sources",
       icon: BarChart3,
       href: "/dashboard/analytics",
       color: "text-purple-600 bg-purple-50 hover:bg-purple-100",

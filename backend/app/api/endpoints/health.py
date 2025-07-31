@@ -4,6 +4,7 @@ Health check endpoints
 
 from fastapi import APIRouter, HTTPException
 from motor.motor_asyncio import AsyncIOMotorClient
+
 from app.core.config import settings
 
 router = APIRouter()

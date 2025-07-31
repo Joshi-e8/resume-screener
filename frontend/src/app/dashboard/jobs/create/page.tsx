@@ -2,9 +2,10 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Save, Eye, Plus, X } from "lucide-react";
+import { ArrowLeft, Save, Eye, Plus, X, Send } from "lucide-react";
 import Link from "next/link";
 import { Job, jobDepartments, jobTypes, experienceLevels } from "@/data/mockJobs";
+import { MultiPlatformJobPosting } from "@/components/jobs/MultiPlatformJobPosting";
 
 interface JobFormData {
   title: string;
@@ -49,6 +50,8 @@ export default function CreateJobPage() {
   const [formData, setFormData] = useState<JobFormData>(initialFormData);
   const [currentSkill, setCurrentSkill] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([]);
+  const [showMultiPlatform, setShowMultiPlatform] = useState(false);
 
   const handleInputChange = (field: keyof JobFormData, value: string | number) => {
     setFormData(prev => ({
@@ -105,14 +108,30 @@ export default function CreateJobPage() {
     }));
   };
 
+  const handlePlatformToggle = (platformId: string, enabled: boolean) => {
+    if (enabled) {
+      setSelectedPlatforms(prev => [...prev, platformId]);
+    } else {
+      setSelectedPlatforms(prev => prev.filter(id => id !== platformId));
+    }
+  };
+
+  const handlePostToAllPlatforms = (platforms: string[]) => {
+    console.log('Posting to platforms:', platforms);
+    // Here you would integrate with each platform's API
+    setShowMultiPlatform(false);
+    handleSubmit('active');
+  };
+
   const handleSubmit = async (status: 'draft' | 'active') => {
     setIsSubmitting(true);
-    
+
     // Simulate API call
     await new Promise(resolve => setTimeout(resolve, 1000));
-    
+
     console.log('Creating job with status:', status, formData);
-    
+    console.log('Selected platforms:', selectedPlatforms);
+
     // Redirect to jobs page
     router.push('/dashboard/jobs');
   };
@@ -148,14 +167,23 @@ export default function CreateJobPage() {
             <Save className="w-4 h-4 mr-2 inline" />
             Save as Draft
           </button>
-          
+
+          <button
+            onClick={() => setShowMultiPlatform(true)}
+            disabled={!isFormValid || isSubmitting}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Send className="w-4 h-4 mr-2 inline" />
+            Post to Multiple Platforms
+          </button>
+
           <button
             onClick={() => handleSubmit('active')}
             disabled={!isFormValid || isSubmitting}
             className="px-4 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Eye className="w-4 h-4 mr-2 inline" />
-            Publish Job
+            Publish Job Only
           </button>
         </div>
       </div>
@@ -469,6 +497,36 @@ export default function CreateJobPage() {
           </div>
         </div>
       </div>
+
+      {/* Multi-Platform Posting Modal */}
+      {showMultiPlatform && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl max-w-6xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-2xl font-bold text-gray-900">Post to Multiple Platforms</h2>
+                <button
+                  onClick={() => setShowMultiPlatform(false)}
+                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors duration-200"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <MultiPlatformJobPosting
+                jobData={{
+                  title: formData.title,
+                  department: formData.department,
+                  location: formData.location,
+                  type: formData.type
+                }}
+                onPlatformToggle={handlePlatformToggle}
+                onPostToAll={handlePostToAllPlatforms}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

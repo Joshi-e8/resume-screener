@@ -3,9 +3,14 @@
 import { useState } from "react";
 import { Eye, EyeOff, Mail, Lock, User, AlertCircle } from "lucide-react";
 import { showToast } from "@/utils/toast";
+import { useForm, Controller } from "react-hook-form";
+import useAuthServices from "@/lib/services/authServices";
+import { setCookie } from "cookies-next";
+import { useDispatch } from "react-redux";
+import { setAuthStep } from "@/store/slices/authSlice";
 
 interface AuthFormProps {
-  mode: 'login' | 'signup';
+  mode: "login" | "signup";
 }
 
 interface FormData {
@@ -14,127 +19,132 @@ interface FormData {
   password: string;
   confirmPassword?: string;
 }
-
-interface FormErrors {
-  name?: string;
-  email?: string;
-  password?: string;
-  confirmPassword?: string;
-}
-
 export function AuthForm({ mode }: AuthFormProps) {
-  const [formData, setFormData] = useState<FormData>({
-    name: '',
-    email: '',
-    password: '',
-    confirmPassword: '',
+  const { login } = useAuthServices();
+  const {
+    handleSubmit,
+    control,
+    formState: { errors },
+    setError,
+    getValues,
+  } = useForm<FormData>({
+    defaultValues: {
+      name: "",
+      email: "",
+      password: "",
+      confirmPassword: "",
+    },
   });
-  
-  const [errors, setErrors] = useState<FormErrors>({});
+
+  const dispatch = useDispatch();
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
-  const validateForm = (): boolean => {
-    const newErrors: FormErrors = {};
-
-    // Name validation (signup only)
-    if (mode === 'signup' && !formData.name?.trim()) {
-      newErrors.name = 'Full name is required';
-    }
-
-    // Email validation
-    if (!formData.email.trim()) {
-      newErrors.email = 'Email is required';
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
-      newErrors.email = 'Please enter a valid email address';
-    }
-
-    // Password validation
-    if (!formData.password) {
-      newErrors.password = 'Password is required';
-    } else if (formData.password.length < 8) {
-      newErrors.password = 'Password must be at least 8 characters';
-    }
-
-    // Confirm password validation (signup only)
-    if (mode === 'signup') {
-      if (!formData.confirmPassword) {
-        newErrors.confirmPassword = 'Please confirm your password';
-      } else if (formData.password !== formData.confirmPassword) {
-        newErrors.confirmPassword = 'Passwords do not match';
-      }
-    }
-
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
+  // Validation logic for react-hook-form
+  const validateEmail = (email: string) => {
+    if (!email.trim()) return "Email is required";
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+      return "Please enter a valid email address";
+    return true;
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (!validateForm()) {
-      return;
-    }
+  const validatePassword = (password: string) => {
+    if (!password) return "Password is required";
+    if (password.length < 8) return "Password must be at least 8 characters";
+    return true;
+  };
 
+  const validateConfirmPassword = (
+    confirmPassword: string | undefined,
+    getValues: () => FormData
+  ) => {
+    if (!confirmPassword) return "Please confirm your password";
+    if (confirmPassword !== getValues().password)
+      return "Passwords do not match";
+    return true;
+  };
+
+  const onSubmit = async (data: FormData) => {
     setIsLoading(true);
-
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
-      if (mode === 'login') {
-        showToast.authSuccess('Welcome back!');
-        // Redirect to dashboard
-        window.location.href = '/dashboard';
+      if (mode === "login") {
+        const response = await login({
+          email: data.email,
+          password: data.password,
+        });
+        if (response.result == "success") {
+          setCookie("otpUrl", response.verification_url);
+          setCookie("otp", response.otp);
+          setCookie("userId", response.userId);
+          setCookie("resendOtpUrl", response.resend_otp_url);
+          setCookie("expiresIn", response.expires_in);
+
+          dispatch(setAuthStep({ step: 2 })); // Set auth step to OTP verification
+          showToast.info("OTP sent to your email. Please verify to continue.");
+        } else {
+          if (response?.errors) {
+            Object.entries(response.errors).forEach(([key, value]) => {
+              setError(key as keyof FormData, {
+                type: "manual",
+                message: value as string,
+              });
+            });
+          }
+        }
       } else {
-        showToast.authSuccess('Account created successfully!');
-        // Redirect to dashboard
-        window.location.href = '/dashboard';
+        // Simulate signup API call
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        showToast.authSuccess("Account created successfully!");
+        window.location.href = "/dashboard";
       }
     } catch (error) {
-      console.error('Authentication error:', error);
+      console.error("Authentication error:", error);
       showToast.authError(
-        mode === 'login'
-          ? 'Invalid email or password. Please try again.'
-          : 'Failed to create account. Please try again.'
+        mode === "login"
+          ? "Invalid email or password. Please try again."
+          : "Failed to create account. Please try again."
       );
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleInputChange = (field: keyof FormData, value: string) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
-    // Clear error when user starts typing
-    if (errors[field]) {
-      setErrors(prev => ({ ...prev, [field]: undefined }));
-    }
-  };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-5">
+    <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
       {/* Name Field (Signup only) */}
-      {mode === 'signup' && (
+      {mode === "signup" && (
         <div>
-          <label htmlFor="name" className="block text-sm font-semibold text-gray-900 mb-2">
+          <label
+            htmlFor="name"
+            className="block text-sm font-semibold text-gray-900 mb-2"
+          >
             Full Name
           </label>
           <div className="relative">
             <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
               <User className="h-5 w-5 text-gray-400" />
             </div>
-            <input
-              id="name"
-              type="text"
-              value={formData.name || ''}
-              onChange={(e) => handleInputChange('name', e.target.value)}
-              className={`w-full pl-12 pr-4 py-3 border rounded-xl focus:ring-2 focus:ring-accent-pink focus:border-transparent outline-none transition-all duration-200 ${
-                errors.name 
-                  ? 'border-red-300 bg-red-50' 
-                  : 'border-gray-300 hover:border-gray-400 focus:bg-white'
-              }`}
-              placeholder="Enter your full name"
+            <Controller
+              name="name"
+              control={control}
+              rules={{
+                required: mode === "signup" ? "Full name is required" : false,
+              }}
+              render={({ field }) => (
+                <input
+                  {...field}
+                  id="name"
+                  type="text"
+                  className={`w-full pl-12 pr-4 py-3 border rounded-xl focus:ring-2 focus:ring-accent-pink focus:border-transparent outline-none transition-all duration-200 ${
+                    errors.name
+                      ? "border-red-300 bg-red-50"
+                      : "border-gray-300 hover:border-gray-400 focus:bg-white"
+                  }`}
+                  placeholder="Enter your full name"
+                />
+              )}
             />
             {errors.name && (
               <div className="absolute inset-y-0 right-0 pr-4 flex items-center">
@@ -145,7 +155,7 @@ export function AuthForm({ mode }: AuthFormProps) {
           {errors.name && (
             <p className="mt-2 text-sm text-red-600 flex items-center">
               <AlertCircle className="w-4 h-4 mr-1" />
-              {errors.name}
+              {errors.name.message}
             </p>
           )}
         </div>
@@ -153,24 +163,36 @@ export function AuthForm({ mode }: AuthFormProps) {
 
       {/* Email Field */}
       <div>
-        <label htmlFor="email" className="block text-sm font-semibold text-gray-900 mb-2">
+        <label
+          htmlFor="email"
+          className="block text-sm font-semibold text-gray-900 mb-2"
+        >
           Email Address
         </label>
         <div className="relative">
           <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
             <Mail className="h-5 w-5 text-gray-400" />
           </div>
-          <input
-            id="email"
-            type="email"
-            value={formData.email}
-            onChange={(e) => handleInputChange('email', e.target.value)}
-            className={`w-full pl-12 pr-4 py-3 border rounded-xl focus:ring-2 focus:ring-accent-pink focus:border-transparent outline-none transition-all duration-200 ${
-              errors.email 
-                ? 'border-red-300 bg-red-50' 
-                : 'border-gray-300 hover:border-gray-400 focus:bg-white'
-            }`}
-            placeholder="Enter your email address"
+          <Controller
+            name="email"
+            control={control}
+            rules={{
+              required: "Email is required",
+              validate: validateEmail,
+            }}
+            render={({ field }) => (
+              <input
+                {...field}
+                id="email"
+                type="email"
+                className={`w-full pl-12 pr-4 py-3 border rounded-xl focus:ring-2 focus:ring-accent-pink focus:border-transparent outline-none transition-all duration-200 ${
+                  errors.email
+                    ? "border-red-300 bg-red-50"
+                    : "border-gray-300 hover:border-gray-400 focus:bg-white"
+                }`}
+                placeholder="Enter your email address"
+              />
+            )}
           />
           {errors.email && (
             <div className="absolute inset-y-0 right-0 pr-4 flex items-center">
@@ -181,94 +203,129 @@ export function AuthForm({ mode }: AuthFormProps) {
         {errors.email && (
           <p className="mt-2 text-sm text-red-600 flex items-center">
             <AlertCircle className="w-4 h-4 mr-1" />
-            {errors.email}
+            {errors.email.message}
           </p>
         )}
       </div>
 
       {/* Password Field */}
       <div>
-        <label htmlFor="password" className="block text-sm font-semibold text-gray-900 mb-2">
+        <label
+          htmlFor="password"
+          className="block text-sm font-semibold text-gray-900 mb-2"
+        >
           Password
         </label>
         <div className="relative">
           <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
             <Lock className="h-5 w-5 text-gray-400" />
           </div>
-          <input
-            id="password"
-            type={showPassword ? 'text' : 'password'}
-            value={formData.password}
-            onChange={(e) => handleInputChange('password', e.target.value)}
-            className={`w-full pl-12 pr-12 py-3 border rounded-xl focus:ring-2 focus:ring-accent-pink focus:border-transparent outline-none transition-all duration-200 ${
-              errors.password 
-                ? 'border-red-300 bg-red-50' 
-                : 'border-gray-300 hover:border-gray-400 focus:bg-white'
-            }`}
-            placeholder="Enter your password"
+          <Controller
+            name="password"
+            control={control}
+            rules={{
+              required: "Password is required",
+              validate: validatePassword,
+            }}
+            render={({ field }) => (
+              <input
+                {...field}
+                id="password"
+                type={showPassword ? "text" : "password"}
+                className={`w-full pl-12 pr-12 py-3 border rounded-xl focus:ring-2 focus:ring-accent-pink focus:border-transparent outline-none transition-all duration-200 ${
+                  errors.password
+                    ? "border-red-300 bg-red-50"
+                    : "border-gray-300 hover:border-gray-400 focus:bg-white"
+                }`}
+                placeholder="Enter your password"
+              />
+            )}
           />
           <button
             type="button"
             onClick={() => setShowPassword(!showPassword)}
             className="absolute inset-y-0 right-0 pr-4 flex items-center text-gray-400 hover:text-gray-600"
           >
-            {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+            {showPassword ? (
+              <EyeOff className="h-5 w-5" />
+            ) : (
+              <Eye className="h-5 w-5" />
+            )}
           </button>
         </div>
         {errors.password && (
           <p className="mt-2 text-sm text-red-600 flex items-center">
             <AlertCircle className="w-4 h-4 mr-1" />
-            {errors.password}
+            {errors.password.message}
           </p>
         )}
       </div>
 
       {/* Confirm Password Field (Signup only) */}
-      {mode === 'signup' && (
+      {mode === "signup" && (
         <div>
-          <label htmlFor="confirmPassword" className="block text-sm font-semibold text-gray-900 mb-2">
+          <label
+            htmlFor="confirmPassword"
+            className="block text-sm font-semibold text-gray-900 mb-2"
+          >
             Confirm Password
           </label>
           <div className="relative">
             <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
               <Lock className="h-5 w-5 text-gray-400" />
             </div>
-            <input
-              id="confirmPassword"
-              type={showConfirmPassword ? 'text' : 'password'}
-              value={formData.confirmPassword || ''}
-              onChange={(e) => handleInputChange('confirmPassword', e.target.value)}
-              className={`w-full pl-12 pr-12 py-3 border rounded-xl focus:ring-2 focus:ring-accent-pink focus:border-transparent outline-none transition-all duration-200 ${
-                errors.confirmPassword 
-                  ? 'border-red-300 bg-red-50' 
-                  : 'border-gray-300 hover:border-gray-400 focus:bg-white'
-              }`}
-              placeholder="Confirm your password"
+            <Controller
+              name="confirmPassword"
+              control={control}
+              rules={{
+                required:
+                  mode === "signup" ? "Please confirm your password" : false,
+                validate: (value) => validateConfirmPassword(value, getValues),
+              }}
+              render={({ field }) => (
+                <input
+                  {...field}
+                  id="confirmPassword"
+                  type={showConfirmPassword ? "text" : "password"}
+                  className={`w-full pl-12 pr-12 py-3 border rounded-xl focus:ring-2 focus:ring-accent-pink focus:border-transparent outline-none transition-all duration-200 ${
+                    errors.confirmPassword
+                      ? "border-red-300 bg-red-50"
+                      : "border-gray-300 hover:border-gray-400 focus:bg-white"
+                  }`}
+                  placeholder="Confirm your password"
+                />
+              )}
             />
             <button
               type="button"
               onClick={() => setShowConfirmPassword(!showConfirmPassword)}
               className="absolute inset-y-0 right-0 pr-4 flex items-center text-gray-400 hover:text-gray-600"
             >
-              {showConfirmPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+              {showConfirmPassword ? (
+                <EyeOff className="h-5 w-5" />
+              ) : (
+                <Eye className="h-5 w-5" />
+              )}
             </button>
           </div>
           {errors.confirmPassword && (
             <p className="mt-2 text-sm text-red-600 flex items-center">
               <AlertCircle className="w-4 h-4 mr-1" />
-              {errors.confirmPassword}
+              {errors.confirmPassword.message}
             </p>
           )}
         </div>
       )}
 
       {/* Forgot Password Link (Login only) */}
-      {mode === 'login' && (
+      {mode === "login" && (
         <div className="text-right">
           <button
             type="button"
             className="text-sm text-accent-pink hover:text-accent-pink/80 font-medium"
-            onClick={() => showToast.info('Password reset functionality coming soon!')}
+            onClick={() =>
+              showToast.info("Password reset functionality coming soon!")
+            }
           >
             Forgot your password?
           </button>
@@ -284,10 +341,12 @@ export function AuthForm({ mode }: AuthFormProps) {
         {isLoading ? (
           <>
             <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-            <span>{mode === 'login' ? 'Signing in...' : 'Creating account...'}</span>
+            <span>
+              {mode === "login" ? "Signing in..." : "Creating account..."}
+            </span>
           </>
         ) : (
-          <span>{mode === 'login' ? 'Sign In' : 'Create Account'}</span>
+          <span>{mode === "login" ? "Sign In" : "Create Account"}</span>
         )}
       </button>
     </form>

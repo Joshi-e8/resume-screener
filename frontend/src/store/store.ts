@@ -1,10 +1,12 @@
 import { configureStore } from '@reduxjs/toolkit';
 import { useDispatch, useSelector, TypedUseSelectorHook } from 'react-redux';
 import dashboardReducer from './slices/dashboardSlice';
+import authStepReducer from './slices/authSlice';
 
 export const store = configureStore({
   reducer: {
     dashboard: dashboardReducer,
+    authStep: authStepReducer, // Assuming you have an authStepReducer
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({
