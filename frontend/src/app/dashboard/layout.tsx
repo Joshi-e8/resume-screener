@@ -7,7 +7,6 @@ import { ToastProvider } from "@/components/ui/Toast";
 import { ConfirmDialogProvider } from "@/components/ui/ConfirmDialog";
 import { KeyboardShortcutsProvider, CommonShortcuts } from "@/components/ui/KeyboardShortcuts";
 import { ErrorBoundary } from "@/components/ui/ErrorBoundary";
-import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 
 export default function DashboardLayout({
   children,
@@ -52,7 +51,6 @@ export default function DashboardLayout({
   };
 
   return (
-    <ProtectedRoute>
       <ErrorBoundary>
         <KeyboardShortcutsProvider>
           <ToastProvider>
@@ -83,6 +81,5 @@ export default function DashboardLayout({
           </ToastProvider>
         </KeyboardShortcutsProvider>
       </ErrorBoundary>
-    </ProtectedRoute>
   );
 }

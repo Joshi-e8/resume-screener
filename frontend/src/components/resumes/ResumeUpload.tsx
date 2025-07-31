@@ -53,7 +53,7 @@ export function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
   }, [uploadMode, selectedFiles.length, allowedTypes, allowedZipTypes, maxFileSize, maxZipSize]);
 
   // Function to simulate ZIP file extraction (in real app, this would use a ZIP library)
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+   
   const processZipFile = async (_zipFile: File): Promise<File[]> => {
     // Mock ZIP processing - in real implementation, use JSZip or similar
     const mockFiles: File[] = [];
