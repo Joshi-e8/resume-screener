@@ -2,11 +2,18 @@
 Database configuration and connection
 """
 
-from motor.motor_asyncio import AsyncIOMotorClient
-from beanie import init_beanie
-from app.core.config import settings
-from app.models.resume import UploadedResume, JobDescription, ResumeAnalysis
 import logging
+
+from beanie import init_beanie
+from motor.motor_asyncio import AsyncIOMotorClient
+
+from app.core.config import settings
+from app.models.analytics import (AnalyticsEvent, DailyMetrics,
+                                  PlatformMetrics, UserUsageStats)
+from app.models.candidate import Candidate
+from app.models.job import Job
+from app.models.resume import JobDescription, ResumeAnalysis, UploadedResume
+from app.models.user import User
 
 logger = logging.getLogger(__name__)
 
@@ -62,9 +69,19 @@ async def init_database():
         await init_beanie(
             database=client[settings.MONGODB_DB_NAME],
             document_models=[
+                # Core models
+                User,
+                Job,
+                Candidate,
+                # Resume models
                 UploadedResume,
                 JobDescription,
-                ResumeAnalysis
+                ResumeAnalysis,
+                # Analytics models
+                AnalyticsEvent,
+                DailyMetrics,
+                PlatformMetrics,
+                UserUsageStats
             ]
         )
 

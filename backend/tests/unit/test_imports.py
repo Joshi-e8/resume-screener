@@ -12,9 +12,9 @@ def test_imports():
         print("✅ FastAPI packages imported successfully")
         
         # Database packages
+        import beanie
         import motor
         import pymongo
-        import beanie
         print("✅ Database packages imported successfully")
         
         # AI and ML packages
@@ -32,14 +32,14 @@ def test_imports():
         print("✅ Validation packages imported successfully")
         
         # Security
-        import passlib
         import jose
+        import passlib
         print("✅ Security packages imported successfully")
         
         # Utilities
+        import httpx
         import pandas
         import requests
-        import httpx
         print("✅ Utility packages imported successfully")
         
         print("\n🎉 All packages imported successfully!")

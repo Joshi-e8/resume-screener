@@ -2,24 +2,37 @@
 
 import { useState } from "react";
 import { showToast } from "@/utils/toast";
+import { signIn } from "next-auth/react";
+import { useRouter } from "next/navigation";
 
 export function GoogleSignInButton() {
   const [isLoading, setIsLoading] = useState(false);
+  // const { data: session } = useSession();
+  const router = useRouter();
 
   const handleGoogleSignIn = async () => {
     try {
       setIsLoading(true);
       showToast.info("Redirecting to Google...");
 
-      // Simulate loading for better UX
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      const response = await signIn("google", {
+        redirect: true, // Handle redirect manually for better UX
+        callbackUrl: "/?provider=google",
+      });
 
-      // For now, we'll redirect to dashboard directly
-      // In a real app, this would use the Google OAuth flow
-      showToast.authSuccess("Welcome! Redirecting to dashboard...");
-      setTimeout(() => {
-        window.location.href = "/dashboard";
-      }, 1000);
+      console.debug("Google sign-in response:", response);
+
+      // if (response?.error) {
+      //   showToast.authError("Failed to sign in with Google. Please try again.");
+      //   return;
+      // }
+
+      // if (response?.ok) {
+      //   showToast.authSuccess("Welcome! Redirecting to dashboard...");
+      //   setTimeout(() => {
+      //     router.push("/dashboard");
+      //   }, 1000);
+      // }
     } catch (error) {
       console.error("Sign in error:", error);
       showToast.authError("An unexpected error occurred. Please try again.");

@@ -179,6 +179,10 @@ body {
   }
 }
 
+input:focus{
+  outline: none !important;
+}
+
 /* Focus styles for accessibility */
 .focus-ring:focus {
   outline: none;
