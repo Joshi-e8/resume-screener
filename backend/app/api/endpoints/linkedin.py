@@ -4,16 +4,17 @@ LinkedIn integration endpoints
 
 import secrets
 from typing import Any, Dict, List
-from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 
 from app.core.security import get_current_user
+from app.models.analytics import EventType
 from app.models.user import User
+from app.services.analytics_service import AnalyticsService
 from app.services.linkedin_service import LinkedInService
 from app.services.user_service import UserService
-from app.services.analytics_service import AnalyticsService
-from app.models.analytics import EventType
 
 router = APIRouter()
 

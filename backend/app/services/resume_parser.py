@@ -2,15 +2,17 @@
 Resume parsing service using PDFPlumber and other libraries
 """
 
-import re
 import os
+import re
 import tempfile
-from typing import Dict, List, Optional, Any
 from datetime import datetime, timezone
-import pdfplumber
-from docx import Document
-import PyPDF2
+from typing import Any, Dict, List, Optional
+
 import aiofiles
+import pdfplumber
+import PyPDF2
+from docx import Document
+
 
 class ResumeParser:
     """Service for parsing resumes from various file formats"""

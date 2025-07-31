@@ -3,12 +3,15 @@ Candidate management endpoints
 """
 
 from typing import Any, List, Optional
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 
 from app.core.security import get_current_user
+from app.models.candidate import (Candidate, CandidateCreate,
+                                  CandidateResponse, CandidateSearchFilters,
+                                  CandidateUpdate)
 from app.models.user import User
-from app.models.candidate import Candidate, CandidateCreate, CandidateUpdate, CandidateResponse, CandidateSearchFilters
 from app.services.candidate_service import CandidateService
 
 router = APIRouter()

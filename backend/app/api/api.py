@@ -3,18 +3,9 @@ Main API router
 """
 
 from fastapi import APIRouter
-from app.api.endpoints import (
-    health,
-    resumes,
-    jobs,
-    analysis,
-    auth,
-    users,
-    candidates,
-    analytics,
-    platforms,
-    linkedin
-)
+
+from app.api.endpoints import (analysis, analytics, auth, candidates, health,
+                               jobs, linkedin, platforms, resumes, users)
 
 api_router = APIRouter()
 

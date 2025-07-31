@@ -3,13 +3,14 @@ Job board platform integration endpoints
 """
 
 from typing import Any, List
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
 from app.core.security import get_current_user
 from app.models.user import User
-from app.services.platform_service import PlatformService
 from app.services.job_posting_service import JobPostingService
+from app.services.platform_service import PlatformService
 
 router = APIRouter()
 

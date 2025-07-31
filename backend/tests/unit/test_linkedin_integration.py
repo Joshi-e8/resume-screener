@@ -3,9 +3,10 @@ Test LinkedIn integration functionality
 """
 
 import asyncio
-import sys
 import os
+import sys
 from unittest.mock import AsyncMock, patch
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
 
 async def test_linkedin_service():
@@ -14,7 +15,7 @@ async def test_linkedin_service():
     
     try:
         from app.services.linkedin_service import LinkedInService
-        
+
         # Test service instantiation
         linkedin_service = LinkedInService()
         print("✅ LinkedIn service instantiated successfully")
@@ -72,10 +73,11 @@ async def test_linkedin_endpoints():
     print("\n🧪 Testing LinkedIn API Endpoints...")
     
     try:
-        from app.api.endpoints.linkedin import router
-        from fastapi.testclient import TestClient
         from fastapi import FastAPI
-        
+        from fastapi.testclient import TestClient
+
+        from app.api.endpoints.linkedin import router
+
         # Create test app
         app = FastAPI()
         app.include_router(router, prefix="/linkedin")
@@ -254,7 +256,7 @@ async def test_linkedin_api_integration():
     
     try:
         from app.api.api import api_router
-        
+
         # Check if LinkedIn routes are registered
         linkedin_routes = [
             route for route in api_router.routes 

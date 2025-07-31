@@ -3,11 +3,13 @@ Job models for job posting and management
 """
 
 from datetime import datetime, timezone
-from typing import Optional, List, Dict, Annotated
+from enum import Enum
+from typing import Annotated, Dict, List, Optional
+
 from beanie import Document, Indexed
 from pydantic import BaseModel, Field
 from pymongo import IndexModel
-from enum import Enum
+
 
 class JobStatus(str, Enum):
     DRAFT = "draft"

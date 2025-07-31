@@ -3,8 +3,9 @@ Test API endpoints and services
 """
 
 import asyncio
-import sys
 import os
+import sys
+
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 async def test_services():
@@ -13,10 +14,10 @@ async def test_services():
     
     # Test imports
     try:
-        from app.services.user_service import UserService
-        from app.services.job_service import JobService
-        from app.services.candidate_service import CandidateService
         from app.services.analytics_service import AnalyticsService
+        from app.services.candidate_service import CandidateService
+        from app.services.job_service import JobService
+        from app.services.user_service import UserService
         print("✅ All service imports successful")
     except Exception as e:
         print(f"❌ Service import error: {e}")
@@ -40,10 +41,11 @@ async def test_models():
     print("\n🧪 Testing Model Classes...")
     
     try:
-        from app.models.user import User, UserCreate, UserResponse
-        from app.models.job import Job, JobCreate, JobResponse
-        from app.models.candidate import Candidate, CandidateCreate, CandidateResponse
         from app.models.analytics import AnalyticsEvent, DailyMetrics
+        from app.models.candidate import (Candidate, CandidateCreate,
+                                          CandidateResponse)
+        from app.models.job import Job, JobCreate, JobResponse
+        from app.models.user import User, UserCreate, UserResponse
         print("✅ All model imports successful")
     except Exception as e:
         print(f"❌ Model import error: {e}")
@@ -80,8 +82,9 @@ async def test_api_structure():
     print("\n🧪 Testing API Structure...")
     
     try:
-        from app.api.endpoints import auth, users, jobs, candidates, analytics, platforms
         from app.api.api import api_router
+        from app.api.endpoints import (analytics, auth, candidates, jobs,
+                                       platforms, users)
         print("✅ All API endpoint imports successful")
     except Exception as e:
         print(f"❌ API import error: {e}")
@@ -107,12 +110,8 @@ async def test_security():
     print("\n🧪 Testing Security Components...")
     
     try:
-        from app.core.security import (
-            create_access_token, 
-            verify_token, 
-            get_password_hash, 
-            verify_password
-        )
+        from app.core.security import (create_access_token, get_password_hash,
+                                       verify_password, verify_token)
         print("✅ Security function imports successful")
     except Exception as e:
         print(f"❌ Security import error: {e}")

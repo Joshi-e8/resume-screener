@@ -2,11 +2,15 @@
 Candidate service for candidate management operations
 """
 
-from typing import Optional, List, Tuple, Dict
 from datetime import datetime, timezone
+from typing import Dict, List, Optional, Tuple
+
 from beanie import PydanticObjectId
 
-from app.models.candidate import Candidate, CandidateCreate, CandidateUpdate, CandidateStatus, JobMatchScore, CandidateSearchFilters
+from app.models.candidate import (Candidate, CandidateCreate,
+                                  CandidateSearchFilters, CandidateStatus,
+                                  CandidateUpdate, JobMatchScore)
+
 
 class CandidateService:
     """Service class for candidate operations"""
@@ -246,8 +250,8 @@ class CandidateService:
             return []
         
         # Get all active jobs for the user
-        from app.services.job_service import JobService
         from app.models.job import JobStatus
+        from app.services.job_service import JobService
         
         job_service = JobService()
         jobs, _ = await job_service.get_jobs(

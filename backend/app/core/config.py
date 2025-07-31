@@ -2,9 +2,10 @@
 Application configuration settings
 """
 
-from pydantic_settings import BaseSettings
-from typing import List, Optional
 import os
+from typing import List, Optional
+
+from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
@@ -18,7 +19,7 @@ class Settings(BaseSettings):
     BACKEND_HOST: str = "localhost"
     BACKEND_PORT: int = 8000
     BACKEND_URL: str = "http://localhost:8000"
-    CORS_ORIGINS: str = "http://localhost:3000"
+    CORS_ORIGINS: str
 
     # Security Configuration
     SECRET_KEY: str
@@ -26,6 +27,14 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     API_V1_STR: str = "/api/v1"
     API_RATE_LIMIT: int = 100
+    
+    # Social Configuration
+    SOCIAL_AUTH_PROVIDERS: List[str] = ["google", "linkedin"]
+    SOCIAL_AUTH_REDIRECT_URI: str = "http://localhost:8000/auth/callback"
+    GOOGLE_CLIENT_ID: Optional[str] = None
+    GOOGLE_CLIENT_SECRET: Optional[str] = None
+    # LINKEDIN_CLIENT_ID: Optional[str] = None
+    # LINKEDIN_CLIENT_SECRET: Optional[str] = None
 
     # AI Services Configuration
     GROQ_API_KEY: Optional[str] = None
@@ -54,8 +63,9 @@ class Settings(BaseSettings):
     ALLOWED_EXTENSIONS: str = ".pdf,.doc,.docx,.txt"
 
     # Redis Cache Configuration
-    REDIS_URL: str = "redis://localhost:6379"
-    CACHE_EXPIRE_SECONDS: int = 3600
+    REDIS_URL: str
+    CACHE_EXPIRE_SECONDS: int
+    OTP_EXPIRE: int
 
     # Email Configuration
     SMTP_HOST: Optional[str] = None
@@ -67,7 +77,7 @@ class Settings(BaseSettings):
     # Development Settings
     DEBUG: bool = True
     LOG_LEVEL: str = "INFO"
-    ENVIRONMENT: str = "development"
+    ENVIRONMENT: str
 
     # Job Board Settings
     DEFAULT_JOB_EXPIRY_DAYS: int = 30

@@ -2,8 +2,9 @@
 Platform service for managing job board integrations
 """
 
-from typing import Dict, List, Optional, Any
 from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional
+
 
 class PlatformService:
     """Service for managing job board platform integrations"""

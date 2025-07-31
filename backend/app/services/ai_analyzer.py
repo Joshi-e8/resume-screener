@@ -2,11 +2,12 @@
 AI analyzer service that combines resume parsing with GROQ AI analysis
 """
 
-from typing import Dict, List, Optional, Any
 from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional
 
 from app.services.groq_ai_service import GroqAIService
 from app.services.resume_parser import ResumeParser
+
 
 class AIAnalyzer:
     """Enhanced AI analyzer combining parsing and AI insights"""

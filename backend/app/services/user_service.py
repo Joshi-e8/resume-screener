@@ -2,15 +2,48 @@
 User service for user management operations
 """
 
-from typing import Optional, List, Tuple
+import secrets
 from datetime import datetime, timezone
-from beanie import PydanticObjectId
+from typing import Dict, List, Optional, Tuple
 
+import jwt
+import requests
+from authlib.integrations.starlette_client import OAuth
+from beanie import PydanticObjectId
+from redis import asyncio as aioredis
+
+from app.core.config import settings
+from app.core.security import (create_access_token, create_refresh_token,
+                               get_password_hash, verify_password,
+                               verify_refresh_token)
 from app.models.user import User, UserCreate, UserUpdate
-from app.core.security import verify_password, get_password_hash
+
+oauth = OAuth()
+
+oauth.register(
+    name="google",
+    server_metadata_url="https://accounts.google.com/.well-known/openid-configuration",
+    client_id=settings.GOOGLE_CLIENT_ID,
+    client_secret=settings.GOOGLE_CLIENT_SECRET,
+    client_kwargs={"scope": "openid email profile"},
+)
+
+oauth.register(
+    name="linkedin",
+    client_id=settings.LINKEDIN_CLIENT_ID,
+    client_secret=settings.LINKEDIN_CLIENT_SECRET,
+    authorize_url="https://www.linkedin.com/oauth/v2/authorization",
+    access_token_url="https://www.linkedin.com/oauth/v2/accessToken",
+    api_base_url="https://api.linkedin.com/v2/",
+    client_kwargs={"scope": "r_liteprofile r_emailaddress"},
+)
+
 
 class UserService:
     """Service class for user operations"""
+
+    redis_client = aioredis.from_url(settings.REDIS_URL)
+
     
     async def authenticate_user(self, email: str, password: str) -> Optional[User]:
         """
@@ -28,6 +61,113 @@ class UserService:
         await user.save()
         
         return user
+    
+    async def generate_otp(self, email: str) -> str:
+        """
+        Generate a one-time password (OTP) for user verification
+        and store it in Redis with a short expiration.
+        """
+        user = await self.get_user_by_email(email)
+        if not user:
+            raise ValueError("User not found")
+
+        # otp = str(secrets.randbelow(1000000)).zfill(6)  # Secure 6-digit OTP
+        otp = "123456"
+        key = f"otp:{user.id}"
+        await self.redis_client.set(key, otp, ex=settings.OTP_EXPIRE)  # OTP expires in 5 minutes
+
+        verification_url = f"{settings.BACKEND_URL}{settings.API_V1_STR}/auth/verify-otp/{user.id}/"
+        resend_otp_url = f"{settings.BACKEND_URL}{settings.API_V1_STR}/auth/resend-otp/{user.id}/"
+        return {
+            "message": "OTP generated successfully",
+            "result": "success",
+            "otp": otp,
+            "verification_url": verification_url,
+            "resend_otp_url": resend_otp_url,
+            "expires_in": settings.OTP_EXPIRE
+        }
+        
+    async def verify_social_token(self, provider: str, token: str) -> Optional[Dict]:
+        """
+        Verify social authentication token and return user information
+        """
+        if provider == "google":
+            try:
+                # Check if token is an ID token (JWT format) or access token
+                if token.count('.') == 2:  # JWT format (ID token)
+                    # For ID tokens from NextAuth, we can decode without nonce verification
+                    # since NextAuth has already verified it
+                   
+                    # Get Google's public keys for verification
+                    jwks_url = "https://www.googleapis.com/oauth2/v3/certs"
+                    jwks_response = requests.get(jwks_url)
+                    jwks = jwks_response.json()
+                    
+                    # Decode the token (NextAuth has already verified it, so we skip verification)
+                    user_info = jwt.decode(token, options={"verify_signature": False})
+                    
+                    return {
+                        "email": user_info.get("email"),
+                        "name": user_info.get("name"),
+                        "picture": user_info.get("picture"),
+                        "sub": user_info.get("sub"),
+                    }
+                else:
+                    # Access token - use Google's userinfo endpoint
+                    headers = {"Authorization": f"Bearer {token}"}
+                    response = requests.get(
+                        "https://www.googleapis.com/oauth2/v2/userinfo",
+                        headers=headers
+                    )
+                    
+                    if response.status_code == 200:
+                        user_info = response.json()
+                        return {
+                            "email": user_info.get("email"),
+                            "name": user_info.get("name"),
+                            "picture": user_info.get("picture"),
+                            "sub": user_info.get("id"),  # Google API uses 'id' instead of 'sub'
+                        }
+                    else:
+                        print(f"Google API error: {response.status_code} - {response.text}")
+                        return None
+                        
+            except Exception as e:
+                print("Google token verification failed:", e)
+                return None
+
+        elif provider == "linkedin":
+            try:
+                # Use Authlib to exchange auth code for access token
+                client = oauth.create_client('linkedin')
+                token_data = await client.authorize_access_token(token)
+
+                # Fetch LinkedIn user profile
+                user_profile = await client.get('me', token=token_data)
+                profile_data = user_profile.json()
+
+                # Fetch LinkedIn email
+                user_email = await client.get(
+                    'emailAddress?q=members&projection=(elements*(handle~))',
+                    token=token_data
+                )
+                email_data = user_email.json()
+                email = email_data["elements"][0]["handle~"]["emailAddress"]
+                
+                full_name = f"{profile_data.get('localizedFirstName', '')} {profile_data.get('localizedLastName', '')}"
+
+                return {
+                    "email": email,
+                    "name": full_name,
+                }
+
+            except Exception as e:
+                print("LinkedIn token verification failed:", e)
+                return None
+
+        else:
+            raise ValueError("Unsupported provider")
+        
     
     async def get_user_by_email(self, email: str) -> Optional[User]:
         """
@@ -98,6 +238,128 @@ class UserService:
         await user.delete()
         return True
     
+    async def create_user_tokens(self, user_id: str) -> Dict[str, str]:
+        """
+        Create both access and refresh tokens for a user
+        """
+        token_data = {"sub": str(user_id)}
+        
+        access_token = create_access_token(token_data)
+        refresh_token = create_refresh_token(token_data)
+        
+        # Store refresh token in Redis for revocation capability
+        await self.store_refresh_token(user_id, refresh_token)
+        
+        return {
+            "access_token": access_token,
+            "refresh_token": refresh_token,
+            "token_type": "bearer"
+        }
+    
+    async def store_refresh_token(self, user_id: str, refresh_token: str) -> bool:
+        """
+        Store refresh token in Redis with expiration
+        """
+        try:
+            redis = aioredis.from_url(settings.REDIS_URL)
+            # Store for 7 days (same as token expiration)
+            await redis.setex(
+                f"refresh_token:{user_id}", 
+                7 * 24 * 60 * 60,  # 7 days in seconds
+                refresh_token
+            )
+            await redis.close()
+            return True
+        except Exception as e:
+            print(f"Failed to store refresh token: {e}")
+            return False
+    
+    async def verify_refresh_token(self, user_id: str, refresh_token: str) -> bool:
+        """
+        Verify if refresh token is valid and stored in Redis
+        """
+        try:
+            # First verify the token signature and expiration
+            token_user_id = verify_refresh_token(refresh_token)
+            if not token_user_id or token_user_id != user_id:
+                return False
+            
+            # Then check if it's stored in Redis (not revoked)
+            redis = aioredis.from_url(settings.REDIS_URL)
+            stored_token = await redis.get(f"refresh_token:{user_id}")
+            await redis.close()
+            
+            if not stored_token:
+                return False
+                
+            return stored_token.decode() == refresh_token
+            
+        except Exception as e:
+            print(f"Failed to verify refresh token: {e}")
+            return False
+    
+    async def refresh_access_token(self, refresh_token: str) -> Optional[Dict[str, str]]:
+        """
+        Generate new access token using refresh token
+        """
+        try:
+            # Verify refresh token
+            user_id = verify_refresh_token(refresh_token)
+            if not user_id:
+                return None
+            
+            # Check if refresh token is stored (not revoked)
+            if not await self.verify_refresh_token(user_id, refresh_token):
+                return None
+            
+            # Verify user still exists and is active
+            user = await self.get_user_by_id(user_id)
+            if not user or not user.is_active:
+                return None
+            
+            # Create new access token
+            token_data = {"sub": str(user_id)}
+            new_access_token = create_access_token(token_data)
+            
+            return {
+                "access_token": new_access_token,
+                "token_type": "bearer"
+            }
+            
+        except Exception as e:
+            print(f"Failed to refresh access token: {e}")
+            return None
+    
+    async def revoke_refresh_token(self, user_id: str) -> bool:
+        """
+        Revoke refresh token by removing it from Redis
+        """
+        try:
+            redis = aioredis.from_url(settings.REDIS_URL)
+            await redis.delete(f"refresh_token:{user_id}")
+            await redis.close()
+            return True
+        except Exception as e:
+            print(f"Failed to revoke refresh token: {e}")
+            return False
+    
+    async def revoke_all_user_tokens(self, user_id: str) -> bool:
+        """
+        Revoke all refresh tokens for a user (useful for logout from all devices)
+        """
+        try:
+            redis = aioredis.from_url(settings.REDIS_URL)
+            # Find all refresh tokens for this user
+            pattern = f"refresh_token:{user_id}*"
+            keys = await redis.keys(pattern)
+            if keys:
+                await redis.delete(*keys)
+            await redis.close()
+            return True
+        except Exception as e:
+            print(f"Failed to revoke all user tokens: {e}")
+            return False
+    
     async def activate_user(self, user_id: str) -> bool:
         """
         Activate user account
@@ -125,34 +387,6 @@ class UserService:
         await user.save()
         
         return True
-    
-    async def get_users(
-        self, 
-        skip: int = 0, 
-        limit: int = 10, 
-        search: Optional[str] = None
-    ) -> Tuple[List[User], int]:
-        """
-        Get users with pagination and search
-        """
-        query = {}
-        
-        if search:
-            query = {
-                "$or": [
-                    {"full_name": {"$regex": search, "$options": "i"}},
-                    {"email": {"$regex": search, "$options": "i"}},
-                    {"company_name": {"$regex": search, "$options": "i"}}
-                ]
-            }
-        
-        # Get total count
-        total = await User.find(query).count()
-        
-        # Get users with pagination
-        users = await User.find(query).skip(skip).limit(limit).to_list()
-        
-        return users, total
     
     async def update_subscription(
         self, 

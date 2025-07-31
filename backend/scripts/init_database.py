@@ -4,18 +4,19 @@ Creates indexes, default data, and performs initial setup
 """
 
 import asyncio
-import sys
 import os
+import sys
 from datetime import datetime
 
 # Add the parent directory to the path so we can import app modules
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app.core.database import init_database
 from app.core.config import settings
+from app.core.database import init_database
 from app.core.security import get_password_hash
-from app.models.user import User
 from app.models.analytics import UserUsageStats
+from app.models.user import User
+
 
 async def create_default_admin_user():
     """Create default admin user if it doesn't exist"""

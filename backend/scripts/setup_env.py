@@ -8,6 +8,7 @@ import secrets
 import shutil
 from pathlib import Path
 
+
 def generate_secret_key(length: int = 64) -> str:
     """Generate a secure secret key"""
     return secrets.token_urlsafe(length)
@@ -91,11 +92,11 @@ def validate_environment():
     print("🔍 Validating Environment Configuration...")
 
     try:
-        import sys
         import os
+        import sys
         sys.path.append(os.path.dirname(os.path.dirname(__file__)))
         from app.core.config import settings
-        
+
         # Check required settings
         required_settings = [
             ('MONGODB_URL', settings.MONGODB_URL),
@@ -140,8 +141,8 @@ def show_environment_info():
     """Show current environment information"""
 
     try:
-        import sys
         import os
+        import sys
         sys.path.append(os.path.dirname(os.path.dirname(__file__)))
         from app.core.config import settings
         

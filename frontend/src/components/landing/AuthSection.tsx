@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { AuthForm } from "../auth/AuthForm";
 import { GoogleSignInButton } from "@/components/auth/GoogleSignInButton";
+import { LinkedInSignInButton } from "@/components/auth/LinkedInSignInButton";
 import { Shield, Lock, Zap, ArrowRight } from "lucide-react";
 
 export function AuthSection() {
@@ -67,9 +68,10 @@ export function AuthSection() {
             </div>
           </div>
 
-          {/* Google Sign In Button */}
-          <div className="mb-6">
+          {/* Social Sign In Buttons */}
+          <div className="space-y-3 mb-6">
             <GoogleSignInButton />
+            <LinkedInSignInButton />
           </div>
 
           {/* Features */}

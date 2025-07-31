@@ -4,9 +4,10 @@ Database models for Resume Screener application
 
 from datetime import datetime, timezone
 from typing import List, Optional
+
 from beanie import Document
-from pydantic import BaseModel, Field
 from bson import ObjectId
+from pydantic import BaseModel, Field
 
 
 class PersonalInfo(BaseModel):

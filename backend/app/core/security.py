@@ -3,11 +3,12 @@ Security utilities for authentication and authorization
 """
 
 from datetime import datetime, timedelta, timezone
-from typing import Any, Union, Optional
-from jose import jwt, JWTError
-from passlib.context import CryptContext
+from typing import Any, Optional, Union
+
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
+from jose import JWTError, jwt
+from passlib.context import CryptContext
 
 from app.core.config import settings
 from app.models.user import User
@@ -37,26 +38,65 @@ def create_access_token(
         expire = datetime.now(timezone.utc) + timedelta(
             minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES
         )
-    to_encode.update({"exp": expire})
+    to_encode.update({"exp": expire, "type": "access"})
     encoded_jwt = jwt.encode(
         to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM
     )
     return encoded_jwt
 
-def verify_token(token: str) -> Optional[str]:
+def create_refresh_token(
+    data: dict, expires_delta: timedelta = None
+) -> str:
     """
-    Verify JWT token and return user ID
+    Create JWT refresh token with longer expiration
+    """
+    to_encode = data.copy()
+    if expires_delta:
+        expire = datetime.now(timezone.utc) + expires_delta
+    else:
+        # Refresh tokens typically last 7-30 days
+        expire = datetime.now(timezone.utc) + timedelta(days=7)
+    
+    to_encode.update({"exp": expire, "type": "refresh"})
+    encoded_jwt = jwt.encode(
+        to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM
+    )
+    return encoded_jwt
+
+def verify_token(token: str, token_type: str = None) -> Optional[dict]:
+    """
+    Verify JWT token and return payload
     """
     try:
         payload = jwt.decode(
             token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM]
         )
+        
+        # Check token type if specified
+        if token_type and payload.get("type") != token_type:
+            return None
+            
         user_id: str = payload.get("sub")
         if user_id is None:
             return None
-        return user_id
+            
+        return payload
     except JWTError:
         return None
+
+def verify_access_token(token: str) -> Optional[str]:
+    """
+    Verify access token and return user ID
+    """
+    payload = verify_token(token, "access")
+    return payload.get("sub") if payload else None
+
+def verify_refresh_token(token: str) -> Optional[str]:
+    """
+    Verify refresh token and return user ID
+    """
+    payload = verify_token(token, "refresh")
+    return payload.get("sub") if payload else None
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """
@@ -80,7 +120,7 @@ async def get_current_user(token: str = Depends(oauth2_scheme)) -> User:
         headers={"WWW-Authenticate": "Bearer"},
     )
 
-    user_id = verify_token(token)
+    user_id = verify_access_token(token)
     if user_id is None:
         raise credentials_exception
 

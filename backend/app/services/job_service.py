@@ -2,11 +2,13 @@
 Job service for job management operations
 """
 
-from typing import Optional, List, Tuple, Dict
 from datetime import datetime, timezone
+from typing import Dict, List, Optional, Tuple
+
 from beanie import PydanticObjectId
 
-from app.models.job import Job, JobCreate, JobUpdate, JobStatus
+from app.models.job import Job, JobCreate, JobStatus, JobUpdate
+
 
 class JobService:
     """Service class for job operations"""

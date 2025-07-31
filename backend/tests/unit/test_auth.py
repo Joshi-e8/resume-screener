@@ -2,8 +2,9 @@
 Simple test for authentication system
 """
 
-import sys
 import os
+import sys
+
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from passlib.context import CryptContext
@@ -22,6 +23,7 @@ print(f"   Verified: {verified}")
 
 # Test JWT token creation
 from datetime import datetime, timedelta
+
 from jose import jwt
 
 SECRET_KEY = "test-secret-key"

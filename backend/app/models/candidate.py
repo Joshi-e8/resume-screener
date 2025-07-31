@@ -3,11 +3,13 @@ Candidate models for candidate management and tracking
 """
 
 from datetime import datetime, timezone
-from typing import Optional, List, Dict, Annotated
+from enum import Enum
+from typing import Annotated, Dict, List, Optional
+
 from beanie import Document, Indexed
 from pydantic import BaseModel, EmailStr, Field
 from pymongo import IndexModel
-from enum import Enum
+
 
 class CandidateStatus(str, Enum):
     NEW = "new"

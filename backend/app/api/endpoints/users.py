@@ -3,11 +3,12 @@ User management endpoints
 """
 
 from typing import Any, List
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 
-from app.core.security import get_current_user, get_current_active_superuser
-from app.models.user import User, UserCreate, UserUpdate, UserResponse
+from app.core.security import get_current_active_superuser, get_current_user
+from app.models.user import User, UserCreate, UserResponse, UserUpdate
 from app.services.user_service import UserService
 
 router = APIRouter()

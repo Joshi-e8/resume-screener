@@ -6,16 +6,18 @@ import os
 import tempfile
 from datetime import datetime
 from typing import Any, List
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
+
+from fastapi import (APIRouter, Depends, File, Form, HTTPException, UploadFile,
+                     status)
 from fastapi.responses import JSONResponse
 
 from app.core.security import get_current_user
-from app.models.user import User
-from app.services.resume_parser import ResumeParser
-from app.services.candidate_service import CandidateService
-from app.services.analytics_service import AnalyticsService
 from app.models.analytics import EventType
 from app.models.candidate import CandidateCreate
+from app.models.user import User
+from app.services.analytics_service import AnalyticsService
+from app.services.candidate_service import CandidateService
+from app.services.resume_parser import ResumeParser
 
 router = APIRouter()
 

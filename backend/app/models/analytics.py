@@ -3,11 +3,13 @@ Analytics models for tracking metrics and performance
 """
 
 from datetime import datetime, timezone
-from typing import Optional, List, Dict, Any, Annotated
+from enum import Enum
+from typing import Annotated, Any, Dict, List, Optional
+
 from beanie import Document, Indexed
 from pydantic import BaseModel, Field
 from pymongo import IndexModel
-from enum import Enum
+
 
 class EventType(str, Enum):
     RESUME_UPLOADED = "resume_uploaded"

@@ -33,7 +33,7 @@ const useAxiosClient = (userType = "unauthorized") => {
         if (error.response?.status === 401) {
           // Unauthorized - redirect to login
           if (typeof window !== 'undefined') {
-            window.location.href = '/auth/login';
+            // window.location.href = '/auth/login';
           }
         } else if (error.response?.status === 403) {
           // Forbidden - redirect to forbidden page

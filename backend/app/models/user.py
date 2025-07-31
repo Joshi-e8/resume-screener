@@ -3,10 +3,12 @@ User models for authentication and user management
 """
 
 from datetime import datetime, timezone
-from typing import Optional, List, Annotated
+from typing import Annotated, List, Optional
+
 from beanie import Document, Indexed
 from pydantic import BaseModel, EmailStr, Field
 from pymongo import IndexModel
+
 
 class User(Document):
     """User document model"""

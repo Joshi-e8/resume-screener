@@ -7,6 +7,7 @@ import { ToastProvider } from "@/components/ui/Toast";
 import { ConfirmDialogProvider } from "@/components/ui/ConfirmDialog";
 import { KeyboardShortcutsProvider, CommonShortcuts } from "@/components/ui/KeyboardShortcuts";
 import { ErrorBoundary } from "@/components/ui/ErrorBoundary";
+import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 
 export default function DashboardLayout({
   children,
@@ -51,35 +52,37 @@ export default function DashboardLayout({
   };
 
   return (
-    <ErrorBoundary>
-      <KeyboardShortcutsProvider>
-        <ToastProvider>
-          <ConfirmDialogProvider>
-            <CommonShortcuts />
-            <div className="min-h-screen bg-gray-50">
-              <div className="flex">
-                {/* Sidebar */}
-                <DashboardSidebar
-                  isMobileOpen={isMobileSidebarOpen}
-                  isDesktopCollapsed={isDesktopSidebarCollapsed}
-                  onClose={closeSidebar}
-                />
+    <ProtectedRoute>
+      <ErrorBoundary>
+        <KeyboardShortcutsProvider>
+          <ToastProvider>
+            <ConfirmDialogProvider>
+              <CommonShortcuts />
+              <div className="min-h-screen bg-gray-50">
+                <div className="flex">
+                  {/* Sidebar */}
+                  <DashboardSidebar
+                    isMobileOpen={isMobileSidebarOpen}
+                    isDesktopCollapsed={isDesktopSidebarCollapsed}
+                    onClose={closeSidebar}
+                  />
 
-                {/* Main Content */}
-                <div className="flex-1 flex flex-col min-h-screen">
-                  {/* Header */}
-                  <DashboardHeader onToggleSidebar={toggleSidebar} />
+                  {/* Main Content */}
+                  <div className="flex-1 flex flex-col min-h-screen">
+                    {/* Header */}
+                    <DashboardHeader onToggleSidebar={toggleSidebar} />
 
-                  {/* Page Content */}
-                  <main className="flex-1 p-6 lg:p-8">
-                    {children}
-                  </main>
+                    {/* Page Content */}
+                    <main className="flex-1 p-6 lg:p-8">
+                      {children}
+                    </main>
+                  </div>
                 </div>
               </div>
-            </div>
-          </ConfirmDialogProvider>
-        </ToastProvider>
-      </KeyboardShortcutsProvider>
-    </ErrorBoundary>
+            </ConfirmDialogProvider>
+          </ToastProvider>
+        </KeyboardShortcutsProvider>
+      </ErrorBoundary>
+    </ProtectedRoute>
   );
 }

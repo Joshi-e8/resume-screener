@@ -3,8 +3,8 @@ Comprehensive test runner for Resume Screener Backend
 """
 
 import asyncio
-import sys
 import os
+import sys
 import tempfile
 from pathlib import Path
 
@@ -17,23 +17,22 @@ async def test_imports():
     
     try:
         # Core imports
-        from app.models.user import User, UserCreate, UserResponse
-        from app.models.job import Job, JobCreate, JobResponse
-        from app.models.candidate import Candidate, CandidateCreate, CandidateResponse
+        # API imports
+        from app.api.endpoints import analytics, auth, candidates, jobs, users
+        from app.core.security import create_access_token, verify_password
         from app.models.analytics import AnalyticsEvent, DailyMetrics
-        
+        from app.models.candidate import (Candidate, CandidateCreate,
+                                          CandidateResponse)
+        from app.models.job import Job, JobCreate, JobResponse
+        from app.models.user import User, UserCreate, UserResponse
+        from app.services.ai_analyzer import AIAnalyzer
+        from app.services.analytics_service import AnalyticsService
+        from app.services.candidate_service import CandidateService
+        from app.services.groq_ai_service import GroqAIService
+        from app.services.job_service import JobService
+        from app.services.resume_parser import ResumeParser
         # Service imports
         from app.services.user_service import UserService
-        from app.services.job_service import JobService
-        from app.services.candidate_service import CandidateService
-        from app.services.analytics_service import AnalyticsService
-        from app.services.resume_parser import ResumeParser
-        from app.services.groq_ai_service import GroqAIService
-        from app.services.ai_analyzer import AIAnalyzer
-        
-        # API imports
-        from app.api.endpoints import auth, users, jobs, candidates, analytics
-        from app.core.security import create_access_token, verify_password
         
         print("✅ All critical imports successful")
         return True
@@ -47,10 +46,10 @@ async def test_models():
     print("\n🧪 Testing Model Validation...")
     
     try:
-        from app.models.user import UserCreate
-        from app.models.job import JobCreate
         from app.models.candidate import CandidateCreate
-        
+        from app.models.job import JobCreate
+        from app.models.user import UserCreate
+
         # Test user model
         user_data = UserCreate(
             email="test@example.com",
@@ -83,14 +82,14 @@ async def test_services():
     print("\n🧪 Testing Service Instantiation...")
     
     try:
-        from app.services.user_service import UserService
-        from app.services.job_service import JobService
-        from app.services.candidate_service import CandidateService
-        from app.services.analytics_service import AnalyticsService
-        from app.services.resume_parser import ResumeParser
-        from app.services.groq_ai_service import GroqAIService
         from app.services.ai_analyzer import AIAnalyzer
-        
+        from app.services.analytics_service import AnalyticsService
+        from app.services.candidate_service import CandidateService
+        from app.services.groq_ai_service import GroqAIService
+        from app.services.job_service import JobService
+        from app.services.resume_parser import ResumeParser
+        from app.services.user_service import UserService
+
         # Instantiate services
         user_service = UserService()
         job_service = JobService()
@@ -112,13 +111,9 @@ async def test_security():
     print("\n🧪 Testing Security Functions...")
     
     try:
-        from app.core.security import (
-            create_access_token, 
-            verify_token, 
-            get_password_hash, 
-            verify_password
-        )
-        
+        from app.core.security import (create_access_token, get_password_hash,
+                                       verify_password, verify_token)
+
         # Test password hashing
         password = "testpassword123"
         hashed = get_password_hash(password)
@@ -194,8 +189,8 @@ async def test_ai_services():
     print("\n🧪 Testing AI Services...")
     
     try:
-        from app.services.groq_ai_service import GroqAIService
         from app.services.ai_analyzer import AIAnalyzer
+        from app.services.groq_ai_service import GroqAIService
         
         groq_service = GroqAIService()
         ai_analyzer = AIAnalyzer()
@@ -235,7 +230,7 @@ async def test_api_structure():
     try:
         from app.api.api import api_router
         from app.main import app
-        
+
         # Check if routes are registered
         routes = api_router.routes
         

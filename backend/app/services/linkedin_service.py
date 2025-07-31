@@ -3,12 +3,14 @@ LinkedIn Jobs API integration service
 """
 
 import json
-import httpx
-from typing import Dict, List, Optional, Any
 from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional
 from urllib.parse import urlencode
 
+import httpx
+
 from app.core.config import settings
+
 
 class LinkedInService:
     """Service for LinkedIn Jobs API integration"""

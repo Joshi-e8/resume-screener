@@ -3,9 +3,10 @@ Test GROQ AI integration and analysis services
 """
 
 import asyncio
-import sys
 import os
+import sys
 import tempfile
+
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 async def test_groq_service():

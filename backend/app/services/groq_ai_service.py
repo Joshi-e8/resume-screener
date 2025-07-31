@@ -3,9 +3,12 @@ GROQ AI service for resume analysis and candidate matching
 """
 
 import json
-from typing import Dict, List, Optional, Any
+from typing import Any, Dict, List, Optional
+
 from groq import Groq
+
 from app.core.config import settings
+
 
 class GroqAIService:
     """Service for GROQ AI integration"""
