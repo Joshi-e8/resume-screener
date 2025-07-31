@@ -3,12 +3,12 @@
 import { useState } from "react";
 import { showToast } from "@/utils/toast";
 import { signIn } from "next-auth/react";
-import { useRouter } from "next/navigation";
+// import { useRouter } from "next/navigation";
 
 export function GoogleSignInButton() {
   const [isLoading, setIsLoading] = useState(false);
   // const { data: session } = useSession();
-  const router = useRouter();
+  // const _router = useRouter();
 
   const handleGoogleSignIn = async () => {
     try {
