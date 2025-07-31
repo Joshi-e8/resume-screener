@@ -1,0 +1,27 @@
+# Build outputs
+.next/
+out/
+build/
+dist/
+
+# Dependencies
+node_modules/
+
+# Config files
+*.config.js
+*.config.mjs
+*.config.ts
+
+# Environment files
+.env*
+
+# Cache
+.cache/
+.turbo/
+
+# Logs
+*.log
+
+# OS generated files
+.DS_Store
+Thumbs.db
