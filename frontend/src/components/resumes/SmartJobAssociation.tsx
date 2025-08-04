@@ -76,7 +76,7 @@ export function SmartJobAssociation({ onJobSelect, onCreateJob }: SmartJobAssoci
             value=""
             checked={selectedJob === ""}
             onChange={() => handleJobSelect("")}
-            className="text-blue-600 focus:ring-blue-500"
+            className="text-blue-600"
           />
           <div>
             <div className="font-medium text-gray-900">No specific job</div>
@@ -98,7 +98,7 @@ export function SmartJobAssociation({ onJobSelect, onCreateJob }: SmartJobAssoci
                 value={job.id}
                 checked={selectedJob === job.id}
                 onChange={() => handleJobSelect(job.id)}
-                className="text-blue-600 focus:ring-blue-500"
+                className="text-blue-600"
               />
               <div className="flex-1">
                 <div className="flex items-center gap-2">
@@ -138,7 +138,7 @@ export function SmartJobAssociation({ onJobSelect, onCreateJob }: SmartJobAssoci
                   value={newJobTitle}
                   onChange={(e) => setNewJobTitle(e.target.value)}
                   placeholder="e.g., Senior Software Engineer"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
                 />
               </div>
               
@@ -149,7 +149,7 @@ export function SmartJobAssociation({ onJobSelect, onCreateJob }: SmartJobAssoci
                 <select
                   value={newJobSource}
                   onChange={(e) => setNewJobSource(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
                 >
                   <option value="linkedin">LinkedIn</option>
                   <option value="indeed">Indeed</option>

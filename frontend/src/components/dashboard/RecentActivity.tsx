@@ -95,7 +95,7 @@ export function RecentActivity({ activities }: RecentActivityProps) {
           <select
             value={filter}
             onChange={(e) => setFilter(e.target.value as 'all' | 'resume_uploaded' | 'match_found' | 'job_created' | 'review_completed')}
-            className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+            className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 outline-none"
           >
             <option value="all">All</option>
             <option value="resume_uploaded">Uploads</option>

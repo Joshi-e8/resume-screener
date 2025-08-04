@@ -146,7 +146,7 @@ export function EnhancedSearch({
             className={`w-full pl-10 pr-12 py-3 border rounded-xl transition-all duration-300 ${
               isFocused
                 ? 'border-yellow-500 ring-2 ring-yellow-500 ring-opacity-20 shadow-lg'
-                : 'border-gray-200 hover:border-gray-300 focus:border-yellow-500 focus:ring-2 focus:ring-yellow-500 focus:ring-opacity-20'
+                : 'border-gray-200 hover:border-gray-300'
             }`}
           />
           {value && (

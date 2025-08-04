@@ -344,7 +344,7 @@ export function ResumeGrid({ initialSearchQuery = '' }: ResumeGridProps) {
                   setSortBy(newSortBy);
                   setSortOrder(newSortOrder);
                 }}
-                className="text-xs sm:text-sm border border-gray-200 rounded-lg px-2 sm:px-3 py-2 focus:ring-2 focus:ring-yellow-500 focus:border-transparent touch-manipulation"
+                className="text-xs sm:text-sm border border-gray-200 rounded-lg px-2 sm:px-3 py-2 touch-manipulation"
               >
                 <option value="date-desc">Newest First</option>
                 <option value="date-asc">Oldest First</option>

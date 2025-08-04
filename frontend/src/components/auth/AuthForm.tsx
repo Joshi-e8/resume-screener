@@ -20,7 +20,7 @@ interface FormData {
   confirmPassword?: string;
 }
 export function AuthForm({ mode }: AuthFormProps) {
-  const { login } = useAuthServices();
+  const { login, register } = useAuthServices();
   const {
     handleSubmit,
     control,
@@ -93,10 +93,33 @@ export function AuthForm({ mode }: AuthFormProps) {
           }
         }
       } else {
-        // Simulate signup API call
-        await new Promise((resolve) => setTimeout(resolve, 1500));
-        showToast.authSuccess("Account created successfully!");
-        window.location.href = "/dashboard";
+        // Handle signup logic
+        const response = await register({
+          full_name: data.name || "",
+          email: data.email,
+          password: data.password,
+          company_name: ""
+        });
+
+        if (response.result === "success") {
+          setCookie("otpUrl", response.verification_url);
+          setCookie("otp", response.otp);
+          setCookie("userId", response.userId);
+          setCookie("resendOtpUrl", response.resend_otp_url);
+          setCookie("expiresIn", response.expires_in);
+
+          dispatch(setAuthStep({ step: 2 })); // Set auth step to OTP verification
+          showToast.info("OTP sent to your email. Please verify to continue.");
+        } else {
+          if (response?.errors) {
+            Object.entries(response.errors).forEach(([key, value]) => {
+              setError(key as keyof FormData, {
+                type: "manual",
+                message: value as string,
+              });
+            });
+          }
+        }
       }
     } catch (error) {
       console.error("Authentication error:", error);
@@ -109,7 +132,6 @@ export function AuthForm({ mode }: AuthFormProps) {
       setIsLoading(false);
     }
   };
-
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
@@ -137,10 +159,10 @@ export function AuthForm({ mode }: AuthFormProps) {
                   {...field}
                   id="name"
                   type="text"
-                  className={`w-full pl-12 pr-4 py-3 border rounded-xl focus:ring-2 focus:ring-accent-pink focus:border-transparent outline-none transition-all duration-200 ${
+                  className={`w-full pl-12 pr-4 py-3 border rounded-xl transition-all duration-200 ${
                     errors.name
                       ? "border-red-300 bg-red-50"
-                      : "border-gray-300 hover:border-gray-400 focus:bg-white"
+                      : "border-gray-300 hover:border-gray-400"
                   }`}
                   placeholder="Enter your full name"
                 />
@@ -185,10 +207,10 @@ export function AuthForm({ mode }: AuthFormProps) {
                 {...field}
                 id="email"
                 type="email"
-                className={`w-full pl-12 pr-4 py-3 border rounded-xl focus:ring-2 focus:ring-accent-pink focus:border-transparent outline-none transition-all duration-200 ${
+                className={`w-full pl-12 pr-4 py-3 border rounded-xl transition-all duration-200 ${
                   errors.email
                     ? "border-red-300 bg-red-50"
-                    : "border-gray-300 hover:border-gray-400 focus:bg-white"
+                    : "border-gray-300 hover:border-gray-400"
                 }`}
                 placeholder="Enter your email address"
               />
@@ -232,10 +254,10 @@ export function AuthForm({ mode }: AuthFormProps) {
                 {...field}
                 id="password"
                 type={showPassword ? "text" : "password"}
-                className={`w-full pl-12 pr-12 py-3 border rounded-xl focus:ring-2 focus:ring-accent-pink focus:border-transparent outline-none transition-all duration-200 ${
+                className={`w-full pl-12 pr-12 py-3 border rounded-xl transition-all duration-200 ${
                   errors.password
                     ? "border-red-300 bg-red-50"
-                    : "border-gray-300 hover:border-gray-400 focus:bg-white"
+                    : "border-gray-300 hover:border-gray-400"
                 }`}
                 placeholder="Enter your password"
               />
@@ -287,10 +309,10 @@ export function AuthForm({ mode }: AuthFormProps) {
                   {...field}
                   id="confirmPassword"
                   type={showConfirmPassword ? "text" : "password"}
-                  className={`w-full pl-12 pr-12 py-3 border rounded-xl focus:ring-2 focus:ring-accent-pink focus:border-transparent outline-none transition-all duration-200 ${
+                  className={`w-full pl-12 pr-12 py-3 border rounded-xl transition-all duration-200 ${
                     errors.confirmPassword
                       ? "border-red-300 bg-red-50"
-                      : "border-gray-300 hover:border-gray-400 focus:bg-white"
+                      : "border-gray-300 hover:border-gray-400"
                   }`}
                   placeholder="Confirm your password"
                 />

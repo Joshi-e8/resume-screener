@@ -38,7 +38,7 @@ export function InteractiveChart({
           <select
             value={selectedPeriod}
             onChange={(e) => setSelectedPeriod(e.target.value as '7d' | '30d' | '90d')}
-            className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+            className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 outline-none"
           >
             <option value="7d">Last 7 days</option>
             <option value="30d">Last 30 days</option>
