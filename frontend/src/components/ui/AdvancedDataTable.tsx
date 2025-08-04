@@ -217,7 +217,7 @@ export function AdvancedDataTable({
               placeholder="Search..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg"
             />
           </div>
         )}
@@ -236,7 +236,7 @@ export function AdvancedDataTable({
                     placeholder={`Filter by ${column.label.toLowerCase()}...`}
                     value={filters[column.key] || ''}
                     onChange={(e) => handleFilterChange(column.key, e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent text-sm"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
                   />
                 </div>
               ))}
@@ -284,7 +284,7 @@ export function AdvancedDataTable({
                     type="checkbox"
                     checked={selectedRows.size === paginatedData.length && paginatedData.length > 0}
                     onChange={handleSelectAll}
-                    className="rounded border-gray-300 text-yellow-500 focus:ring-yellow-500"
+                    className="rounded border-gray-300 text-yellow-500"
                   />
                 </th>
               )}
@@ -331,7 +331,7 @@ export function AdvancedDataTable({
                         e.stopPropagation();
                         handleRowSelect(index);
                       }}
-                      className="rounded border-gray-300 text-yellow-500 focus:ring-yellow-500"
+                      className="rounded border-gray-300 text-yellow-500"
                     />
                   </td>
                 )}

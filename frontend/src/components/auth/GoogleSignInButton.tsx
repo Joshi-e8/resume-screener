@@ -1,38 +1,25 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { showToast } from "@/utils/toast";
-import { signIn } from "next-auth/react";
-// import { useRouter } from "next/navigation";
+import { signIn, useSession } from "next-auth/react";
+import { useRouter, useSearchParams } from "next/navigation";
 
 export function GoogleSignInButton() {
   const [isLoading, setIsLoading] = useState(false);
-  // const { data: session } = useSession();
-  // const _router = useRouter();
+  const [googleCallbackError, setGoogleCallbackError] = useState<string | null>(
+    null
+  );
 
   const handleGoogleSignIn = async () => {
     try {
       setIsLoading(true);
       showToast.info("Redirecting to Google...");
 
-      const response = await signIn("google", {
+      await signIn("google", {
         redirect: true, // Handle redirect manually for better UX
         callbackUrl: "/?provider=google",
       });
-
-      console.debug("Google sign-in response:", response);
-
-      // if (response?.error) {
-      //   showToast.authError("Failed to sign in with Google. Please try again.");
-      //   return;
-      // }
-
-      // if (response?.ok) {
-      //   showToast.authSuccess("Welcome! Redirecting to dashboard...");
-      //   setTimeout(() => {
-      //     router.push("/dashboard");
-      //   }, 1000);
-      // }
     } catch (error) {
       console.error("Sign in error:", error);
       showToast.authError("An unexpected error occurred. Please try again.");
@@ -40,6 +27,14 @@ export function GoogleSignInButton() {
       setIsLoading(false);
     }
   };
+
+  // Show error toast when googleCallbackError is set
+  useEffect(() => {
+    if (googleCallbackError) {
+      showToast.error(googleCallbackError);
+      setGoogleCallbackError(null); // Reset error after showing
+    }
+  }, [googleCallbackError]);
 
   return (
     <button

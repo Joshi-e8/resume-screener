@@ -92,7 +92,7 @@ async def login(login_data: LoginRequest) -> Any:
     return await user_service.generate_otp(login_data.email)
     
 
-@router.post("/register", response_model=Token)
+@router.post("/register", response_model=OtpResponse)
 async def register(user_data: RegisterRequest) -> Any:
     """
     Create new user account and return access token
@@ -102,9 +102,9 @@ async def register(user_data: RegisterRequest) -> Any:
     # Check if user already exists
     existing_user = await user_service.get_user_by_email(user_data.email)
     if existing_user:
-        raise HTTPException(
+        return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="User with this email already exists"
+            content={"result": "failure", "errors": {"email": "User with this email already exists"}}
         )
 
     # Create new user
@@ -116,19 +116,27 @@ async def register(user_data: RegisterRequest) -> Any:
     )
 
     user = await user_service.create_user(user_create)
+    
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="User creation failed"
+        )
 
-    # Generate access token for immediate login
-    access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = create_access_token(
-        data={"sub": str(user.id)}, expires_delta=access_token_expires
-    )
+    return await user_service.generate_otp(user.email)
 
-    return {
-        "access_token": access_token,
-        "token_type": "bearer",
-        "expires_in": settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
-        "user": UserResponse.from_orm(user)
-    }
+    # # Generate access token for immediate login
+    # access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    # access_token = create_access_token(
+    #     data={"sub": str(user.id)}, expires_delta=access_token_expires
+    # )
+
+    # return {
+    #     "access_token": access_token,
+    #     "token_type": "bearer",
+    #     "expires_in": settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+    #     "user": UserResponse.from_orm(user)
+    # }
     
 @router.post("/social-login/{provider}/", response_model=Token)
 async def social_login(provider: str, request: SocialLoginRequest):
@@ -181,8 +189,6 @@ async def social_login(provider: str, request: SocialLoginRequest):
         "expires_in": settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
         "user": UserResponse.from_orm(user)
     }
-
-    print(response, 'response----------------------')
     return response
 
 @router.post("/verify-otp/{user_id}", response_model=Token)

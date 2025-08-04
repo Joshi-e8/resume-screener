@@ -54,7 +54,7 @@ export function BulkActions({
                 type="checkbox"
                 checked={isAllSelected}
                 onChange={isAllSelected ? onClearSelection : onSelectAll}
-                className="w-4 h-4 text-yellow-500 border-gray-300 rounded focus:ring-yellow-500"
+                className="w-4 h-4 text-yellow-500 border-gray-300 rounded"
               />
               {selectedItems.length > 0 && selectedItems.length < totalItems && (
                 <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
