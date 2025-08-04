@@ -68,7 +68,7 @@ export default function ResumeUploadPage() {
 
         {/* Quick Actions */}
         <div className="flex flex-col sm:flex-row gap-3 lg:min-w-fit">
-          <select className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white">
+          <select className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-blue-500 focus:border-transparent bg-white">
             <option value="">Associate with position (optional)</option>
             <option value="software-engineer">Software Engineer</option>
             <option value="product-manager">Product Manager</option>

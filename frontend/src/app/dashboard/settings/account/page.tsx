@@ -209,7 +209,7 @@ export default function AccountSettingsPage() {
                     type="text"
                     value={profile.firstName}
                     onChange={(e) => handleProfileChange('firstName', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-yellow-500 focus:border-transparent"
                   />
                 </div>
 
@@ -221,7 +221,7 @@ export default function AccountSettingsPage() {
                     type="text"
                     value={profile.lastName}
                     onChange={(e) => handleProfileChange('lastName', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-yellow-500 focus:border-transparent"
                   />
                 </div>
 
@@ -235,7 +235,7 @@ export default function AccountSettingsPage() {
                       type="email"
                       value={profile.email}
                       onChange={(e) => handleProfileChange('email', e.target.value)}
-                      className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+                      className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-yellow-500 focus:border-transparent"
                     />
                   </div>
                 </div>
@@ -250,7 +250,7 @@ export default function AccountSettingsPage() {
                       type="tel"
                       value={profile.phone}
                       onChange={(e) => handleProfileChange('phone', e.target.value)}
-                      className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+                      className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-yellow-500 focus:border-transparent"
                     />
                   </div>
                 </div>
@@ -265,7 +265,7 @@ export default function AccountSettingsPage() {
                       type="text"
                       value={profile.jobTitle}
                       onChange={(e) => handleProfileChange('jobTitle', e.target.value)}
-                      className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+                      className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-yellow-500 focus:border-transparent"
                     />
                   </div>
                 </div>
@@ -277,7 +277,7 @@ export default function AccountSettingsPage() {
                   <select
                     value={profile.department}
                     onChange={(e) => handleProfileChange('department', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-yellow-500 focus:border-transparent"
                   >
                     <option value="Human Resources">Human Resources</option>
                     <option value="Engineering">Engineering</option>
@@ -301,7 +301,7 @@ export default function AccountSettingsPage() {
                     value={profile.location}
                     onChange={(e) => handleProfileChange('location', e.target.value)}
                     placeholder="City, State/Country"
-                    className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+                    className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-yellow-500 focus:border-transparent"
                   />
                 </div>
               </div>
@@ -315,7 +315,7 @@ export default function AccountSettingsPage() {
                   onChange={(e) => handleProfileChange('bio', e.target.value)}
                   placeholder="Tell us about yourself..."
                   rows={4}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-yellow-500 focus:border-transparent"
                 />
               </div>
             </div>
@@ -355,7 +355,7 @@ export default function AccountSettingsPage() {
                       type={showPasswords.current ? 'text' : 'password'}
                       value={passwords.current}
                       onChange={(e) => handlePasswordChange('current', e.target.value)}
-                      className="w-full px-3 py-2 pr-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+                      className="w-full px-3 py-2 pr-10 border border-gray-300 rounded-lg focus:ring-1 focus:ring-yellow-500 focus:border-transparent"
                     />
                     <button
                       type="button"
@@ -376,7 +376,7 @@ export default function AccountSettingsPage() {
                       type={showPasswords.new ? 'text' : 'password'}
                       value={passwords.new}
                       onChange={(e) => handlePasswordChange('new', e.target.value)}
-                      className="w-full px-3 py-2 pr-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+                      className="w-full px-3 py-2 pr-10 border border-gray-300 rounded-lg focus:ring-1 focus:ring-yellow-500 focus:border-transparent"
                     />
                     <button
                       type="button"
@@ -397,7 +397,7 @@ export default function AccountSettingsPage() {
                       type={showPasswords.confirm ? 'text' : 'password'}
                       value={passwords.confirm}
                       onChange={(e) => handlePasswordChange('confirm', e.target.value)}
-                      className="w-full px-3 py-2 pr-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+                      className="w-full px-3 py-2 pr-10 border border-gray-300 rounded-lg focus:ring-1 focus:ring-yellow-500 focus:border-transparent"
                     />
                     <button
                       type="button"
@@ -422,7 +422,7 @@ export default function AccountSettingsPage() {
                   <select
                     value={profile.timezone}
                     onChange={(e) => handleProfileChange('timezone', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-yellow-500 focus:border-transparent"
                   >
                     <option value="America/Los_Angeles">Pacific Time (PT)</option>
                     <option value="America/Denver">Mountain Time (MT)</option>
@@ -439,7 +439,7 @@ export default function AccountSettingsPage() {
                   <select
                     value={profile.language}
                     onChange={(e) => handleProfileChange('language', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-yellow-500 focus:border-transparent"
                   >
                     <option value="en">English</option>
                     <option value="es">Spanish</option>
@@ -456,7 +456,7 @@ export default function AccountSettingsPage() {
                   <select
                     value={profile.dateFormat}
                     onChange={(e) => handleProfileChange('dateFormat', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-yellow-500 focus:border-transparent"
                   >
                     <option value="MM/DD/YYYY">MM/DD/YYYY</option>
                     <option value="DD/MM/YYYY">DD/MM/YYYY</option>

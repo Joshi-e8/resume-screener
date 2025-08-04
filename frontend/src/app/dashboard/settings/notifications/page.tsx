@@ -471,7 +471,7 @@ export default function NotificationsPage() {
                   type="time"
                   value={settings.schedule.quietStart}
                   onChange={(e) => handleScheduleChange('quietStart', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-yellow-500 focus:border-transparent"
                 />
               </div>
 
@@ -483,7 +483,7 @@ export default function NotificationsPage() {
                   type="time"
                   value={settings.schedule.quietEnd}
                   onChange={(e) => handleScheduleChange('quietEnd', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-yellow-500 focus:border-transparent"
                 />
               </div>
             </div>

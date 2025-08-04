@@ -139,7 +139,7 @@ export default function CreateJobPage() {
   const isFormValid = formData.title && formData.department && formData.location && formData.description;
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
+    <div className="max-w-full mx-auto space-y-6">
       {/* Header */}
       <div className="flex items-center gap-4">
         <Link
@@ -204,7 +204,7 @@ export default function CreateJobPage() {
                   value={formData.title}
                   onChange={(e) => handleInputChange('title', e.target.value)}
                   placeholder="e.g., Senior Frontend Developer"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-yellow-500 focus:border-transparent"
                 />
               </div>
 
@@ -215,7 +215,7 @@ export default function CreateJobPage() {
                 <select
                   value={formData.department}
                   onChange={(e) => handleInputChange('department', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-yellow-500 focus:border-transparent"
                 >
                   <option value="">Select Department</option>
                   {jobDepartments.map(dept => (
@@ -233,7 +233,7 @@ export default function CreateJobPage() {
                   value={formData.location}
                   onChange={(e) => handleInputChange('location', e.target.value)}
                   placeholder="e.g., San Francisco, CA or Remote"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-yellow-500 focus:border-transparent"
                 />
               </div>
 
@@ -244,7 +244,7 @@ export default function CreateJobPage() {
                 <select
                   value={formData.type}
                   onChange={(e) => handleInputChange('type', e.target.value as Job['type'])}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-yellow-500 focus:border-transparent"
                 >
                   {jobTypes.map(type => (
                     <option key={type.value} value={type.value}>{type.label}</option>
@@ -259,7 +259,7 @@ export default function CreateJobPage() {
                 <select
                   value={formData.experience}
                   onChange={(e) => handleInputChange('experience', e.target.value as Job['experience'])}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-yellow-500 focus:border-transparent"
                 >
                   {experienceLevels.map(level => (
                     <option key={level.value} value={level.value}>{level.label}</option>
@@ -275,7 +275,7 @@ export default function CreateJobPage() {
                   type="date"
                   value={formData.closingDate}
                   onChange={(e) => handleInputChange('closingDate', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-yellow-500 focus:border-transparent"
                 />
               </div>
             </div>
@@ -294,7 +294,7 @@ export default function CreateJobPage() {
                   value={formData.salary.min || ''}
                   onChange={(e) => handleSalaryChange('min', parseInt(e.target.value) || 0)}
                   placeholder="50000"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-yellow-500 focus:border-transparent"
                 />
               </div>
 
@@ -307,7 +307,7 @@ export default function CreateJobPage() {
                   value={formData.salary.max || ''}
                   onChange={(e) => handleSalaryChange('max', parseInt(e.target.value) || 0)}
                   placeholder="80000"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-yellow-500 focus:border-transparent"
                 />
               </div>
 
@@ -318,7 +318,7 @@ export default function CreateJobPage() {
                 <select
                   value={formData.salary.currency}
                   onChange={(e) => setFormData(prev => ({ ...prev, salary: { ...prev.salary, currency: e.target.value } }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-yellow-500 focus:border-transparent"
                 >
                   <option value="USD">USD</option>
                   <option value="EUR">EUR</option>
@@ -338,7 +338,7 @@ export default function CreateJobPage() {
               onChange={(e) => handleInputChange('description', e.target.value)}
               placeholder="Describe the role, company culture, and what makes this position exciting..."
               rows={6}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-yellow-500 focus:border-transparent"
             />
           </div>
 
@@ -355,7 +355,7 @@ export default function CreateJobPage() {
                     value={requirement}
                     onChange={(e) => handleArrayFieldChange('requirements', index, e.target.value)}
                     placeholder="e.g., 3+ years of experience in React"
-                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-yellow-500 focus:border-transparent"
                   />
                   {formData.requirements.length > 1 && (
                     <button
@@ -390,7 +390,7 @@ export default function CreateJobPage() {
                     value={responsibility}
                     onChange={(e) => handleArrayFieldChange('responsibilities', index, e.target.value)}
                     placeholder="e.g., Develop and maintain web applications"
-                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-yellow-500 focus:border-transparent"
                   />
                   {formData.responsibilities.length > 1 && (
                     <button
@@ -425,7 +425,7 @@ export default function CreateJobPage() {
                     value={benefit}
                     onChange={(e) => handleArrayFieldChange('benefits', index, e.target.value)}
                     placeholder="e.g., Health insurance and flexible work hours"
-                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-yellow-500 focus:border-transparent"
                   />
                   {formData.benefits.length > 1 && (
                     <button
@@ -465,7 +465,7 @@ export default function CreateJobPage() {
                     }
                   }}
                   placeholder="e.g., React, TypeScript, Node.js"
-                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-yellow-500 focus:border-transparent"
                 />
                 <button
                   onClick={addSkill}

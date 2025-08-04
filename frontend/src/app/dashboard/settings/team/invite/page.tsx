@@ -227,7 +227,7 @@ export default function TeamInvitePage() {
                       value={invite.email}
                       onChange={(e) => updateInvite(index, 'email', e.target.value)}
                       placeholder="colleague@company.com"
-                      className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+                      className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-yellow-500 focus:border-transparent"
                     />
                   </div>
                 </div>
@@ -239,7 +239,7 @@ export default function TeamInvitePage() {
                   <select
                     value={invite.role}
                     onChange={(e) => updateInvite(index, 'role', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-yellow-500 focus:border-transparent"
                   >
                     {roles.map(role => (
                       <option key={role.id} value={role.id}>
@@ -256,7 +256,7 @@ export default function TeamInvitePage() {
                   <select
                     value={invite.department}
                     onChange={(e) => updateInvite(index, 'department', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-yellow-500 focus:border-transparent"
                   >
                     {departments.map(dept => (
                       <option key={dept} value={dept}>{dept}</option>
@@ -273,7 +273,7 @@ export default function TeamInvitePage() {
                     value={invite.message}
                     onChange={(e) => updateInvite(index, 'message', e.target.value)}
                     placeholder="Welcome to the team!"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-yellow-500 focus:border-transparent"
                   />
                 </div>
               </div>

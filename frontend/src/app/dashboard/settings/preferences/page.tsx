@@ -297,7 +297,7 @@ export default function PreferencesPage() {
                 type="text"
                 value={preferences.appearance.primaryColor}
                 onChange={(e) => handleChange('appearance', 'primaryColor', e.target.value)}
-                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-yellow-500 focus:border-transparent"
               />
             </div>
           </div>
@@ -309,7 +309,7 @@ export default function PreferencesPage() {
             <select
               value={preferences.appearance.fontSize}
               onChange={(e) => handleChange('appearance', 'fontSize', e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-yellow-500 focus:border-transparent"
             >
               <option value="small">Small</option>
               <option value="medium">Medium</option>
@@ -373,7 +373,7 @@ export default function PreferencesPage() {
             <select
               value={preferences.localization.language}
               onChange={(e) => handleChange('localization', 'language', e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-yellow-500 focus:border-transparent"
             >
               {languages.map(lang => (
                 <option key={lang.code} value={lang.code}>{lang.name}</option>
@@ -388,7 +388,7 @@ export default function PreferencesPage() {
             <select
               value={preferences.localization.timezone}
               onChange={(e) => handleChange('localization', 'timezone', e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-yellow-500 focus:border-transparent"
             >
               {timezones.map(tz => (
                 <option key={tz.value} value={tz.value}>{tz.label}</option>
@@ -403,7 +403,7 @@ export default function PreferencesPage() {
             <select
               value={preferences.localization.dateFormat}
               onChange={(e) => handleChange('localization', 'dateFormat', e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-yellow-500 focus:border-transparent"
             >
               <option value="MM/DD/YYYY">MM/DD/YYYY</option>
               <option value="DD/MM/YYYY">DD/MM/YYYY</option>
@@ -419,7 +419,7 @@ export default function PreferencesPage() {
             <select
               value={preferences.localization.timeFormat}
               onChange={(e) => handleChange('localization', 'timeFormat', e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-yellow-500 focus:border-transparent"
             >
               <option value="12h">12-hour (AM/PM)</option>
               <option value="24h">24-hour</option>
@@ -433,7 +433,7 @@ export default function PreferencesPage() {
             <select
               value={preferences.localization.currency}
               onChange={(e) => handleChange('localization', 'currency', e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-yellow-500 focus:border-transparent"
             >
               {currencies.map(currency => (
                 <option key={currency.code} value={currency.code}>{currency.name}</option>
@@ -463,7 +463,7 @@ export default function PreferencesPage() {
             <select
               value={preferences.dashboard.defaultView}
               onChange={(e) => handleChange('dashboard', 'defaultView', e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-yellow-500 focus:border-transparent"
             >
               <option value="grid">Grid View</option>
               <option value="list">List View</option>
@@ -477,7 +477,7 @@ export default function PreferencesPage() {
             <select
               value={preferences.dashboard.itemsPerPage}
               onChange={(e) => handleChange('dashboard', 'itemsPerPage', parseInt(e.target.value))}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-yellow-500 focus:border-transparent"
             >
               <option value={10}>10 items</option>
               <option value={20}>20 items</option>
@@ -497,7 +497,7 @@ export default function PreferencesPage() {
               value={preferences.dashboard.refreshInterval}
               onChange={(e) => handleChange('dashboard', 'refreshInterval', parseInt(e.target.value))}
               disabled={!preferences.dashboard.autoRefresh}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent disabled:bg-gray-100"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-yellow-500 focus:border-transparent disabled:bg-gray-100"
             />
           </div>
 
@@ -655,7 +655,7 @@ export default function PreferencesPage() {
               max="120"
               value={preferences.advanced.apiTimeout}
               onChange={(e) => handleChange('advanced', 'apiTimeout', parseInt(e.target.value))}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-yellow-500 focus:border-transparent"
             />
           </div>
 

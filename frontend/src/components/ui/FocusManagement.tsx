@@ -106,7 +106,7 @@ export function SkipLink({ href, children, className = "" }: SkipLinkProps) {
       className={`
         sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 
         bg-yellow-500 text-white px-4 py-2 rounded-lg font-medium z-50
-        focus:outline-none focus:ring-2 focus:ring-yellow-600 focus:ring-offset-2
+        focus:outline-none focus:ring-1 focus:ring-yellow-600 focus:ring-offset-2
         ${className}
       `}
     >
@@ -169,7 +169,7 @@ export function FocusIndicator({
   return (
     <div
       className={`
-        ${disabled ? '' : 'focus-within:ring-2 focus-within:ring-yellow-500 focus-within:ring-offset-2'}
+        ${disabled ? '' : 'focus-within:ring-1 focus-within:ring-yellow-500 focus-within:ring-offset-2'}
         rounded-lg transition-all duration-200
         ${className}
       `}

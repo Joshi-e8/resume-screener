@@ -213,7 +213,7 @@ export function AdvancedSearchModal({
                           ...filters.experience,
                           min: parseInt(e.target.value) || 0
                         })}
-                        className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-1 focus:ring-yellow-500 focus:border-transparent"
                       />
                     </div>
                     <div>
@@ -227,7 +227,7 @@ export function AdvancedSearchModal({
                           ...filters.experience,
                           max: parseInt(e.target.value) || 20
                         })}
-                        className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-1 focus:ring-yellow-500 focus:border-transparent"
                       />
                     </div>
                   </div>
@@ -308,7 +308,7 @@ export function AdvancedSearchModal({
                     <select
                       value={filters.education}
                       onChange={(e) => handleFilterChange('education', e.target.value)}
-                      className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent appearance-none"
+                      className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-lg focus:ring-1 focus:ring-yellow-500 focus:border-transparent appearance-none"
                     >
                       <option value="">Any education level</option>
                       {educationLevels.map((level) => (
@@ -354,7 +354,7 @@ export function AdvancedSearchModal({
                     <select
                       value={filters.dateRange}
                       onChange={(e) => handleFilterChange('dateRange', e.target.value)}
-                      className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent appearance-none"
+                      className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-lg focus:ring-1 focus:ring-yellow-500 focus:border-transparent appearance-none"
                     >
                       <option value="all">Any time</option>
                       <option value="24h">Last 24 hours</option>

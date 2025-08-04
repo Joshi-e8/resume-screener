@@ -181,19 +181,87 @@ body {
   }
 }
 
+/* Global focus styles for form elements */
+input,
+input[type="text"],
+input[type="email"],
+input[type="password"],
+input[type="number"],
+input[type="search"],
+input[type="tel"],
+input[type="url"],
+input[type="date"],
+input[type="datetime-local"],
+input[type="month"],
+input[type="time"],
+input[type="week"],
+input[type="checkbox"],
+input[type="radio"],
+textarea,
+select {
+  outline: none !important;
+}
+
+input:focus,
 input[type="text"]:focus,
 input[type="email"]:focus,
 input[type="password"]:focus,
-input:focus {
+input[type="number"]:focus,
+input[type="search"]:focus,
+input[type="tel"]:focus,
+input[type="url"]:focus,
+input[type="date"]:focus,
+input[type="datetime-local"]:focus,
+input[type="month"]:focus,
+input[type="time"]:focus,
+input[type="week"]:focus,
+input[type="checkbox"]:focus,
+input[type="radio"]:focus,
+textarea:focus,
+select:focus {
   outline: none !important;
-  border-color: var(--primary-gradient-end) !important;
-  outline-color: var(--primary-gradient-end) !important;
+  box-shadow: 0 0 0 1px #ffd700 !important;
+  border-color: #ffd700 !important;
+  border-width: 0px !important;
+}
+
+/* Override any Tailwind focus ring classes */
+.focus\:ring-1:focus,
+.focus\:ring-yellow-500:focus,
+.focus\:ring-blue-500:focus {
+  box-shadow: 0 0 0 1px #ffd700 !important;
+}
+
+.focus\:border-transparent:focus {
+  border-color: #ffd700 !important;
+}
+
+/* Override Tailwind's ring-1 to use 1px */
+.ring-1 {
+  box-shadow: 0 0 0 1px #ffd700 !important;
+}
+
+/* Override focus:ring-1 specifically */
+*:focus.focus\:ring-1,
+*:focus[class*="focus:ring-1"] {
+  box-shadow: 0 0 0 1px #ffd700 !important;
 }
 
 /* Focus styles for accessibility */
 .focus-ring:focus {
   outline: none;
-  box-shadow: 0 0 0 2px #f9637d, 0 0 0 4px rgba(249, 99, 125, 0.2);
+  box-shadow: 0 0 0 1px #f9637d;
+}
+
+/* Utility class for consistent focus styling */
+.focus-ring-1 {
+  outline: none !important;
+}
+
+.focus-ring-1:focus {
+  outline: none !important;
+  box-shadow: 0 0 0 1px #ffd700 !important;
+  border-color: #ffd700 !important;
 }
 
 /* Custom scrollbar */
