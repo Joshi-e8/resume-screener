@@ -3,6 +3,7 @@ import type { User } from "next-auth";
 import NextAuth, { type NextAuthConfig } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import GoogleProvider from "next-auth/providers/google";
+import LinkedInProvider from "next-auth/providers/linkedin";
 import axios from "axios";
 
 if (!process.env.NEXTAUTH_SECRET) {
@@ -132,6 +133,24 @@ export const authOptions: NextAuthConfig = {
         } as User; // Removed authorization_code here as it’s not needed in profile
       },
     }),
+    LinkedInProvider({
+      clientId: process.env.LINKEDIN_CLIENT_ID ?? "",
+      clientSecret: process.env.LINKEDIN_CLIENT_SECRET ?? "",
+      authorization: {
+        params: {
+          scope: "openid profile email",
+        },
+      },
+      profile(profile) {
+        return {
+          id: profile.sub,
+          linkedin_id: profile.sub,
+          name: profile.name,
+          email: profile.email,
+          image: profile.picture,
+        } as User;
+      },
+    }),
   ],
 
   callbacks: {
@@ -178,6 +197,42 @@ export const authOptions: NextAuthConfig = {
           }
         } catch (error) {
           console.error("Error calling backend for Google sign-in:", error);
+          // Don't throw here, we still want the auth flow to complete
+          // but without the backend token
+        }
+      }
+
+      // For LinkedIn OAuth, handle the backend integration
+      if (account && account.provider === "linkedin") {
+        token.linkedin_id = account.providerAccountId;
+        token.authorization_code = account.access_token || account.id_token;
+        console.debug("JWT callback: LinkedIn sign-in account", token, user, account);
+        try {
+          // Make the backend API call for LinkedIn
+          const response = await axios.post(
+            `${process.env.NEXT_PUBLIC_API_BASE_URL}/auth/social-login/linkedin/`,
+            {
+              email: token.email || "",
+              linkedin_id: account.providerAccountId,
+              name: token.name || "",
+              image: token.picture || "",
+              token: account.access_token || account.id_token,
+            }
+          );
+
+          console.debug("JWT callback: LinkedIn sign-in backend response", response);
+
+          if (response.status === 200) {
+            // Update token with backend response data
+            token.accessToken = response.data.access_token;
+            token.refreshToken = response.data.refresh_token;
+            token.expires = response.data.expires_in;
+            token.id = response.data.uid;
+            token.role = response.data.role;
+            token.profile_pic = response.data.profile_pic;
+          }
+        } catch (error) {
+          console.error("Error calling backend for LinkedIn sign-in:", error);
           // Don't throw here, we still want the auth flow to complete
           // but without the backend token
         }

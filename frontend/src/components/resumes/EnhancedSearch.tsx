@@ -145,7 +145,7 @@ export function EnhancedSearch({
             onFocus={handleInputFocus}
             className={`w-full pl-10 pr-12 py-3 border rounded-xl transition-all duration-300 ${
               isFocused
-                ? 'border-yellow-500 ring-2 ring-yellow-500 ring-opacity-20 shadow-lg'
+                ? 'border-yellow-500 ring-1 ring-yellow-500 ring-opacity-20 shadow-lg'
                 : 'border-gray-200 hover:border-gray-300'
             }`}
           />

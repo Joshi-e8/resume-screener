@@ -116,7 +116,7 @@ export default function JobsPage() {
               placeholder="Search jobs by title, department, or location..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+              className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-1 focus:ring-yellow-500 focus:border-transparent"
             />
           </div>
 
@@ -125,7 +125,7 @@ export default function JobsPage() {
             <select
               value={selectedStatus}
               onChange={(e) => setSelectedStatus(e.target.value)}
-              className="px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+              className="px-3 py-2 border border-gray-200 rounded-lg focus:ring-1 focus:ring-yellow-500 focus:border-transparent"
             >
               <option value="all">All Statuses</option>
               {jobStatuses.map(status => (
@@ -138,7 +138,7 @@ export default function JobsPage() {
             <select
               value={selectedDepartment}
               onChange={(e) => setSelectedDepartment(e.target.value)}
-              className="px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+              className="px-3 py-2 border border-gray-200 rounded-lg focus:ring-1 focus:ring-yellow-500 focus:border-transparent"
             >
               <option value="all">All Departments</option>
               {departments.map(dept => (
@@ -155,7 +155,7 @@ export default function JobsPage() {
                 setSortBy(newSortBy);
                 setSortOrder(newSortOrder);
               }}
-              className="px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+              className="px-3 py-2 border border-gray-200 rounded-lg focus:ring-1 focus:ring-yellow-500 focus:border-transparent"
             >
               <option value="date-desc">Newest First</option>
               <option value="date-asc">Oldest First</option>

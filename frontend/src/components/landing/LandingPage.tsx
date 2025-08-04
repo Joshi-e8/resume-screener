@@ -17,18 +17,20 @@ export function LandingPage() {
   const searchParams = useSearchParams();
   const hasHandledCallback = useRef(false);
 
-  // Handle Google OAuth callback redirect
+  // Handle OAuth callback redirect (Google & LinkedIn)
   useEffect(() => {
-    const handleGoogleCallback = async (): Promise<void> => {
-      // Check if this is a Google callback
-      const isGoogleCallback = searchParams.get("provider") === "google";
+    const handleOAuthCallback = async (): Promise<void> => {
+      // Check if this is an OAuth callback
+      const provider = searchParams.get("provider");
+      const isOAuthCallback = provider === "google" || provider === "linkedin";
       
-      if (isGoogleCallback && status === "authenticated" && session?.user && !hasHandledCallback.current) {
+      if (isOAuthCallback && status === "authenticated" && session?.user && !hasHandledCallback.current) {
         hasHandledCallback.current = true; // Prevent duplicate execution
         
         if (session.user.accessToken) {
           // We have a valid session with backend tokens
-          showToast.success("Successfully signed in!");
+          const providerName = provider === "google" ? "Google" : "LinkedIn";
+          showToast.success(`Successfully signed in with ${providerName}!`);
 
           // Remove the provider param from the URL
           const url = new URL(window.location.href);
@@ -50,7 +52,7 @@ export function LandingPage() {
     };
 
     if(status === "authenticated") {
-      handleGoogleCallback();
+      handleOAuthCallback();
       console.log(status,'status')
     }
   }, [status, session, router, searchParams]);

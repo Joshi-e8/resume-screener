@@ -205,7 +205,7 @@ export default function EditJobPage() {
                   value={formData.title}
                   onChange={(e) => handleInputChange('title', e.target.value)}
                   placeholder="e.g., Senior Frontend Developer"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-yellow-500 focus:border-transparent"
                 />
               </div>
 
@@ -216,7 +216,7 @@ export default function EditJobPage() {
                 <select
                   value={formData.department}
                   onChange={(e) => handleInputChange('department', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-yellow-500 focus:border-transparent"
                 >
                   <option value="">Select Department</option>
                   {jobDepartments.map(dept => (
@@ -234,7 +234,7 @@ export default function EditJobPage() {
                   value={formData.location}
                   onChange={(e) => handleInputChange('location', e.target.value)}
                   placeholder="e.g., San Francisco, CA or Remote"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-yellow-500 focus:border-transparent"
                 />
               </div>
 
@@ -245,7 +245,7 @@ export default function EditJobPage() {
                 <select
                   value={formData.type}
                   onChange={(e) => handleInputChange('type', e.target.value as Job['type'])}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-yellow-500 focus:border-transparent"
                 >
                   {jobTypes.map(type => (
                     <option key={type.value} value={type.value}>{type.label}</option>
@@ -260,7 +260,7 @@ export default function EditJobPage() {
                 <select
                   value={formData.experience}
                   onChange={(e) => handleInputChange('experience', e.target.value as Job['experience'])}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-yellow-500 focus:border-transparent"
                 >
                   {experienceLevels.map(level => (
                     <option key={level.value} value={level.value}>{level.label}</option>
@@ -276,7 +276,7 @@ export default function EditJobPage() {
                   type="date"
                   value={formData.closingDate}
                   onChange={(e) => handleInputChange('closingDate', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-yellow-500 focus:border-transparent"
                 />
               </div>
             </div>
@@ -295,7 +295,7 @@ export default function EditJobPage() {
                   value={formData.salary.min || ''}
                   onChange={(e) => handleSalaryChange('min', parseInt(e.target.value) || 0)}
                   placeholder="50000"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-yellow-500 focus:border-transparent"
                 />
               </div>
 
@@ -308,7 +308,7 @@ export default function EditJobPage() {
                   value={formData.salary.max || ''}
                   onChange={(e) => handleSalaryChange('max', parseInt(e.target.value) || 0)}
                   placeholder="80000"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-yellow-500 focus:border-transparent"
                 />
               </div>
 
@@ -319,7 +319,7 @@ export default function EditJobPage() {
                 <select
                   value={formData.salary.currency}
                   onChange={(e) => setFormData(prev => prev ? ({ ...prev, salary: { ...prev.salary, currency: e.target.value } }) : null)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-yellow-500 focus:border-transparent"
                 >
                   <option value="USD">USD</option>
                   <option value="EUR">EUR</option>
@@ -339,7 +339,7 @@ export default function EditJobPage() {
               onChange={(e) => handleInputChange('description', e.target.value)}
               placeholder="Describe the role, company culture, and what makes this position exciting..."
               rows={6}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-yellow-500 focus:border-transparent"
             />
           </div>
 
@@ -356,7 +356,7 @@ export default function EditJobPage() {
                     value={requirement}
                     onChange={(e) => handleArrayFieldChange('requirements', index, e.target.value)}
                     placeholder="e.g., 3+ years of experience in React"
-                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-yellow-500 focus:border-transparent"
                   />
                   {formData.requirements.length > 1 && (
                     <button
@@ -396,7 +396,7 @@ export default function EditJobPage() {
                     }
                   }}
                   placeholder="e.g., React, TypeScript, Node.js"
-                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-yellow-500 focus:border-transparent"
                 />
                 <button
                   onClick={addSkill}

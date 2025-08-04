@@ -1,42 +1,40 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { showToast } from "@/utils/toast";
+import { signIn, useSession } from "next-auth/react";
+import { useRouter, useSearchParams } from "next/navigation";
 
 export function LinkedInSignInButton() {
   const [isLoading, setIsLoading] = useState(false);
+  const [linkedinCallbackError, setLinkedinCallbackError] = useState<string | null>(
+    null
+  );
 
   const handleLinkedInSignIn = async () => {
     try {
       setIsLoading(true);
       showToast.info("Redirecting to LinkedIn...");
 
-      // LinkedIn OAuth configuration
-      const clientId = process.env.NEXT_PUBLIC_LINKEDIN_CLIENT_ID || "86g93kiikr60xr";
-      const redirectUri = encodeURIComponent(`${window.location.origin}/auth/linkedin/callback`);
-      const scope = encodeURIComponent("r_liteprofile r_emailaddress");
-      const state = Math.random().toString(36).substring(2, 15);
-
-      // Store state in sessionStorage for verification
-      sessionStorage.setItem("linkedin_oauth_state", state);
-
-      // Construct LinkedIn OAuth URL
-      const linkedinAuthUrl = `https://www.linkedin.com/oauth/v2/authorization?` +
-        `response_type=code&` +
-        `client_id=${clientId}&` +
-        `redirect_uri=${redirectUri}&` +
-        `scope=${scope}&` +
-        `state=${state}`;
-
-      // Redirect to LinkedIn OAuth
-      window.location.href = linkedinAuthUrl;
-
+      await signIn("linkedin", {
+        redirect: true, // Handle redirect manually for better UX
+        callbackUrl: "/?provider=linkedin",
+      });
     } catch (error) {
-      console.error("LinkedIn sign in error:", error);
+      console.error("Sign in error:", error);
       showToast.authError("An unexpected error occurred. Please try again.");
+    } finally {
       setIsLoading(false);
     }
   };
+
+  // Show error toast when linkedinCallbackError is set
+  useEffect(() => {
+    if (linkedinCallbackError) {
+      showToast.error(linkedinCallbackError);
+      setLinkedinCallbackError(null); // Reset error after showing
+    }
+  }, [linkedinCallbackError]);
 
   return (
     <button

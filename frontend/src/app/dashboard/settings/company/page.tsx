@@ -166,7 +166,7 @@ export default function CompanySettingsPage() {
                 type="text"
                 value={settings.name}
                 onChange={(e) => handleChange('name', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-yellow-500 focus:border-transparent"
               />
             </div>
 
@@ -180,7 +180,7 @@ export default function CompanySettingsPage() {
                   type="url"
                   value={settings.website}
                   onChange={(e) => handleChange('website', e.target.value)}
-                  className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+                  className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-yellow-500 focus:border-transparent"
                 />
               </div>
             </div>
@@ -192,7 +192,7 @@ export default function CompanySettingsPage() {
               <select
                 value={settings.industry}
                 onChange={(e) => handleChange('industry', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-yellow-500 focus:border-transparent"
               >
                 {industries.map(industry => (
                   <option key={industry} value={industry}>{industry}</option>
@@ -209,7 +209,7 @@ export default function CompanySettingsPage() {
                 <select
                   value={settings.size}
                   onChange={(e) => handleChange('size', e.target.value)}
-                  className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+                  className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-yellow-500 focus:border-transparent"
                 >
                   {companySizes.map(size => (
                     <option key={size} value={size}>{size} employees</option>
@@ -230,7 +230,7 @@ export default function CompanySettingsPage() {
                   onChange={(e) => handleChange('founded', e.target.value)}
                   min="1800"
                   max={new Date().getFullYear()}
-                  className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+                  className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-yellow-500 focus:border-transparent"
                 />
               </div>
             </div>
@@ -244,7 +244,7 @@ export default function CompanySettingsPage() {
               value={settings.description}
               onChange={(e) => handleChange('description', e.target.value)}
               rows={4}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-yellow-500 focus:border-transparent"
               placeholder="Describe your company..."
             />
           </div>
@@ -266,7 +266,7 @@ export default function CompanySettingsPage() {
                 type="text"
                 value={settings.address.street}
                 onChange={(e) => handleChange('address.street', e.target.value)}
-                className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+                className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-yellow-500 focus:border-transparent"
               />
             </div>
           </div>
@@ -279,7 +279,7 @@ export default function CompanySettingsPage() {
               type="text"
               value={settings.address.city}
               onChange={(e) => handleChange('address.city', e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-yellow-500 focus:border-transparent"
             />
           </div>
 
@@ -291,7 +291,7 @@ export default function CompanySettingsPage() {
               type="text"
               value={settings.address.state}
               onChange={(e) => handleChange('address.state', e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-yellow-500 focus:border-transparent"
             />
           </div>
 
@@ -303,7 +303,7 @@ export default function CompanySettingsPage() {
               type="text"
               value={settings.address.zipCode}
               onChange={(e) => handleChange('address.zipCode', e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-yellow-500 focus:border-transparent"
             />
           </div>
 
@@ -315,7 +315,7 @@ export default function CompanySettingsPage() {
               type="text"
               value={settings.address.country}
               onChange={(e) => handleChange('address.country', e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-yellow-500 focus:border-transparent"
             />
           </div>
         </div>
@@ -336,7 +336,7 @@ export default function CompanySettingsPage() {
                 type="email"
                 value={settings.contact.email}
                 onChange={(e) => handleChange('contact.email', e.target.value)}
-                className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+                className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-yellow-500 focus:border-transparent"
               />
             </div>
           </div>
@@ -351,7 +351,7 @@ export default function CompanySettingsPage() {
                 type="tel"
                 value={settings.contact.phone}
                 onChange={(e) => handleChange('contact.phone', e.target.value)}
-                className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+                className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-yellow-500 focus:border-transparent"
               />
             </div>
           </div>
@@ -400,7 +400,7 @@ export default function CompanySettingsPage() {
                   type="text"
                   value={settings.branding.primaryColor}
                   onChange={(e) => handleChange('branding.primaryColor', e.target.value)}
-                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-yellow-500 focus:border-transparent"
                 />
               </div>
             </div>
@@ -420,7 +420,7 @@ export default function CompanySettingsPage() {
                   type="text"
                   value={settings.branding.secondaryColor}
                   onChange={(e) => handleChange('branding.secondaryColor', e.target.value)}
-                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-yellow-500 focus:border-transparent"
                 />
               </div>
             </div>

@@ -226,7 +226,7 @@ export default function CreateReportPage() {
                     value={formData.name}
                     onChange={(e) => handleInputChange('name', e.target.value)}
                     placeholder="e.g., Monthly Hiring Performance"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-yellow-500 focus:border-transparent"
                   />
                 </div>
 
@@ -237,7 +237,7 @@ export default function CreateReportPage() {
                   <select
                     value={formData.type}
                     onChange={(e) => handleInputChange('type', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-yellow-500 focus:border-transparent"
                   >
                     <option value="hiring">Hiring Report</option>
                     <option value="performance">Performance Report</option>
@@ -256,7 +256,7 @@ export default function CreateReportPage() {
                   onChange={(e) => handleInputChange('description', e.target.value)}
                   placeholder="Describe what this report will analyze and its purpose..."
                   rows={4}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-yellow-500 focus:border-transparent"
                 />
               </div>
             </div>
@@ -302,7 +302,7 @@ export default function CreateReportPage() {
                   <select
                     value={formData.filters.dateRange}
                     onChange={(e) => handleNestedChange('filters', 'dateRange', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-yellow-500 focus:border-transparent"
                   >
                     <option value="last-7-days">Last 7 days</option>
                     <option value="last-30-days">Last 30 days</option>
