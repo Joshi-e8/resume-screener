@@ -323,7 +323,7 @@ export function ResumeDetailModal({
               <select
                 value={resume.status}
                 onChange={(e) => onStatusChange?.(resume, e.target.value as Resume['status'])}
-                className="px-3 py-1 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+                className="px-3 py-1 border border-gray-300 rounded-lg text-sm"
               >
                 {statusOptions.map((status) => (
                   <option key={status} value={status}>

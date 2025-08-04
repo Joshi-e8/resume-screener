@@ -5,9 +5,55 @@ import { AuthSection } from "@/components/landing/AuthSection";
 import { useSelector } from "react-redux";
 import { RootState } from "@/store/store";
 import { OtpSection } from "./otpSection";
+import { useSession } from "next-auth/react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useRef } from "react";
+import { showToast } from "@/utils/toast";
 
 export function LandingPage() {
-    const authStep = useSelector((state: RootState) => state.authStep.step);
+  const authStep = useSelector((state: RootState) => state.authStep.step);
+  const { data: session, status } = useSession();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const hasHandledCallback = useRef(false);
+
+  // Handle Google OAuth callback redirect
+  useEffect(() => {
+    const handleGoogleCallback = async (): Promise<void> => {
+      // Check if this is a Google callback
+      const isGoogleCallback = searchParams.get("provider") === "google";
+      
+      if (isGoogleCallback && status === "authenticated" && session?.user && !hasHandledCallback.current) {
+        hasHandledCallback.current = true; // Prevent duplicate execution
+        
+        if (session.user.accessToken) {
+          // We have a valid session with backend tokens
+          showToast.success("Successfully signed in!");
+
+          // Remove the provider param from the URL
+          const url = new URL(window.location.href);
+          url.searchParams.delete("provider");
+          window.history.replaceState({}, document.title, url.toString());
+
+          // Navigate to dashboard
+          router.push("/dashboard");
+        } else {
+          // If we don't have an accessToken, the backend API call likely failed
+          showToast.error("User does not exist.");
+
+          // Remove the provider param from the URL
+          const url = new URL(window.location.href);
+          url.searchParams.delete("provider");
+          window.history.replaceState({}, document.title, url.toString());
+        }
+      }
+    };
+
+    if(status === "authenticated") {
+      handleGoogleCallback();
+      console.log(status,'status')
+    }
+  }, [status, session, router, searchParams]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background-light via-white to-background-light">

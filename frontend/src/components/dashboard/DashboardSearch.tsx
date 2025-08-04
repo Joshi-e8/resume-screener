@@ -46,7 +46,7 @@ export function DashboardSearch() {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search resumes, candidates, jobs, or skills..."
-              className="w-full pl-12 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm bg-gray-50 hover:bg-white transition-colors duration-200"
+              className="w-full pl-12 pr-4 py-3 border border-gray-200 rounded-xl outline-none text-sm bg-gray-50 hover:bg-white transition-colors duration-200"
             />
             {searchQuery && (
               <button
@@ -101,7 +101,7 @@ export function DashboardSearch() {
               <select
                 value={filters.dateRange}
                 onChange={(e) => setFilters({ ...filters, dateRange: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm"
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg outline-none text-sm"
               >
                 <option value="all">All time</option>
                 <option value="today">Today</option>
@@ -120,7 +120,7 @@ export function DashboardSearch() {
               <select
                 value={filters.status}
                 onChange={(e) => setFilters({ ...filters, status: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm"
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg outline-none text-sm"
               >
                 <option value="all">All statuses</option>
                 <option value="new">New</option>
@@ -140,7 +140,7 @@ export function DashboardSearch() {
               <select
                 value={filters.type}
                 onChange={(e) => setFilters({ ...filters, type: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm"
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg outline-none text-sm"
               >
                 <option value="all">All types</option>
                 <option value="resume">Resumes</option>

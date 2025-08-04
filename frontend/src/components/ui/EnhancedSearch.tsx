@@ -154,7 +154,7 @@ export function EnhancedSearch({
             }
           }}
           placeholder={placeholder}
-          className="w-full pl-10 pr-12 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-yellow-500 focus:border-transparent text-sm"
+          className="w-full pl-10 pr-12 py-3 border border-gray-300 rounded-xl text-sm"
         />
         
         {query && (

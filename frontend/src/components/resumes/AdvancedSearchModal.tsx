@@ -157,7 +157,7 @@ export function AdvancedSearchModal({
                       value={filters.keywords}
                       onChange={(e) => handleFilterChange('keywords', e.target.value)}
                       placeholder="Enter keywords, job titles, or company names..."
-                      className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+                      className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-lg"
                     />
                   </div>
                 </div>
@@ -174,7 +174,7 @@ export function AdvancedSearchModal({
                       value={filters.location}
                       onChange={(e) => handleFilterChange('location', e.target.value)}
                       placeholder="City, state, or remote"
-                      className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+                      className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-lg"
                     />
                   </div>
                 </div>
@@ -191,7 +191,7 @@ export function AdvancedSearchModal({
                       value={filters.jobTitle}
                       onChange={(e) => handleFilterChange('jobTitle', e.target.value)}
                       placeholder="e.g., Software Engineer, Product Manager"
-                      className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+                      className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-lg"
                     />
                   </div>
                 </div>
@@ -255,7 +255,7 @@ export function AdvancedSearchModal({
                           }
                         }}
                         placeholder="Add skills (press Enter to add)"
-                        className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+                        className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-lg"
                       />
                     </div>
                     

@@ -6,6 +6,7 @@ import { showToast } from "@/utils/toast";
 import axios from "axios";
 import { getCookies } from "cookies-next/client";
 import { signIn } from "next-auth/react";
+import { useRouter } from "next/navigation";
 
 interface OtpFormData {
   otp: string[];
@@ -32,6 +33,7 @@ const OtpForm = () => {
   const [resendTimer, setResendTimer] = useState(initialTimer);
   const [resending, setResending] = useState(false);
   const inputsRef = useRef<(HTMLInputElement | null)[]>([]);
+  const router = useRouter();
 
   useEffect(() => {
     let timer: NodeJS.Timeout;
@@ -60,8 +62,7 @@ const OtpForm = () => {
 
       if (response?.ok) {
         showToast.success("OTP verified successfully!");
-        console.log(response, "response");
-        // window.location.href = "/dashboard"; // or any other post-login route
+        router.push("/dashboard");
       } else {
         setError("otp", {
           message: "Invalid OTP. Please try again.",
@@ -78,7 +79,7 @@ const OtpForm = () => {
     setResending(true);
     try {
       const response = await axios.post(
-        resendOtpUrl || "/api/v1/auth/resend-otp"
+        decodeURIComponent(resendOtpUrl) || "/api/v1/auth/resend-otp"
       );
       if (response.data.result === "success") {
         showToast.success("OTP resent successfully!");
@@ -156,7 +157,7 @@ const OtpForm = () => {
                 autoFocus={index === 0}
                 className={`w-12 h-12 text-center text-xl border rounded-md ${
                   errors.otp ? "border-red-500 bg-red-50" : "border-gray-300"
-                } focus:outline-none focus:ring-2 focus:ring-dark-500 focus:border-transparent`}
+                }`}
               />
             ))}
           </div>
