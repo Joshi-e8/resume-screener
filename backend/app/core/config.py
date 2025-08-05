@@ -24,10 +24,10 @@ class Settings(BaseSettings):
     # Security Configuration
     SECRET_KEY: str
     ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    ACCESS_TOKEN_EXPIRE_MINUTES: int
     API_V1_STR: str = "/api/v1"
     API_RATE_LIMIT: int = 100
-    
+
     # Social Configuration
     SOCIAL_AUTH_PROVIDERS: List[str] = ["google", "linkedin"]
     SOCIAL_AUTH_REDIRECT_URI: str = "http://localhost:8000/auth/callback"

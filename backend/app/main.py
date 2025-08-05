@@ -34,6 +34,7 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         print(f"❌ Application shutdown failed: {e}")
 
+
 # Create FastAPI app
 app = FastAPI(
     title="Resume Screener API",
@@ -41,7 +42,7 @@ app = FastAPI(
     version="1.0.0",
     docs_url="/docs",
     redoc_url="/redoc",
-    lifespan=lifespan
+    lifespan=lifespan,
 )
 
 print(settings.CORS_ORIGINS)
@@ -64,22 +65,13 @@ app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 app.include_router(api_router, prefix="/api/v1")
 
 
-
 @app.get("/")
 async def root():
     """Health check endpoint"""
-    return {
-        "message": "Resume Screener API",
-        "version": "1.0.0",
-        "status": "healthy"
-    }
+    return {"message": "Resume Screener API", "version": "1.0.0", "status": "healthy"}
 
 
 @app.get("/health")
 async def health_check():
     """Detailed health check"""
-    return {
-        "status": "healthy",
-        "database": "connected",
-        "api": "operational"
-    }
+    return {"status": "healthy", "database": "connected", "api": "operational"}

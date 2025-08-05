@@ -10,7 +10,8 @@ from typing import AsyncGenerator
 import pytest
 
 # Add the app directory to the Python path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+
 
 @pytest.fixture(scope="session")
 def event_loop():
@@ -19,11 +20,13 @@ def event_loop():
     yield loop
     loop.close()
 
+
 @pytest.fixture
 async def mock_database():
     """Mock database for testing"""
     # This would be replaced with actual test database setup
     yield "mock_db"
+
 
 @pytest.fixture
 def sample_user_data():
@@ -31,8 +34,9 @@ def sample_user_data():
     return {
         "email": "test@example.com",
         "password": "testpassword123",
-        "full_name": "Test User"
+        "full_name": "Test User",
     }
+
 
 @pytest.fixture
 def sample_job_data():
@@ -42,8 +46,9 @@ def sample_job_data():
         "description": "Great job opportunity",
         "location": "Remote",
         "skills": ["Python", "JavaScript", "React"],
-        "experience_level": "mid"
+        "experience_level": "mid",
     }
+
 
 @pytest.fixture
 def sample_candidate_data():
@@ -52,8 +57,9 @@ def sample_candidate_data():
         "first_name": "John",
         "last_name": "Doe",
         "email": "john.doe@example.com",
-        "skills": ["Python", "Django", "React"]
+        "skills": ["Python", "Django", "React"],
     }
+
 
 @pytest.fixture
 def sample_resume_text():

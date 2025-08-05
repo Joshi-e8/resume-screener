@@ -7,9 +7,9 @@ const useJobServices = () => {
   const axios = useAxiosClient("admin");
 
   // Get all jobs
-  const getAllJobs = async () => {
+  const getAllJobs = async (params: URLSearchParams) => {
     try {
-      const response = await axios.get(CONSTANTS.JOBS.LISTING);
+      const response = await axios.get(`${CONSTANTS.JOBS.LISTING}`, { params });
       return response?.data;
     } catch (error) {
       return errorHandler(error);
@@ -17,7 +17,7 @@ const useJobServices = () => {
   };
 
   // Get job by ID
-  const getJobById = async (jobId) => {
+  const getJobById = async (jobId: string) => {
     try {
       const response = await axios.get(CONSTANTS.JOBS.DETAIL(jobId));
       return response?.data;
@@ -27,7 +27,7 @@ const useJobServices = () => {
   };
 
   // Create new job
-  const createJob = async (jobData) => {
+  const createJob = async (jobData: any) => {
     try {
       const response = await axios.post(CONSTANTS.JOBS.CREATE, jobData);
       return response?.data;
@@ -37,7 +37,7 @@ const useJobServices = () => {
   };
 
   // Update job
-  const updateJob = async (jobId, jobData) => {
+  const updateJob = async (jobId:string, jobData:any) => {
     try {
       const response = await axios.put(CONSTANTS.JOBS.UPDATE(jobId), jobData);
       return response?.data;
@@ -47,7 +47,7 @@ const useJobServices = () => {
   };
 
   // Delete job
-  const deleteJob = async (jobId) => {
+  const deleteJob = async (jobId:string) => {
     try {
       const response = await axios.delete(CONSTANTS.JOBS.DELETE(jobId));
       return response?.data;
@@ -57,7 +57,7 @@ const useJobServices = () => {
   };
 
   // Import job from external platform
-  const importJobFromExternal = async (importData) => {
+  const importJobFromExternal = async (importData: any) => {
     try {
       const response = await axios.post(CONSTANTS.JOBS.IMPORT, importData);
       return response?.data;
@@ -67,7 +67,7 @@ const useJobServices = () => {
   };
 
   // Get job statistics
-  const getJobStatistics = async (jobId) => {
+  const getJobStatistics = async (jobId: string) => {
     try {
       const response = await axios.get(CONSTANTS.JOBS.STATISTICS(jobId));
       return response?.data;
@@ -77,7 +77,7 @@ const useJobServices = () => {
   };
 
   // Update job status
-  const updateJobStatus = async (jobId, status) => {
+  const updateJobStatus = async (jobId: string, status: string) => {
     try {
       const response = await axios.patch(CONSTANTS.JOBS.STATUS(jobId), {
         status,
@@ -99,7 +99,7 @@ const useJobServices = () => {
   };
 
   // Search jobs
-  const searchJobs = async (query, filters = {}) => {
+  const searchJobs = async (query: string, filters = {}) => {
     try {
       const response = await axios.get(CONSTANTS.JOBS.SEARCH, {
         params: { query, ...filters },

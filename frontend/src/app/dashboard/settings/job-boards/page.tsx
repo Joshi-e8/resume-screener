@@ -184,7 +184,7 @@ export default function JobBoardsPage() {
 
       {/* CVViz-Style Feature Highlight */}
       <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-2xl p-8">
-        <div className="max-w-4xl">
+        <div className="max-w-full">
           <h2 className="text-2xl font-bold mb-4">🚀 Multi-Platform Job Posting</h2>
           <p className="text-blue-100 mb-6 text-lg">
             Create once, post everywhere. Connect your job boards and reach millions of candidates with a single click.

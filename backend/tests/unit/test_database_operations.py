@@ -9,7 +9,7 @@ import sys
 from datetime import datetime
 
 # Add the app directory to Python path
-sys.path.append(os.path.join(os.path.dirname(__file__), '.'))
+sys.path.append(os.path.join(os.path.dirname(__file__), "."))
 
 from app.core.database import init_database
 from app.models.resume import JobDescription, UploadedResume
@@ -21,7 +21,7 @@ async def test_database_operations():
         print("🔄 Initializing database...")
         await init_database()
         print("✅ Database initialized successfully")
-        
+
         # Test creating a job description
         print("🔄 Creating test job description...")
         job = JobDescription(
@@ -31,12 +31,12 @@ async def test_database_operations():
             requirements=["Python", "FastAPI", "MongoDB"],
             preferred_skills=["Docker", "AWS", "React"],
             experience_level="Senior",
-            location="Remote"
+            location="Remote",
         )
-        
+
         saved_job = await job.insert()
         print(f"✅ Job description created with ID: {saved_job.id}")
-        
+
         # Test creating an uploaded resume
         print("🔄 Creating test resume record...")
         resume = UploadedResume(
@@ -45,29 +45,29 @@ async def test_database_operations():
             file_path="/uploads/test_resume.pdf",
             file_size=1024000,
             mime_type="application/pdf",
-            status="UPLOADED"
+            status="UPLOADED",
         )
-        
+
         saved_resume = await resume.insert()
         print(f"✅ Resume record created with ID: {saved_resume.id}")
-        
+
         # Test querying
         print("🔄 Testing database queries...")
         all_jobs = await JobDescription.find_all().to_list()
         all_resumes = await UploadedResume.find_all().to_list()
-        
+
         print(f"✅ Found {len(all_jobs)} job descriptions")
         print(f"✅ Found {len(all_resumes)} resume records")
-        
+
         # Clean up test data
         print("🔄 Cleaning up test data...")
         await saved_job.delete()
         await saved_resume.delete()
         print("✅ Test data cleaned up")
-        
+
         print("\n🎉 All database operations completed successfully!")
         return True
-        
+
     except Exception as e:
         print(f"❌ Database operations failed: {e}")
         return False

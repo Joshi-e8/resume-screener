@@ -8,8 +8,12 @@ from beanie import init_beanie
 from motor.motor_asyncio import AsyncIOMotorClient
 
 from app.core.config import settings
-from app.models.analytics import (AnalyticsEvent, DailyMetrics,
-                                  PlatformMetrics, UserUsageStats)
+from app.models.analytics import (
+    AnalyticsEvent,
+    DailyMetrics,
+    PlatformMetrics,
+    UserUsageStats,
+)
 from app.models.candidate import Candidate
 from app.models.job import Job
 from app.models.resume import JobDescription, ResumeAnalysis, UploadedResume
@@ -35,11 +39,11 @@ async def connect_to_mongo():
             settings.MONGODB_URL,
             serverSelectionTimeoutMS=5000,  # 5 second timeout
             connectTimeoutMS=5000,
-            socketTimeoutMS=5000
+            socketTimeoutMS=5000,
         )
 
         # Test connection
-        await client.admin.command('ping')
+        await client.admin.command("ping")
         logger.info("✅ Connected to MongoDB successfully")
 
         # List databases to verify connection
@@ -81,8 +85,8 @@ async def init_database():
                 AnalyticsEvent,
                 DailyMetrics,
                 PlatformMetrics,
-                UserUsageStats
-            ]
+                UserUsageStats,
+            ],
         )
 
         logger.info("✅ Database initialized successfully")

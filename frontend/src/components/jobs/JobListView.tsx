@@ -18,15 +18,43 @@ import {
 import { Job, jobStatuses } from "@/data/mockJobs";
 import { formatDistanceToNow } from "date-fns";
 
+// Flexible job type that can handle API responses with optional fields
+interface FlexibleJob {
+  id: string;
+  title?: string;
+  department?: string;
+  location?: string;
+  job_type?: string;
+  experience_level?: string;
+  salary?: {
+    min?: number;
+    max?: number;
+    currency?: string;
+  };
+  description?: string;
+  requirements?: string[];
+  responsibilities?: string[];
+  benefits?: string[];
+  skills?: string[];
+  status?: string;
+  applicants?: number;
+  views?: number;
+  postedDate?: string;
+  created_at?: string;
+  closingDate?: string;
+  createdBy?: string;
+  updatedAt?: string;
+}
+
 interface JobListViewProps {
-  jobs: Job[];
+  jobs: FlexibleJob[];
   onAction: (jobId: string, action: string) => void;
 }
 
 export function JobListView({ jobs, onAction }: JobListViewProps) {
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
 
-  const getStatusColor = (status: string) => {
+  const getStatusColor = (status?: string) => {
     switch (status) {
       case 'active': return 'bg-green-100 text-green-800';
       case 'paused': return 'bg-yellow-100 text-yellow-800';
@@ -36,10 +64,14 @@ export function JobListView({ jobs, onAction }: JobListViewProps) {
     }
   };
 
-  const formatSalary = (salary: Job['salary']) => {
+  const formatSalary = (salary?: FlexibleJob['salary']) => {
+    if (!salary || typeof salary.min !== 'number' || typeof salary.max !== 'number') {
+      return 'Salary not specified';
+    }
+    
     const formatter = new Intl.NumberFormat('en-US', {
       style: 'currency',
-      currency: salary.currency,
+      currency: salary.currency || 'USD',
       minimumFractionDigits: 0,
       maximumFractionDigits: 0,
     });
@@ -80,12 +112,19 @@ export function JobListView({ jobs, onAction }: JobListViewProps) {
                     className="block hover:text-yellow-600 transition-colors duration-200"
                   >
                     <h3 className="font-semibold text-gray-900 mb-1 line-clamp-1">
-                      {job.title}
+                      {job.title || 'Untitled Job'}
                     </h3>
                   </Link>
                   <div className="flex items-center gap-2 text-sm text-gray-600">
                     <Calendar className="w-3 h-3" />
-                    <span>Posted {formatDistanceToNow(new Date(job.postedDate), { addSuffix: true })}</span>
+                    <span>
+                      Posted {job.postedDate 
+                        ? formatDistanceToNow(new Date(job.postedDate), { addSuffix: true })
+                        : job.created_at 
+                          ? formatDistanceToNow(new Date(job.created_at), { addSuffix: true })
+                          : 'recently'
+                      }
+                    </span>
                   </div>
                   <div className="text-sm text-gray-600 mt-1">
                     {formatSalary(job.salary)}
@@ -94,9 +133,9 @@ export function JobListView({ jobs, onAction }: JobListViewProps) {
 
                 {/* Department */}
                 <div className="col-span-2">
-                  <span className="text-sm text-gray-900">{job.department}</span>
+                  <span className="text-sm text-gray-900">{job.department || 'No department'}</span>
                   <div className="text-xs text-gray-500 capitalize mt-1">
-                    {job.type.replace('-', ' ')} • {job.experience}
+                    {job.job_type ? job.job_type.replace('-', ' ') : 'Not specified'} • {job.experience_level || 'Not specified'}
                   </div>
                 </div>
 
@@ -104,14 +143,14 @@ export function JobListView({ jobs, onAction }: JobListViewProps) {
                 <div className="col-span-2">
                   <div className="flex items-center gap-1 text-sm text-gray-600">
                     <MapPin className="w-3 h-3" />
-                    <span className="line-clamp-1">{job.location}</span>
+                    <span className="line-clamp-1">{job.location || 'Location not specified'}</span>
                   </div>
                 </div>
 
                 {/* Status */}
                 <div className="col-span-1">
-                  <span className={`px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(job.status)}`}>
-                    {statusConfig?.label}
+                  <span className={`px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(job.status || 'draft')}`}>
+                    {statusConfig?.label || 'Draft'}
                   </span>
                 </div>
 
@@ -120,11 +159,11 @@ export function JobListView({ jobs, onAction }: JobListViewProps) {
                   <div className="flex items-center gap-4 text-sm text-gray-600">
                     <div className="flex items-center gap-1">
                       <Users className="w-4 h-4" />
-                      <span>{job.applicants}</span>
+                      <span>{job.applicants || 0}</span>
                     </div>
                     <div className="flex items-center gap-1">
                       <Eye className="w-4 h-4" />
-                      <span>{job.views}</span>
+                      <span>{job.views || 0}</span>
                     </div>
                   </div>
                   <Link

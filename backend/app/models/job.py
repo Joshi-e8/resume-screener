@@ -18,6 +18,7 @@ class JobStatus(str, Enum):
     CLOSED = "closed"
     EXPIRED = "expired"
 
+
 class JobType(str, Enum):
     FULL_TIME = "full-time"
     PART_TIME = "part-time"
@@ -25,17 +26,20 @@ class JobType(str, Enum):
     TEMPORARY = "temporary"
     INTERNSHIP = "internship"
 
+
 class ExperienceLevel(str, Enum):
     ENTRY = "entry"
     MID = "mid"
     SENIOR = "senior"
     EXECUTIVE = "executive"
 
+
 class SalaryInfo(BaseModel):
     min: Optional[int] = None
     max: Optional[int] = None
     currency: str = "USD"
     period: str = "yearly"  # yearly, monthly, hourly
+
 
 class PlatformPosting(BaseModel):
     platform_id: str
@@ -47,9 +51,10 @@ class PlatformPosting(BaseModel):
     applications_count: int = 0
     views_count: int = 0
 
+
 class Job(Document):
     """Job document model"""
-    
+
     # Basic job information
     title: Annotated[str, Indexed()]
     description: str
@@ -57,38 +62,38 @@ class Job(Document):
     location: str
     job_type: JobType = JobType.FULL_TIME
     experience_level: ExperienceLevel = ExperienceLevel.MID
-    
+
     # Job details
     requirements: List[str] = []
     responsibilities: List[str] = []
     benefits: List[str] = []
     skills: List[str] = []
-    
+
     # Salary and compensation
     salary: Optional[SalaryInfo] = None
-    
+
     # Job settings
     status: JobStatus = JobStatus.DRAFT
     remote_allowed: bool = False
     urgent: bool = False
-    
+
     # Posting information
     posted_platforms: List[PlatformPosting] = []
     total_applications: int = 0
     total_views: int = 0
-    
+
     # Dates
     closing_date: Optional[datetime] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     published_at: Optional[datetime] = None
-    
+
     # User association
     user_id: Annotated[str, Indexed()]
-    
+
     # Analytics
     analytics: Dict = Field(default_factory=dict)
-    
+
     class Settings:
         name = "jobs"
         indexes = [
@@ -100,8 +105,10 @@ class Job(Document):
             IndexModel([("skills", 1)]),
         ]
 
+
 class JobCreate(BaseModel):
     """Schema for creating a new job"""
+
     title: str = Field(..., min_length=1)
     description: str = Field(..., min_length=10)
     department: Optional[str] = None
@@ -117,8 +124,10 @@ class JobCreate(BaseModel):
     urgent: bool = False
     closing_date: Optional[datetime] = None
 
+
 class JobUpdate(BaseModel):
     """Schema for updating job information"""
+
     title: Optional[str] = None
     description: Optional[str] = None
     department: Optional[str] = None
@@ -135,8 +144,20 @@ class JobUpdate(BaseModel):
     status: Optional[JobStatus] = None
     closing_date: Optional[datetime] = None
 
+
+class CreatedByInfo(BaseModel):
+    """Schema for created by user information"""
+
+    id: str
+    full_name: str
+    email: str
+    job_title: Optional[str] = None
+    company_name: Optional[str] = None
+
+
 class JobResponse(BaseModel):
     """Schema for job response"""
+
     id: str
     title: str
     description: str
@@ -160,9 +181,20 @@ class JobResponse(BaseModel):
     updated_at: datetime
     published_at: Optional[datetime] = None
     user_id: str
-    
+    created_by: Optional[CreatedByInfo] = None
+
     @classmethod
-    def from_orm(cls, job: Job):
+    def from_orm(cls, job: Job, created_by_user=None):
+        created_by_info = None
+        if created_by_user:
+            created_by_info = CreatedByInfo(
+                id=str(created_by_user.id),
+                full_name=created_by_user.full_name,
+                email=created_by_user.email,
+                job_title=created_by_user.job_title,
+                company_name=created_by_user.company_name,
+            )
+
         return cls(
             id=str(job.id),
             title=job.title,
@@ -186,5 +218,6 @@ class JobResponse(BaseModel):
             created_at=job.created_at,
             updated_at=job.updated_at,
             published_at=job.published_at,
-            user_id=job.user_id
+            user_id=job.user_id,
+            created_by=created_by_info,
         )

@@ -9,17 +9,19 @@ import tempfile
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
+
 async def test_resume_parser():
     """Test resume parser with sample text"""
     print("🧪 Testing Resume Parser...")
-    
+
     try:
         from app.services.resume_parser import ResumeParser
+
         print("✅ Resume parser import successful")
     except Exception as e:
         print(f"❌ Resume parser import error: {e}")
         return
-    
+
     # Create sample resume text
     sample_resume_text = """
     John Doe
@@ -68,17 +70,17 @@ async def test_resume_parser():
     LANGUAGES
     English (Native), Spanish (Conversational)
     """
-    
+
     # Create temporary text file
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as tmp_file:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as tmp_file:
         tmp_file.write(sample_resume_text)
         tmp_file_path = tmp_file.name
-    
+
     try:
         # Test parser
         parser = ResumeParser()
         parsed_data = await parser.parse_resume(tmp_file_path)
-        
+
         print("✅ Resume parsing successful!")
         print(f"📧 Email: {parsed_data['contact_info']['email']}")
         print(f"📱 Phone: {parsed_data['contact_info']['phone']}")
@@ -87,65 +89,80 @@ async def test_resume_parser():
         print(f"🔧 Skills: {len(parsed_data['skills'])} found")
         print(f"🎓 Education: {len(parsed_data['education'])} entries")
         print(f"💼 Experience: {len(parsed_data['experience'])} entries")
-        print(f"📝 Summary: {parsed_data['summary'][:100]}..." if parsed_data['summary'] else "📝 Summary: None")
-        
+        print(
+            f"📝 Summary: {parsed_data['summary'][:100]}..."
+            if parsed_data["summary"]
+            else "📝 Summary: None"
+        )
+
         # Print some skills
-        if parsed_data['skills']:
+        if parsed_data["skills"]:
             print(f"   Skills found: {', '.join(parsed_data['skills'][:5])}")
-        
+
         # Print education
-        if parsed_data['education']:
-            edu = parsed_data['education'][0]
-            print(f"   Education: {edu.get('degree', 'N/A')} from {edu.get('institution', 'N/A')}")
-        
+        if parsed_data["education"]:
+            edu = parsed_data["education"][0]
+            print(
+                f"   Education: {edu.get('degree', 'N/A')} from {edu.get('institution', 'N/A')}"
+            )
+
         # Print experience
-        if parsed_data['experience']:
-            exp = parsed_data['experience'][0]
-            print(f"   Latest job: {exp.get('title', 'N/A')} at {exp.get('company', 'N/A')}")
-        
+        if parsed_data["experience"]:
+            exp = parsed_data["experience"][0]
+            print(
+                f"   Latest job: {exp.get('title', 'N/A')} at {exp.get('company', 'N/A')}"
+            )
+
         print("✅ Resume parser working correctly!")
-        
+
     except Exception as e:
         print(f"❌ Resume parsing error: {e}")
-    
+
     finally:
         # Clean up
         if os.path.exists(tmp_file_path):
             os.unlink(tmp_file_path)
 
+
 async def test_file_formats():
     """Test different file format support"""
     print("\n🧪 Testing File Format Support...")
-    
+
     try:
         from app.services.resume_parser import ResumeParser
+
         parser = ResumeParser()
-        
+
         print(f"✅ Supported formats: {parser.supported_formats}")
         print(f"✅ Tech skills database: {len(parser.tech_skills)} skills")
         print(f"✅ Email pattern: {parser.email_pattern.pattern}")
         print(f"✅ Phone pattern: {parser.phone_pattern.pattern}")
-        
+
         # Test pattern matching
         test_text = "Contact me at john.doe@example.com or call (555) 123-4567"
         email_match = parser.email_pattern.search(test_text)
         phone_match = parser.phone_pattern.search(test_text)
-        
-        print(f"✅ Email extraction test: {email_match.group() if email_match else 'Failed'}")
-        print(f"✅ Phone extraction test: {phone_match.group() if phone_match else 'Failed'}")
-        
+
+        print(
+            f"✅ Email extraction test: {email_match.group() if email_match else 'Failed'}"
+        )
+        print(
+            f"✅ Phone extraction test: {phone_match.group() if phone_match else 'Failed'}"
+        )
+
         print("✅ File format support working correctly!")
-        
+
     except Exception as e:
         print(f"❌ File format test error: {e}")
+
 
 async def main():
     """Run all tests"""
     print("🚀 Starting Resume Parser Tests...\n")
-    
+
     await test_file_formats()
     await test_resume_parser()
-    
+
     print("\n🎉 Resume parser tests completed!")
     print("\n📋 Parser Features:")
     print("   ✅ PDF text extraction with PDFPlumber")
@@ -157,6 +174,7 @@ async def main():
     print("   ✅ Professional summary extraction")
     print("   ✅ Certifications and languages")
     print("\n✅ PDFPlumber Resume Parser implementation complete!")
+
 
 if __name__ == "__main__":
     asyncio.run(main())

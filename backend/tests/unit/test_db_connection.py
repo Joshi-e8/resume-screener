@@ -8,7 +8,7 @@ import os
 import sys
 
 # Add the app directory to Python path
-sys.path.append(os.path.join(os.path.dirname(__file__), '.'))
+sys.path.append(os.path.join(os.path.dirname(__file__), "."))
 
 from app.core.database import init_database
 

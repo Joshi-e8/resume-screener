@@ -21,6 +21,7 @@ class CandidateStatus(str, Enum):
     REJECTED = "rejected"
     WITHDRAWN = "withdrawn"
 
+
 class EducationLevel(str, Enum):
     HIGH_SCHOOL = "high_school"
     ASSOCIATE = "associate"
@@ -28,6 +29,7 @@ class EducationLevel(str, Enum):
     MASTER = "master"
     DOCTORATE = "doctorate"
     PROFESSIONAL = "professional"
+
 
 class WorkExperience(BaseModel):
     company: str
@@ -37,6 +39,7 @@ class WorkExperience(BaseModel):
     description: Optional[str] = None
     is_current: bool = False
 
+
 class Education(BaseModel):
     institution: str
     degree: str
@@ -44,66 +47,68 @@ class Education(BaseModel):
     graduation_date: Optional[datetime] = None
     gpa: Optional[float] = None
 
+
 class JobMatchScore(BaseModel):
     job_id: str
     score: float  # 0-100
     match_details: Dict = Field(default_factory=dict)
     calculated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
+
 class Candidate(Document):
     """Candidate document model"""
-    
+
     # Personal information
     first_name: str
     last_name: str
     email: Optional[EmailStr] = None
     phone: Optional[str] = None
     location: Optional[str] = None
-    
+
     # Professional information
     current_job_title: Optional[str] = None
     current_company: Optional[str] = None
     years_of_experience: Optional[int] = None
     expected_salary: Optional[int] = None
-    
+
     # Skills and qualifications
     skills: List[str] = []
     certifications: List[str] = []
     languages: List[str] = []
-    
+
     # Work history
     work_experience: List[WorkExperience] = []
     education: List[Education] = []
-    
+
     # Resume information
     resume_filename: Optional[str] = None
     resume_file_path: Optional[str] = None
     resume_text: Optional[str] = None
     resume_parsed_data: Dict = Field(default_factory=dict)
-    
+
     # Application tracking
     status: CandidateStatus = CandidateStatus.NEW
     source: Optional[str] = None  # linkedin, indeed, direct, etc.
     applied_jobs: List[str] = []  # job IDs
-    
+
     # AI analysis
     ai_summary: Optional[str] = None
     job_match_scores: List[JobMatchScore] = []
     strengths: List[str] = []
     areas_for_improvement: List[str] = []
-    
+
     # Notes and feedback
     notes: List[Dict] = []  # {note: str, created_by: str, created_at: datetime}
     interview_feedback: List[Dict] = []
-    
+
     # Timestamps
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     last_contacted: Optional[datetime] = None
-    
+
     # User association
     user_id: Annotated[str, Indexed()]
-    
+
     class Settings:
         name = "candidates"
         indexes = [
@@ -116,8 +121,10 @@ class Candidate(Document):
             IndexModel([("years_of_experience", 1)]),
         ]
 
+
 class CandidateCreate(BaseModel):
     """Schema for creating a new candidate"""
+
     first_name: str = Field(..., min_length=1)
     last_name: str = Field(..., min_length=1)
     email: Optional[EmailStr] = None
@@ -133,8 +140,10 @@ class CandidateCreate(BaseModel):
     source: Optional[str] = None
     user_id: Optional[str] = None
 
+
 class CandidateUpdate(BaseModel):
     """Schema for updating candidate information"""
+
     first_name: Optional[str] = None
     last_name: Optional[str] = None
     email: Optional[EmailStr] = None
@@ -149,16 +158,20 @@ class CandidateUpdate(BaseModel):
     languages: Optional[List[str]] = None
     status: Optional[CandidateStatus] = None
 
+
 class CandidateSearchFilters(BaseModel):
     """Search filters for candidates"""
+
     skills: Optional[List[str]] = None
     experience_min: Optional[int] = None
     experience_max: Optional[int] = None
     location: Optional[str] = None
     job_title: Optional[str] = None
 
+
 class CandidateResponse(BaseModel):
     """Schema for candidate response"""
+
     id: str
     first_name: str
     last_name: str
@@ -185,7 +198,7 @@ class CandidateResponse(BaseModel):
     updated_at: datetime
     last_contacted: Optional[datetime] = None
     user_id: str
-    
+
     @classmethod
     def from_orm(cls, candidate: Candidate):
         return cls(
@@ -214,5 +227,5 @@ class CandidateResponse(BaseModel):
             created_at=candidate.created_at,
             updated_at=candidate.updated_at,
             last_contacted=candidate.last_contacted,
-            user_id=candidate.user_id
+            user_id=candidate.user_id,
         )

@@ -18,8 +18,36 @@ import {
 import { Job, jobStatuses } from "@/data/mockJobs";
 import { formatDistanceToNow } from "date-fns";
 
+// Flexible job type that can handle API responses with optional fields
+interface FlexibleJob {
+  id: string;
+  title?: string;
+  department?: string;
+  location?: string;
+  type?: string;
+  experience?: string;
+  salary?: {
+    min?: number;
+    max?: number;
+    currency?: string;
+  };
+  description?: string;
+  requirements?: string[];
+  responsibilities?: string[];
+  benefits?: string[];
+  skills?: string[];
+  status?: string;
+  applicants?: number;
+  views?: number;
+  postedDate?: string;
+  created_at?: string;
+  closingDate?: string;
+  createdBy?: string;
+  updatedAt?: string;
+}
+
 interface JobCardProps {
-  job: Job;
+  job: FlexibleJob;
   onAction: (jobId: string, action: string) => void;
 }
 
@@ -28,7 +56,7 @@ export function JobCard({ job, onAction }: JobCardProps) {
 
   const statusConfig = jobStatuses.find(s => s.value === job.status);
   
-  const getStatusColor = (status: string) => {
+  const getStatusColor = (status?: string) => {
     switch (status) {
       case 'active': return 'bg-green-100 text-green-800';
       case 'paused': return 'bg-yellow-100 text-yellow-800';
@@ -38,10 +66,14 @@ export function JobCard({ job, onAction }: JobCardProps) {
     }
   };
 
-  const formatSalary = (salary: Job['salary']) => {
+  const formatSalary = (salary?: FlexibleJob['salary']) => {
+    if (!salary || typeof salary.min !== 'number' || typeof salary.max !== 'number') {
+      return 'Salary not specified';
+    }
+    
     const formatter = new Intl.NumberFormat('en-US', {
       style: 'currency',
-      currency: salary.currency,
+      currency: salary.currency || 'USD',
       minimumFractionDigits: 0,
       maximumFractionDigits: 0,
     });
@@ -60,10 +92,10 @@ export function JobCard({ job, onAction }: JobCardProps) {
         <div className="flex-1">
           <div className="flex items-center gap-2 mb-2">
             <span className={`px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(job.status)}`}>
-              {statusConfig?.label}
+              {statusConfig?.label || 'Draft'}
             </span>
             <span className="text-xs text-gray-500 capitalize">
-              {job.type.replace('-', ' ')}
+              {job.type ? job.type.replace('-', ' ') : 'Not specified'}
             </span>
           </div>
           
@@ -72,11 +104,11 @@ export function JobCard({ job, onAction }: JobCardProps) {
             className="block group-hover:text-yellow-600 transition-colors duration-200"
           >
             <h3 className="text-lg font-semibold text-gray-900 mb-1 line-clamp-2">
-              {job.title}
+              {job.title || 'Untitled Job'}
             </h3>
           </Link>
           
-          <p className="text-sm text-gray-600 mb-2">{job.department}</p>
+          <p className="text-sm text-gray-600 mb-2">{job.department || 'No department'}</p>
         </div>
 
         {/* Actions Menu */}
@@ -160,12 +192,19 @@ export function JobCard({ job, onAction }: JobCardProps) {
       <div className="space-y-3 mb-4">
         <div className="flex items-center gap-2 text-sm text-gray-600">
           <MapPin className="w-4 h-4" />
-          <span>{job.location}</span>
+          <span>{job.location || 'Location not specified'}</span>
         </div>
 
         <div className="flex items-center gap-2 text-sm text-gray-600">
           <Calendar className="w-4 h-4" />
-          <span>Posted {formatDistanceToNow(new Date(job.postedDate), { addSuffix: true })}</span>
+          <span>
+            Posted {job.postedDate 
+              ? formatDistanceToNow(new Date(job.postedDate), { addSuffix: true })
+              : job.created_at 
+                ? formatDistanceToNow(new Date(job.created_at), { addSuffix: true })
+                : 'recently'
+            }
+          </span>
         </div>
 
         <div className="text-sm font-medium text-gray-900">
@@ -176,17 +215,25 @@ export function JobCard({ job, onAction }: JobCardProps) {
       {/* Skills */}
       <div className="mb-4">
         <div className="flex flex-wrap gap-1">
-          {job.skills.slice(0, 3).map((skill, index) => (
-            <span
-              key={index}
-              className="px-2 py-1 text-xs bg-gray-100 text-gray-700 rounded-md"
-            >
-              {skill}
-            </span>
-          ))}
-          {job.skills.length > 3 && (
+          {job.skills && job.skills.length > 0 ? (
+            <>
+              {job.skills.slice(0, 3).map((skill, index) => (
+                <span
+                  key={index}
+                  className="px-2 py-1 text-xs bg-gray-100 text-gray-700 rounded-md"
+                >
+                  {skill}
+                </span>
+              ))}
+              {job.skills.length > 3 && (
+                <span className="px-2 py-1 text-xs bg-gray-100 text-gray-500 rounded-md">
+                  +{job.skills.length - 3} more
+                </span>
+              )}
+            </>
+          ) : (
             <span className="px-2 py-1 text-xs bg-gray-100 text-gray-500 rounded-md">
-              +{job.skills.length - 3} more
+              No skills specified
             </span>
           )}
         </div>
@@ -197,11 +244,11 @@ export function JobCard({ job, onAction }: JobCardProps) {
         <div className="flex items-center gap-4 text-sm text-gray-600">
           <div className="flex items-center gap-1">
             <Users className="w-4 h-4" />
-            <span>{job.applicants} applicants</span>
+            <span>{job.applicants || 0} applicants</span>
           </div>
           <div className="flex items-center gap-1">
             <Eye className="w-4 h-4" />
-            <span>{job.views} views</span>
+            <span>{job.views || 0} views</span>
           </div>
         </div>
 
