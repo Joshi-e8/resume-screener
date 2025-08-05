@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { ErrorHandler } from "@/components/errors";
 
@@ -13,7 +13,7 @@ interface ErrorState {
   timestamp?: string;
 }
 
-export default function ErrorPage() {
+function ErrorPageContent() {
   const [errorState, setErrorState] = useState<ErrorState | null>(null);
   const searchParams = useSearchParams();
 
@@ -68,5 +68,19 @@ export default function ErrorPage() {
       requiredRole={errorState.requiredRole}
       redirectUrl={errorState.redirectUrl}
     />
+  );
+}
+
+export default function ErrorPage() {
+  return (
+    <Suspense fallback={
+      <ErrorHandler
+        statusCode={500}
+        message="Loading error details..."
+        errorId={`ERR_LOADING_${Date.now()}`}
+      />
+    }>
+      <ErrorPageContent />
+    </Suspense>
   );
 }
