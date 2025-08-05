@@ -52,7 +52,7 @@ class GroqAIService:
             analysis_text = response.choices[0].message.content
             return self._parse_analysis_response(analysis_text)
 
-        except Exception as e:
+        except Exception:  # noqa: E722
             # Fallback to mock analysis if API fails
             return self._mock_resume_analysis(parsed_data)
 
@@ -94,7 +94,7 @@ class GroqAIService:
             analysis_text = response.choices[0].message.content
             return self._parse_match_score_response(analysis_text)
 
-        except Exception as e:
+        except Exception:  # noqa: E722
             # Fallback to mock scoring if API fails
             return self._mock_job_match_score(parsed_resume, job_requirements)
 
@@ -127,7 +127,7 @@ class GroqAIService:
 
             return response.choices[0].message.content.strip()
 
-        except Exception as e:
+        except Exception:  # noqa: E722
             return self._mock_candidate_summary(parsed_data)
 
     async def extract_skills_from_text(self, text: str) -> List[str]:
@@ -138,7 +138,7 @@ class GroqAIService:
             prompt = f"""
             Extract all technical skills, programming languages, frameworks, tools, and technologies mentioned in this text.
             Return only a JSON array of skills, no other text.
-            
+
             Text: {text[:2000]}  # Limit text length
             """
 
@@ -169,7 +169,7 @@ class GroqAIService:
             except json.JSONDecodeError:
                 return self._mock_skill_extraction(text)
 
-        except Exception as e:
+        except Exception:  # noqa: E722
             return self._mock_skill_extraction(text)
 
     def _create_resume_analysis_prompt(
@@ -187,9 +187,9 @@ class GroqAIService:
             "overall_quality": "score from 1-10",
             "recommendations": ["suggestions for the candidate"]
         }}
-        
+
         Resume text: {resume_text[:3000]}
-        
+
         Parsed data: {json.dumps(parsed_data, default=str)[:1000]}
         """
 
@@ -214,10 +214,10 @@ class GroqAIService:
             "recommendations": ["suggestions for hiring decision"],
             "confidence_level": "high/medium/low"
         }}
-        
+
         Job Description: {job_description[:2000]}
         Job Requirements: {', '.join(job_requirements)}
-        
+
         Candidate Resume: {resume_text[:2000]}
         Candidate Skills: {', '.join(parsed_resume.get('skills', []))}
         """
@@ -230,12 +230,12 @@ class GroqAIService:
 
         return f"""
         Create a professional 2-3 sentence summary for this candidate highlighting their key qualifications:
-        
+
         Skills: {skills}
         Experience: {len(experience)} positions
         Education: {education[0].get('degree', 'N/A') if education else 'N/A'}
         Summary from resume: {parsed_data.get('summary', '')[:200]}
-        
+
         Focus on their strongest qualifications and career highlights.
         """
 
@@ -327,14 +327,30 @@ class GroqAIService:
         """Mock candidate summary for development"""
         skills = parsed_data.get("skills", [])
         experience = parsed_data.get("experience", [])
-        education = parsed_data.get("education", [])
+        _ = parsed_data.get("education", [])  # noqa: F841
 
         if skills and experience:
-            return f"Experienced professional with {len(experience)} years in {skills[0] if skills else 'technology'} and expertise in {', '.join(skills[:3])}. Strong background in software development with proven track record of delivering results."
+            skills_text = ", ".join(skills[:3])
+            return (
+                f"Experienced professional with {len(experience)} years in "
+                f"{skills[0] if skills else 'technology'} and expertise in "
+                f"{skills_text}. Strong background in software development "
+                f"with proven track record of delivering results."
+            )
         elif skills:
-            return f"Technical professional with strong skills in {', '.join(skills[:3])}. Demonstrates solid foundation in technology and eagerness to contribute to innovative projects."
+            skills_text = " ".join(skills[:3])
+            return (
+                f"Technical professional with strong skills in {skills_text}. "
+                f"Demonstrates solid foundation in technology and eagerness "
+                f"to contribute to innovative projects."
+            )
         else:
-            return "Motivated professional with diverse background and strong problem-solving abilities. Demonstrates excellent communication skills and adaptability in dynamic environments."
+            return (
+                "Motivated professional with diverse background and strong "
+                "problem-solving abilities. Demonstrates excellent "
+                "communication skills and adaptability in dynamic "
+                "environments."
+            )
 
     def _mock_skill_extraction(self, text: str) -> List[str]:
         """Mock skill extraction for development"""
@@ -350,50 +366,41 @@ class GroqAIService:
             "MongoDB",
             "PostgreSQL",
             "REST API",
-            "Machine Learning",
-            "Data Analysis",
-            "Project Management",
         ]
-
         found_skills = []
         text_lower = text.lower()
-
         for skill in common_skills:
             if skill.lower() in text_lower:
                 found_skills.append(skill)
 
-        return found_skills[:10]  # Return top 10 matches
+        return found_skills[:10]  # Return top 10 skills
 
-    def _parse_analysis_response(self, response_text: str) -> Dict[str, Any]:
+    def _parse_analysis_response(self, analysis_text: str) -> Dict[str, Any]:
         """Parse AI analysis response"""
         try:
-            return json.loads(response_text)
-        except json.JSONDecodeError:
-            # Fallback parsing if JSON is malformed
-            return {
-                "strengths": ["AI analysis completed"],
-                "areas_for_improvement": ["Continue professional development"],
-                "experience_level": "mid",
-                "key_skills": ["Communication", "Problem Solving"],
-                "career_progression": "Positive trajectory",
-                "overall_quality": 8.0,
-                "recommendations": ["Strong candidate potential"],
-            }
+            # Try to extract JSON from the response
+            import re
 
-    def _parse_match_score_response(self, response_text: str) -> Dict[str, Any]:
+            json_match = re.search(r"\{.*\}", analysis_text, re.DOTALL)
+            if json_match:
+                return json.loads(json_match.group())
+            else:
+                # Fallback to mock if parsing fails
+                return self._mock_resume_analysis({})
+        except (json.JSONDecodeError, AttributeError):
+            return self._mock_resume_analysis({})
+
+    def _parse_match_score_response(self, analysis_text: str) -> Dict[str, Any]:
         """Parse AI match score response"""
         try:
-            return json.loads(response_text)
-        except json.JSONDecodeError:
-            # Fallback scoring if JSON is malformed
-            return {
-                "overall_score": 75.0,
-                "skill_match_score": 70.0,
-                "experience_match_score": 75.0,
-                "education_match_score": 80.0,
-                "cultural_fit_score": 75.0,
-                "strengths": ["Good technical background"],
-                "gaps": ["Some areas for development"],
-                "recommendations": ["Consider for interview"],
-                "confidence_level": "medium",
-            }
+            # Try to extract JSON from the response
+            import re
+
+            json_match = re.search(r"\{.*\}", analysis_text, re.DOTALL)
+            if json_match:
+                return json.loads(json_match.group())
+            else:
+                # Fallback to mock if parsing fails
+                return self._mock_job_match_score({}, [])
+        except (json.JSONDecodeError, AttributeError):
+            return self._mock_job_match_score({}, [])

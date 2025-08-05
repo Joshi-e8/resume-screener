@@ -2,9 +2,8 @@
 User service for user management operations
 """
 
-import secrets
 from datetime import datetime, timezone
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, Optional
 
 import jwt
 import requests
@@ -26,7 +25,9 @@ oauth = OAuth()
 
 oauth.register(
     name="google",
-    server_metadata_url="https://accounts.google.com/.well-known/openid-configuration",
+    server_metadata_url=(
+        "https://accounts.google.com/.well-known/openid-configuration"
+    ),
     client_id=settings.GOOGLE_CLIENT_ID,
     client_secret=settings.GOOGLE_CLIENT_SECRET,
     client_kwargs={"scope": "openid email profile"},
@@ -82,10 +83,12 @@ class UserService:
         )  # OTP expires in 5 minutes
 
         verification_url = (
-            f"{settings.BACKEND_URL}{settings.API_V1_STR}/auth/verify-otp/{user.id}/"
+            f"{settings.BACKEND_URL}{settings.API_V1_STR}"
+            f"/auth/verify-otp/{user.id}/"
         )
         resend_otp_url = (
-            f"{settings.BACKEND_URL}{settings.API_V1_STR}/auth/resend-otp/{user.id}/"
+            f"{settings.BACKEND_URL}{settings.API_V1_STR}"
+            f"/auth/resend-otp/{user.id}/"
         )
         return {
             "message": "OTP generated successfully",
@@ -104,15 +107,16 @@ class UserService:
             try:
                 # Check if token is an ID token (JWT format) or access token
                 if token.count(".") == 2:  # JWT format (ID token)
-                    # For ID tokens from NextAuth, we can decode without nonce verification
-                    # since NextAuth has already verified it
+                    # For ID tokens from NextAuth, we can decode without
+                    # nonce verification since NextAuth has already verified it
 
                     # Get Google's public keys for verification
                     jwks_url = "https://www.googleapis.com/oauth2/v3/certs"
                     jwks_response = requests.get(jwks_url)
-                    jwks = jwks_response.json()
+                    _ = jwks_response.json()  # noqa: F841
 
-                    # Decode the token (NextAuth has already verified it, so we skip verification)
+                    # Decode the token (NextAuth has already verified it,
+                    # so we skip verification)
                     user_info = jwt.decode(token, options={"verify_signature": False})
 
                     return {
@@ -134,18 +138,17 @@ class UserService:
                             "email": user_info.get("email"),
                             "name": user_info.get("name"),
                             "picture": user_info.get("picture"),
-                            "sub": user_info.get(
-                                "id"
-                            ),  # Google API uses 'id' instead of 'sub'
+                            "sub": user_info.get("id"),  # Google API uses 'id'
                         }
                     else:
                         print(
-                            f"Google API error: {response.status_code} - {response.text}"
+                            f"Google API error: {response.status_code} - "
+                            f"{response.text}"
                         )
                         return None
 
-            except Exception as e:
-                print("Google token verification failed:", e)
+            except Exception:
+                print("Google token verification failed")
                 return None
 
         elif provider == "linkedin":
@@ -166,15 +169,18 @@ class UserService:
                 email_data = user_email.json()
                 email = email_data["elements"][0]["handle~"]["emailAddress"]
 
-                full_name = f"{profile_data.get('localizedFirstName', '')} {profile_data.get('localizedLastName', '')}"
+                full_name = (
+                    f"{profile_data.get('localizedFirstName', '')} "
+                    f"{profile_data.get('localizedLastName', '')}"
+                )
 
                 return {
                     "email": email,
                     "name": full_name,
                 }
 
-            except Exception as e:
-                print("LinkedIn token verification failed:", e)
+            except Exception:
+                print("LinkedIn token verification failed")
                 return None
 
         else:
@@ -281,8 +287,8 @@ class UserService:
             )
             await redis.close()
             return True
-        except Exception as e:
-            print(f"Failed to store refresh token: {e}")
+        except Exception:
+            print("Failed to store refresh token")
             return False
 
     async def verify_refresh_token(self, user_id: str, refresh_token: str) -> bool:
@@ -305,8 +311,8 @@ class UserService:
 
             return stored_token.decode() == refresh_token
 
-        except Exception as e:
-            print(f"Failed to verify refresh token: {e}")
+        except Exception:
+            print("Failed to verify refresh token")
             return False
 
     async def refresh_access_token(
@@ -336,8 +342,8 @@ class UserService:
 
             return {"access_token": new_access_token, "token_type": "bearer"}
 
-        except Exception as e:
-            print(f"Failed to refresh access token: {e}")
+        except Exception:
+            print("Failed to refresh access token")
             return None
 
     async def revoke_refresh_token(self, user_id: str) -> bool:
@@ -349,13 +355,14 @@ class UserService:
             await redis.delete(f"refresh_token:{user_id}")
             await redis.close()
             return True
-        except Exception as e:
-            print(f"Failed to revoke refresh token: {e}")
+        except Exception:
+            print("Failed to revoke refresh token")
             return False
 
     async def revoke_all_user_tokens(self, user_id: str) -> bool:
         """
-        Revoke all refresh tokens for a user (useful for logout from all devices)
+        Revoke all refresh tokens for a user
+        (useful for logout from all devices)
         """
         try:
             redis = aioredis.from_url(settings.REDIS_URL)
@@ -366,8 +373,8 @@ class UserService:
                 await redis.delete(*keys)
             await redis.close()
             return True
-        except Exception as e:
-            print(f"Failed to revoke all user tokens: {e}")
+        except Exception:
+            print("Failed to revoke all user tokens")
             return False
 
     async def activate_user(self, user_id: str) -> bool:

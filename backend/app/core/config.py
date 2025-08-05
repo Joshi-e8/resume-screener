@@ -2,7 +2,6 @@
 Application configuration settings
 """
 
-import os
 from typing import List, Optional
 
 from pydantic_settings import BaseSettings
@@ -33,8 +32,6 @@ class Settings(BaseSettings):
     SOCIAL_AUTH_REDIRECT_URI: str = "http://localhost:8000/auth/callback"
     GOOGLE_CLIENT_ID: Optional[str] = None
     GOOGLE_CLIENT_SECRET: Optional[str] = None
-    # LINKEDIN_CLIENT_ID: Optional[str] = None
-    # LINKEDIN_CLIENT_SECRET: Optional[str] = None
 
     # AI Services Configuration
     GROQ_API_KEY: Optional[str] = None

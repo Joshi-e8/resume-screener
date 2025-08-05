@@ -2,13 +2,20 @@
 Resume upload and management endpoints
 """
 
-import os
+# import os  # noqa: F401
 import tempfile
 from datetime import datetime
 from typing import Any, List
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
-from fastapi.responses import JSONResponse
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    UploadFile,
+    status,
+)
 
 from app.core.security import get_current_user
 from app.models.analytics import EventType
@@ -70,10 +77,10 @@ async def upload_resume(
             "processing_time_ms": processing_time,
         }
 
-    except Exception as e:
+    except Exception:  # noqa: E722
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to process resume: {str(e)}",
+            detail=f"Failed to process resume: {str(Exception)}",
         )
 
     finally:

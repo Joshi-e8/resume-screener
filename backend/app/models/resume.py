@@ -6,7 +6,6 @@ from datetime import datetime, timezone
 from typing import List, Optional
 
 from beanie import Document
-from bson import ObjectId
 from pydantic import BaseModel, Field
 
 

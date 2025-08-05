@@ -7,7 +7,6 @@ from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import JSONResponse
-from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel, EmailStr
 
 from app.core.config import settings
@@ -15,8 +14,6 @@ from app.core.security import (
     create_access_token,
     create_refresh_token,
     get_current_user,
-    get_password_hash,
-    verify_password,
 )
 from app.models.user import User, UserCreate, UserResponse
 from app.services.user_service import UserService
@@ -142,23 +139,9 @@ async def register(user_data: RegisterRequest) -> Any:
 
     return await user_service.generate_otp(user.email)
 
-    # # Generate access token for immediate login
-    # access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-    # access_token = create_access_token(
-    #     data={"sub": str(user.id)}, expires_delta=access_token_expires
-    # )
-
-    # return {
-    #     "access_token": access_token,
-    #     "token_type": "bearer",
-    #     "expires_in": settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
-    #     "user": UserResponse.from_orm(user)
-    # }
-
 
 @router.post("/social-login/{provider}/", response_model=Token)
 async def social_login(provider: str, request: SocialLoginRequest):
-    # print("Somethi")
     """
     Social login endpoint for third-party authentication providers
     """
@@ -170,7 +153,7 @@ async def social_login(provider: str, request: SocialLoginRequest):
             detail="Invalid authentication provider",
         )
 
-    # 👇 Verify token with the provider
+    # Verify token with the provider
     user_info = await user_service.verify_social_token(provider, request.token)
 
     if not user_info or not user_info.get("email"):
@@ -241,7 +224,7 @@ async def verify_otp(user_id: str, otp_payload: OtpPayload) -> Any:
                 content={
                     "result": "failure",
                     "errors": {
-                        "otp": "The entered OTP is incorrect. Please try again."
+                        "otp": "The entered OTP is incorrect. " "Please try again."
                     },
                 },
             )
@@ -251,7 +234,7 @@ async def verify_otp(user_id: str, otp_payload: OtpPayload) -> Any:
 
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:  # noqa: E722
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={"result": "failure", "errors": {"otp": "OTP verification failed"}},

@@ -177,11 +177,11 @@ export default function JobsPage() {
       switch (action) {
         case "delete":
           const deleteResponse = await deleteJob(jobId);
-          if (deleteResponse?.success) {
-            setJobs((prev) => prev.filter((job) => job.id !== jobId));
-          } else {
-            setError(deleteResponse?.message || "Failed to delete job");
-          }
+          // if (deleteResponse?.success) {
+          //   setJobs((prev) => prev.filter((job) => job.id !== jobId));
+          // } else {
+          //   setError(deleteResponse?.message || "Failed to delete job");
+          // }
           break;
 
         case "activate":

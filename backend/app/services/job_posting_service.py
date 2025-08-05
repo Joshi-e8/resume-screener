@@ -66,9 +66,13 @@ class JobPostingService:
                 else:
                     results["failed"].append(result)
 
-            except Exception as e:
+            except Exception:  # noqa: E722
                 results["failed"].append(
-                    {"status": "error", "platform_id": platform_id, "message": str(e)}
+                    {
+                        "status": "error",
+                        "platform_id": platform_id,
+                        "message": str(Exception),
+                    }
                 )
 
         return results

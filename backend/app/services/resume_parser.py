@@ -2,9 +2,8 @@
 Resume parsing service using PDFPlumber and other libraries
 """
 
-import os
+# import os  # noqa: F401
 import re
-import tempfile
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
@@ -147,16 +146,16 @@ class ResumeParser:
                     page_text = page.extract_text()
                     if page_text:
                         text += page_text + "\n"
-        except Exception as e:
+        except Exception:  # noqa: E722
             # Fallback to PyPDF2 if PDFPlumber fails
             try:
                 with open(file_path, "rb") as file:
                     pdf_reader = PyPDF2.PdfReader(file)
                     for page in pdf_reader.pages:
                         text += page.extract_text() + "\n"
-            except Exception as fallback_error:
+            except Exception:  # noqa: E722
                 raise Exception(
-                    f"Failed to extract PDF text: {e}, Fallback error: {fallback_error}"
+                    f"Failed to extract PDF text: {str(Exception)}, Fallback error: {fallback_error}"
                 )
 
         return text.strip()
@@ -169,8 +168,8 @@ class ResumeParser:
             for paragraph in doc.paragraphs:
                 text += paragraph.text + "\n"
             return text.strip()
-        except Exception as e:
-            raise Exception(f"Failed to extract DOCX text: {e}")
+        except Exception:  # noqa: E722
+            raise Exception(f"Failed to extract DOCX text: {str(Exception)}")
 
     async def _extract_txt_text(self, file_path: str) -> str:
         """Extract text from TXT file"""
@@ -178,8 +177,8 @@ class ResumeParser:
             async with aiofiles.open(file_path, "r", encoding="utf-8") as file:
                 text = await file.read()
             return text.strip()
-        except Exception as e:
-            raise Exception(f"Failed to extract TXT text: {e}")
+        except Exception:  # noqa: E722
+            raise Exception(f"Failed to extract TXT text: {str(Exception)}")
 
     async def _parse_text_content(self, text: str) -> Dict[str, Any]:
         """Parse structured data from resume text"""

@@ -53,7 +53,7 @@ class CandidateService:
         """
         try:
             return await Candidate.get(PydanticObjectId(candidate_id))
-        except Exception:
+        except Exception:  # noqa: E722
             return None
 
     async def get_candidates(

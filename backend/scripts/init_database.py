@@ -4,7 +4,8 @@ Creates indexes, default data, and performs initial setup
 """
 
 import asyncio
-import os
+
+# import os  # noqa: F401
 import sys
 from datetime import datetime
 
@@ -59,8 +60,8 @@ async def create_default_admin_user():
         else:
             print("ℹ️  Admin user already exists")
 
-    except Exception as e:
-        print(f"❌ Error creating admin user: {e}")
+    except Exception:  # noqa: E722
+        print(f"❌ Error creating admin user: {str(Exception)}")
 
 
 async def create_demo_user():
@@ -104,8 +105,8 @@ async def create_demo_user():
         else:
             print("ℹ️  Demo user already exists")
 
-    except Exception as e:
-        print(f"❌ Error creating demo user: {e}")
+    except Exception:  # noqa: E722
+        print(f"❌ Error creating demo user: {str(Exception)}")
 
 
 async def verify_indexes():
@@ -128,8 +129,8 @@ async def verify_indexes():
         client.close()
         print("✅ Index verification completed")
 
-    except Exception as e:
-        print(f"❌ Error verifying indexes: {e}")
+    except Exception:  # noqa: E722
+        print(f"❌ Error verifying indexes: {str(Exception)}")
 
 
 async def main():
@@ -156,8 +157,8 @@ async def main():
         print("   Demo:  demo@resumescreener.com / demo123!")
         print("\n⚠️  Remember to change default passwords in production!")
 
-    except Exception as e:
-        print(f"❌ Database initialization failed: {e}")
+    except Exception:  # noqa: E722
+        print(f"❌ Database initialization failed: {str(Exception)}")
         sys.exit(1)
 
 

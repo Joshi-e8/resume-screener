@@ -3,7 +3,7 @@
 Environment setup script for Resume Screener Backend
 """
 
-import os
+# import os  # noqa: F401
 import secrets
 import shutil
 from pathlib import Path
@@ -129,15 +129,16 @@ def validate_environment():
                 print(f"⚠️  {name}: not configured (optional)")
 
         if missing_settings:
-            print(f"\n❌ Missing required settings: {', '.join(missing_settings)}")
+            missing_list = ", ".join(missing_settings)
+            print(f"\n❌ Missing required settings: {missing_list}")
             print("Please update your .env file with the required values.")
             return False
         else:
             print("\n✅ All required settings are configured!")
             return True
 
-    except Exception as e:
-        print(f"❌ Error validating environment: {e}")
+    except Exception:  # noqa: E722
+        print(f"❌ Error validating environment: {str(Exception)}")
         return False
 
 
@@ -175,8 +176,8 @@ def show_environment_info():
             status = "✅ Configured" if configured else "❌ Not configured"
             print(f"   {name}: {status}")
 
-    except Exception as e:
-        print(f"❌ Error showing environment info: {e}")
+    except Exception:  # noqa: E722
+        print(f"❌ Error showing environment info: {str(Exception)}")
 
 
 def main():

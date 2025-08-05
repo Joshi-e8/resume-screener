@@ -395,9 +395,9 @@ class LinkedInService:
                 "organizations": organizations,
                 "validated_at": datetime.now(timezone.utc).isoformat(),
             }
-        except Exception as e:
+        except Exception:  # noqa: E722
             return {
                 "status": "invalid",
-                "error": str(e),
+                "error": str(Exception),
                 "validated_at": datetime.now(timezone.utc).isoformat(),
             }

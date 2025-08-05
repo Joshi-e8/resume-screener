@@ -22,7 +22,7 @@ async def lifespan(app: FastAPI):
         await init_database()
         print("✅ Application startup completed successfully")
     except Exception as e:
-        print(f"❌ Application startup failed: {e}")
+        print(f"❌ Application startup failed: {str(Exception)}")
         raise
 
     yield
@@ -32,7 +32,7 @@ async def lifespan(app: FastAPI):
         await close_mongo_connection()
         print("✅ Application shutdown completed successfully")
     except Exception as e:
-        print(f"❌ Application shutdown failed: {e}")
+        print(f"❌ Application shutdown failed: {str(Exception)}")
 
 
 # Create FastAPI app

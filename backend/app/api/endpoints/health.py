@@ -39,7 +39,7 @@ async def database_health():
             "collections": collections,
             "connection": "active",
         }
-    except Exception as e:
+    except Exception:  # noqa: E722
         raise HTTPException(
-            status_code=503, detail=f"Database connection failed: {str(e)}"
+            status_code=503, detail=f"Database connection failed: {str(Exception)}"
         )

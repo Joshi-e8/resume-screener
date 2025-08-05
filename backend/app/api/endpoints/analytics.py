@@ -3,7 +3,7 @@ Analytics and reporting endpoints
 """
 
 from datetime import datetime, timedelta
-from typing import Any, List, Optional
+from typing import Any, List
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel

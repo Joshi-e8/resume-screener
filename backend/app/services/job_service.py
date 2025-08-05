@@ -2,13 +2,14 @@
 Job service for job management operations
 """
 
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 
 from beanie import PydanticObjectId
 
 from app.models.job import Job, JobCreate, JobStatus, JobUpdate
 from app.models.user import User
+from app.utils.timezone import now_with_timezone
 
 
 class JobService:
@@ -33,10 +34,10 @@ class JobService:
             remote_allowed=job_data.remote_allowed,
             urgent=job_data.urgent,
             closing_date=job_data.closing_date,
-            status=JobStatus.DRAFT,
+            status=job_data.status or JobStatus.DRAFT,
             user_id=user_id,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=now_with_timezone(),
+            updated_at=now_with_timezone(),
         )
 
         await job.insert()
@@ -48,7 +49,7 @@ class JobService:
         """
         try:
             return await Job.get(PydanticObjectId(job_id))
-        except Exception:
+        except Exception:  # noqa: E722
             return None
 
     async def get_job_with_user(
@@ -64,7 +65,7 @@ class JobService:
 
             user = await User.get(PydanticObjectId(job.user_id))
             return job, user
-        except Exception:
+        except Exception:  # noqa: E722
             return None, None
 
     async def get_jobs(
@@ -125,7 +126,7 @@ class JobService:
         for field, value in update_data.items():
             setattr(job, field, value)
 
-        job.updated_at = datetime.now(timezone.utc)
+        job.updated_at = now_with_timezone()
         await job.save()
 
         return job
@@ -150,8 +151,8 @@ class JobService:
             return None
 
         job.status = JobStatus.ACTIVE
-        job.published_at = datetime.now(timezone.utc)
-        job.updated_at = datetime.now(timezone.utc)
+        job.published_at = now_with_timezone()
+        job.updated_at = now_with_timezone()
         await job.save()
 
         return job
@@ -165,7 +166,7 @@ class JobService:
             return None
 
         job.status = JobStatus.PAUSED
-        job.updated_at = datetime.now(timezone.utc)
+        job.updated_at = now_with_timezone()
         await job.save()
 
         return job
@@ -179,7 +180,7 @@ class JobService:
             return None
 
         job.status = JobStatus.CLOSED
-        job.updated_at = datetime.now(timezone.utc)
+        job.updated_at = now_with_timezone()
         await job.save()
 
         return job
@@ -191,6 +192,8 @@ class JobService:
         job = await self.get_job_by_id(job_id)
         if not job or job.user_id != user_id:
             return None
+
+        current_time = now_with_timezone()
 
         return {
             "job_id": job_id,
@@ -209,9 +212,7 @@ class JobService:
             "created_at": job.created_at,
             "published_at": job.published_at,
             "days_active": (
-                (datetime.now(timezone.utc) - job.published_at).days
-                if job.published_at
-                else 0
+                (current_time - job.published_at).days if job.published_at else 0
             ),
         }
 
@@ -259,56 +260,6 @@ class JobService:
 
         jobs = await Job.find(query).sort("-created_at").to_list()
         return jobs
-
-    # async def get_jobs_with_users(
-    #     self,
-    #     user_id: str,
-    #     skip: int = 0,
-    #     limit: int = 10,
-    #     search: Optional[str] = None,
-    #     status: Optional[JobStatus] = None,
-    #     department: Optional[str] = None
-    # ) -> Tuple[List[Tuple[Job, Optional[User]]], int]:
-    #     """
-    #     Get jobs with filtering and pagination, including user information for each job
-    #     """
-    #     query = {"user_id": user_id}
-
-    #     # Add filters
-    #     if status:
-    #         query["status"] = status
-
-    #     if department:
-    #         query["department"] = department
-
-    #     # Build search query
-    #     if search:
-    #         search_query = {
-    #             "$or": [
-    #                 {"title": {"$regex": search, "$options": "i"}},
-    #                 {"description": {"$regex": search, "$options": "i"}},
-    #                 {"skills": {"$in": [search]}},
-    #                 {"location": {"$regex": search, "$options": "i"}}
-    #             ]
-    #         }
-    #         query.update(search_query)
-
-    #     # Get total count
-    #     total = await Job.find(query).count()
-
-    #     # Get jobs with pagination
-    #     jobs = await Job.find(query).skip(skip).limit(limit).sort("-created_at").to_list()
-
-    #     # Get user information for each job
-    #     jobs_with_users = []
-    #     for job in jobs:
-    #         try:
-    #             user = await User.get(PydanticObjectId(job.user_id))
-    #             jobs_with_users.append((job, user))
-    #         except Exception:
-    #             jobs_with_users.append((job, None))
-
-    #     return jobs_with_users, total
 
     async def search_jobs_with_filters(
         self,
@@ -428,7 +379,7 @@ class JobService:
             try:
                 user = await User.get(PydanticObjectId(job.user_id))
                 jobs_with_users.append((job, user))
-            except Exception:
+            except Exception:  # noqa: E722
                 jobs_with_users.append((job, None))
 
         return jobs_with_users, total

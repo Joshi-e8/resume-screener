@@ -67,10 +67,10 @@ async def connect_platform(
             "message": f"Successfully connected to {platform_id}",
             "connection": connection,
         }
-    except Exception as e:
+    except Exception:  # noqa: E722
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Failed to connect to {platform_id}: {str(e)}",
+            detail=f"Failed to connect to {platform_id}: {str(Exception)}",
         )
 
 
@@ -88,10 +88,10 @@ async def disconnect_platform(
             user_id=str(current_user.id), platform_id=platform_id
         )
         return {"message": f"Successfully disconnected from {platform_id}"}
-    except Exception as e:
+    except Exception:  # noqa: E722
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Failed to disconnect from {platform_id}: {str(e)}",
+            detail=f"Failed to disconnect from {platform_id}: {str(Exception)}",
         )
 
 
@@ -109,10 +109,10 @@ async def test_platform_connection(
             user_id=str(current_user.id), platform_id=platform_id
         )
         return result
-    except Exception as e:
+    except Exception:  # noqa: E722
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Connection test failed: {str(e)}",
+            detail=f"Connection test failed: {str(Exception)}",
         )
 
 
@@ -133,10 +133,10 @@ async def post_job_to_platforms(
             custom_settings=posting_request.custom_settings,
         )
         return results
-    except Exception as e:
+    except Exception:  # noqa: E722
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to post job: {str(e)}",
+            detail=f"Failed to post job: {str(Exception)}",
         )
 
 
@@ -154,10 +154,10 @@ async def get_platform_jobs(
             user_id=str(current_user.id), platform_id=platform_id
         )
         return jobs
-    except Exception as e:
+    except Exception:  # noqa: E722
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Failed to fetch jobs from {platform_id}: {str(e)}",
+            detail=f"Failed to fetch jobs from {platform_id}: {str(Exception)}",
         )
 
 
@@ -175,10 +175,10 @@ async def sync_platform_data(
             user_id=str(current_user.id), platform_id=platform_id
         )
         return sync_result
-    except Exception as e:
+    except Exception:  # noqa: E722
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Failed to sync data from {platform_id}: {str(e)}",
+            detail=f"Failed to sync data from {platform_id}: {str(Exception)}",
         )
 
 
@@ -196,10 +196,10 @@ async def get_platform_analytics(
             user_id=str(current_user.id), platform_id=platform_id, days=days
         )
         return analytics
-    except Exception as e:
+    except Exception:  # noqa: E722
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Failed to get analytics for {platform_id}: {str(e)}",
+            detail=f"Failed to get analytics for {platform_id}: {str(Exception)}",
         )
 
 

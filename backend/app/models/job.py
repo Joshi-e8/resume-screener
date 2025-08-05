@@ -2,13 +2,30 @@
 Job models for job posting and management
 """
 
-from datetime import datetime, timezone
+import time
+import zoneinfo
+from datetime import datetime
 from enum import Enum
 from typing import Annotated, Dict, List, Optional
 
 from beanie import Document, Indexed
 from pydantic import BaseModel, Field
 from pymongo import IndexModel
+
+
+def get_current_timezone():
+    """Get the current system timezone"""
+    try:
+        # Get the system timezone
+        return zoneinfo.ZoneInfo(time.tzname[0])
+    except Exception:  # noqa: E722
+        # Fallback to local timezone
+        return datetime.now().astimezone().tzinfo
+
+
+def now_with_timezone():
+    """Get current datetime with system timezone"""
+    return datetime.now(get_current_timezone())
 
 
 class JobStatus(str, Enum):
@@ -84,8 +101,8 @@ class Job(Document):
 
     # Dates
     closing_date: Optional[datetime] = None
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=now_with_timezone)
+    updated_at: datetime = Field(default_factory=now_with_timezone)
     published_at: Optional[datetime] = None
 
     # User association
@@ -123,6 +140,7 @@ class JobCreate(BaseModel):
     remote_allowed: bool = False
     urgent: bool = False
     closing_date: Optional[datetime] = None
+    status: Optional[JobStatus] = JobStatus.DRAFT
 
 
 class JobUpdate(BaseModel):

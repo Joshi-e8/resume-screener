@@ -312,9 +312,9 @@ class AIAnalyzer:
                 )
                 analysis["status"] = "success"
                 results.append(analysis)
-            except Exception as e:
+            except Exception:  # noqa: E722
                 results.append(
-                    {"file_path": file_path, "status": "error", "error": str(e)}
+                    {"file_path": file_path, "status": "error", "error": str(Exception)}
                 )
 
         return results

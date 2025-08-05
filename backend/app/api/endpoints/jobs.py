@@ -9,8 +9,10 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from app.core.security import get_current_user
-from app.models.job import Job, JobCreate, JobResponse, JobStatus, JobUpdate
+from app.models.analytics import EventType
+from app.models.job import JobCreate, JobResponse, JobStatus, JobUpdate
 from app.models.user import User
+from app.services.analytics_service import AnalyticsService
 from app.services.job_service import JobService
 
 router = APIRouter()
@@ -29,6 +31,11 @@ class JobDetailsResponse(BaseModel):
     result: str = "success"
     message: str = "Job details retrieved successfully"
     records: JobResponse
+
+
+class JobCreateResponse(BaseModel):
+    result: str = "success"
+    message: str = "Job has been created successfully"
 
 
 @router.get("/", response_model=JobListResponse)
@@ -80,10 +87,11 @@ async def create_job(
     """
     job_service = JobService()
     job = await job_service.create_job(job_data, str(current_user.id))
-
-    # Track analytics event
-    from app.models.analytics import EventType
-    from app.services.analytics_service import AnalyticsService
+    if not job:
+        raise JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content={"result": "failure", "message": "Failed to create job"},
+        )
 
     analytics_service = AnalyticsService()
     await analytics_service.track_event(
@@ -94,7 +102,13 @@ async def create_job(
         properties={"title": job.title, "department": job.department},
     )
 
-    return JobResponse.from_orm(job)
+    return JSONResponse(
+        status_code=status.HTTP_201_CREATED,
+        content={
+            "result": "success",
+            "message": "Job has been created successfully",
+        },
+    )
 
 
 @router.get("/{job_id}", response_model=JobDetailsResponse)

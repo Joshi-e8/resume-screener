@@ -3,7 +3,7 @@ Security utilities for authentication and authorization
 """
 
 from datetime import datetime, timedelta, timezone
-from typing import Any, Optional, Union
+from typing import Optional
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer

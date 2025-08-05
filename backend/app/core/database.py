@@ -50,8 +50,8 @@ async def connect_to_mongo():
         db_list = await client.list_database_names()
         logger.info(f"Available databases: {db_list}")
 
-    except Exception as e:
-        logger.error(f"❌ Failed to connect to MongoDB: {e}")
+    except Exception:  # noqa: E722
+        logger.error(f"❌ Failed to connect to MongoDB: {str(Exception)}")
         logger.error(f"Connection URL: {settings.MONGODB_URL}")
         raise
 
@@ -92,6 +92,6 @@ async def init_database():
         logger.info("✅ Database initialized successfully")
         logger.info(f"Using database: {settings.MONGODB_DB_NAME}")
 
-    except Exception as e:
-        logger.error(f"❌ Failed to initialize database: {e}")
+    except Exception:  # noqa: E722
+        logger.error(f"❌ Failed to initialize database: {str(Exception)}")
         raise

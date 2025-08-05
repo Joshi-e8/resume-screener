@@ -3,9 +3,9 @@ LinkedIn integration endpoints
 """
 
 import secrets
-from typing import Any, Dict, List
+from typing import Any, Dict
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 
@@ -53,7 +53,8 @@ async def get_linkedin_auth_url(
     # Generate state parameter for security
     state = secrets.token_urlsafe(32)
 
-    # Store state and return URL in user session (in production, use Redis/database)
+    # Store state and return URL in user session
+    # (in production, use Redis/database)
     # For now, we'll include it in the state parameter
     state_data = f"{state}:{current_user.id}:{return_url}"
 
@@ -108,7 +109,7 @@ async def linkedin_auth_callback(
         # Store LinkedIn connection data (in production, encrypt the token)
         connection_data = {
             "platform": "linkedin",
-            "access_token": access_token,  # Should be encrypted in production
+            "access_token": access_token,  # Should be encrypted
             "refresh_token": token_data.get("refresh_token"),
             "expires_in": token_data.get("expires_in", 3600),
             "profile": profile,
@@ -132,7 +133,10 @@ async def linkedin_auth_callback(
 
         # Redirect to frontend with success
         return RedirectResponse(
-            url=f"{return_url}?connected=linkedin&organizations={len(organizations)}",
+            url=(
+                f"{return_url}?connected=linkedin&"
+                f"organizations={len(organizations)}"
+            ),
             status_code=302,
         )
 
@@ -142,12 +146,12 @@ async def linkedin_auth_callback(
         await analytics_service.track_event(
             event_type=EventType.PLATFORM_CONNECTION_FAILED,
             user_id=user_id if "user_id" in locals() else "unknown",
-            properties={"platform": "linkedin", "error": str(e)},
+            properties={"platform": "linkedin", "error": str(Exception)},
         )
 
         # Redirect to frontend with error
         return RedirectResponse(
-            url=f"/dashboard?error=linkedin_connection_failed&message={str(e)}",
+            url=f"/dashboard?error=linkedin_connection_failed&message={str(Exception)}",
             status_code=302,
         )
 
@@ -193,7 +197,7 @@ async def post_job_to_linkedin(
         linkedin_service = LinkedInService()
 
         # In production, retrieve stored access token from database
-        access_token = "mock_access_token"  # Replace with actual token retrieval
+        access_token = "mock_access_token"  # Replace with actual token
 
         # Post job to LinkedIn
         result = await linkedin_service.post_job(
@@ -225,12 +229,12 @@ async def post_job_to_linkedin(
             event_type=EventType.JOB_POSTING_FAILED,
             user_id=str(current_user.id),
             entity_id=request.job_id,
-            properties={"platform": "linkedin", "error": str(e)},
+            properties={"platform": "linkedin", "error": str(Exception)},
         )
 
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Failed to post job to LinkedIn: {str(e)}",
+            detail=f"Failed to post job to LinkedIn: {str(Exception)}",
         )
 
 
@@ -258,7 +262,7 @@ async def update_linkedin_job(
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Failed to update LinkedIn job: {str(e)}",
+            detail=f"Failed to update LinkedIn job: {str(Exception)}",
         )
 
 
@@ -284,7 +288,7 @@ async def delete_linkedin_job(
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Failed to delete LinkedIn job: {str(e)}",
+            detail=f"Failed to delete LinkedIn job: {str(Exception)}",
         )
 
 
@@ -316,7 +320,7 @@ async def get_linkedin_job_applications(
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Failed to get LinkedIn applications: {str(e)}",
+            detail=f"Failed to get LinkedIn applications: {str(Exception)}",
         )
 
 
@@ -351,7 +355,7 @@ async def disconnect_linkedin(
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Failed to disconnect LinkedIn: {str(e)}",
+            detail=f"Failed to disconnect LinkedIn: {str(Exception)}",
         )
 
 
@@ -367,15 +371,17 @@ async def get_linkedin_connection_status(
 
     if is_connected:
         # In production, validate the stored access token
-        linkedin_service = LinkedInService()
-        # validation_result = await linkedin_service.validate_connection(access_token)
+        # linkedin_service = LinkedInService()
+        # validation_result = await linkedin_service.validate_connection(
+        #     access_token
+        # )
 
         return {
             "connected": True,
             "platform": "linkedin",
             "status": "active",  # or validation_result["status"]
             "organizations_count": 1,  # Replace with actual count
-            "last_sync": "2024-01-20T10:30:00Z",  # Replace with actual timestamp
+            "last_sync": "2024-01-20T10:30:00Z",  # Replace with actual
         }
     else:
         return {"connected": False, "platform": "linkedin", "status": "disconnected"}
