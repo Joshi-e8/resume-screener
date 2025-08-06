@@ -12,7 +12,7 @@ from pymongo import IndexModel
 
 class User(Document):
     """User document model"""
-    
+
     email: Annotated[EmailStr, Indexed(unique=True)]
     full_name: str
     company_name: Optional[str] = None
@@ -20,29 +20,29 @@ class User(Document):
     is_active: bool = True
     is_superuser: bool = False
     permissions: Optional[List[str]] = []
-    
+
     # Profile information
     phone: Optional[str] = None
     job_title: Optional[str] = None
     department: Optional[str] = None
-    
+
     # Subscription and billing
     subscription_plan: str = "free"  # free, basic, premium, enterprise
     subscription_expires: Optional[datetime] = None
-    
+
     # Usage tracking
     resumes_processed: int = 0
     jobs_posted: int = 0
     api_calls_count: int = 0
-    
+
     # Platform connections
     connected_platforms: Optional[List[str]] = []
-    
+
     # Timestamps
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     last_login: Optional[datetime] = None
-    
+
     class Settings:
         name = "users"
         indexes = [
@@ -52,8 +52,10 @@ class User(Document):
             IndexModel([("created_at", -1)]),
         ]
 
+
 class UserCreate(BaseModel):
     """Schema for creating a new user"""
+
     email: EmailStr
     password: str = Field(..., min_length=8)
     full_name: str = Field(..., min_length=1)
@@ -61,8 +63,10 @@ class UserCreate(BaseModel):
     phone: Optional[str] = None
     job_title: Optional[str] = None
 
+
 class UserUpdate(BaseModel):
     """Schema for updating user information"""
+
     full_name: Optional[str] = None
     company_name: Optional[str] = None
     phone: Optional[str] = None
@@ -70,8 +74,10 @@ class UserUpdate(BaseModel):
     department: Optional[str] = None
     is_active: Optional[bool] = None
 
+
 class UserResponse(BaseModel):
     """Schema for user response (excluding sensitive data)"""
+
     id: str
     email: EmailStr
     full_name: str
@@ -88,7 +94,7 @@ class UserResponse(BaseModel):
     connected_platforms: Optional[List[str]] = []
     created_at: datetime
     last_login: Optional[datetime] = None
-    
+
     @classmethod
     def from_orm(cls, user: User):
         return cls(
@@ -107,5 +113,5 @@ class UserResponse(BaseModel):
             jobs_posted=user.jobs_posted,
             connected_platforms=user.connected_platforms,
             created_at=user.created_at,
-            last_login=user.last_login
+            last_login=user.last_login,
         )

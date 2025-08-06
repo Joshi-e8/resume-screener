@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowLeft, Upload, FileText, AlertCircle } from "lucide-react";
+import { ArrowLeft, Upload, FileText, AlertCircle, Cloud } from "lucide-react";
 import Link from "next/link";
 import { ResumeUpload } from "@/components/resumes/ResumeUpload";
 import { useToast } from "@/components/ui/Toast";
@@ -114,27 +114,43 @@ export default function ResumeUploadPage() {
       </div>
 
       {/* Upload Options Overview */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-blue-50 border border-blue-200 rounded-2xl p-6">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        {/* Google Drive - Featured First */}
+        <div className="bg-blue-50 border border-blue-200 rounded-2xl p-6 relative">
+          <div className="absolute -top-2 -right-2 bg-blue-500 text-white text-xs px-2 py-1 rounded-full font-medium">
+            Recommended
+          </div>
           <div className="flex items-center gap-3 mb-3">
             <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center">
-              <FileText className="w-4 h-4 text-white" />
+              <Cloud className="w-4 h-4 text-white" />
             </div>
-            <h3 className="font-semibold text-blue-900">Single Upload</h3>
+            <h3 className="font-semibold text-blue-900">Google Drive</h3>
           </div>
           <p className="text-blue-800 text-sm">
-            Perfect for individual LinkedIn or Indeed applications as they come in.
+            Browse and select resumes directly from your Google Drive. Fastest and most efficient method.
           </p>
         </div>
 
         <div className="bg-green-50 border border-green-200 rounded-2xl p-6">
           <div className="flex items-center gap-3 mb-3">
             <div className="w-8 h-8 bg-green-500 rounded-lg flex items-center justify-center">
-              <Upload className="w-4 h-4 text-white" />
+              <FileText className="w-4 h-4 text-white" />
             </div>
-            <h3 className="font-semibold text-green-900">Multiple Upload</h3>
+            <h3 className="font-semibold text-green-900">Single Upload</h3>
           </div>
           <p className="text-green-800 text-sm">
+            Perfect for individual LinkedIn or Indeed applications as they come in.
+          </p>
+        </div>
+
+        <div className="bg-yellow-50 border border-yellow-200 rounded-2xl p-6">
+          <div className="flex items-center gap-3 mb-3">
+            <div className="w-8 h-8 bg-yellow-500 rounded-lg flex items-center justify-center">
+              <Upload className="w-4 h-4 text-white" />
+            </div>
+            <h3 className="font-semibold text-yellow-900">Multiple Upload</h3>
+          </div>
+          <p className="text-yellow-800 text-sm">
             Upload multiple resumes downloaded from job boards for batch processing.
           </p>
         </div>

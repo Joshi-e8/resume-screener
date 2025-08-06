@@ -22,7 +22,7 @@ async def lifespan(app: FastAPI):
         await init_database()
         print("✅ Application startup completed successfully")
     except Exception as e:
-        print(f"❌ Application startup failed: {e}")
+        print(f"❌ Application startup failed: {str(Exception)}")
         raise
 
     yield
@@ -32,7 +32,8 @@ async def lifespan(app: FastAPI):
         await close_mongo_connection()
         print("✅ Application shutdown completed successfully")
     except Exception as e:
-        print(f"❌ Application shutdown failed: {e}")
+        print(f"❌ Application shutdown failed: {str(Exception)}")
+
 
 # Create FastAPI app
 app = FastAPI(
@@ -41,7 +42,7 @@ app = FastAPI(
     version="1.0.0",
     docs_url="/docs",
     redoc_url="/redoc",
-    lifespan=lifespan
+    lifespan=lifespan,
 )
 
 print(settings.CORS_ORIGINS)
@@ -64,22 +65,13 @@ app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 app.include_router(api_router, prefix="/api/v1")
 
 
-
 @app.get("/")
 async def root():
     """Health check endpoint"""
-    return {
-        "message": "Resume Screener API",
-        "version": "1.0.0",
-        "status": "healthy"
-    }
+    return {"message": "Resume Screener API", "version": "1.0.0", "status": "healthy"}
 
 
 @app.get("/health")
 async def health_check():
     """Detailed health check"""
-    return {
-        "status": "healthy",
-        "database": "connected",
-        "api": "operational"
-    }
+    return {"status": "healthy", "database": "connected", "api": "operational"}

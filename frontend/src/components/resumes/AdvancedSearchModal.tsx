@@ -119,7 +119,7 @@ export function AdvancedSearchModal({
       
       {/* Modal */}
       <div className="flex min-h-full items-center justify-center p-2 sm:p-4">
-        <div className="relative bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[95vh] overflow-hidden transform transition-all duration-300 animate-slide-up">
+        <div className="relative bg-white rounded-2xl shadow-2xl max-w-full w-full max-h-[95vh] overflow-hidden transform transition-all duration-300 animate-slide-up">
           {/* Header */}
           <div className="flex items-center justify-between p-4 sm:p-6 border-b border-gray-200 bg-gradient-to-r from-yellow-50 to-orange-50">
             <div className="flex items-center gap-3">

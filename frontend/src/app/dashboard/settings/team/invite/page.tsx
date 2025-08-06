@@ -133,7 +133,7 @@ export default function TeamInvitePage() {
   const isFormValid = invites.some(invite => invite.email);
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
+    <div className="max-w-full mx-auto space-y-6">
       {/* Header */}
       <div className="flex items-center gap-4">
         <Link

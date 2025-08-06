@@ -2,14 +2,13 @@
 Resume upload and management endpoints
 """
 
-import os
+# import os  # noqa: F401
 import tempfile
 from datetime import datetime
 from typing import Any, List
 
 from fastapi import (APIRouter, Depends, File, Form, HTTPException, UploadFile,
                      status)
-from fastapi.responses import JSONResponse
 
 from app.core.security import get_current_user
 from app.models.analytics import EventType
@@ -21,24 +20,25 @@ from app.services.resume_parser import ResumeParser
 
 router = APIRouter()
 
+
 @router.post("/upload")
 async def upload_resume(
     file: UploadFile = File(...),
     job_id: str = Form(None),
     source: str = Form("direct"),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ) -> Any:
     """
     Upload and parse a resume file
     """
     # Validate file type
-    allowed_extensions = ['.pdf', '.docx', '.doc', '.txt']
+    allowed_extensions = [".pdf", ".docx", ".doc", ".txt"]
     file_extension = os.path.splitext(file.filename)[1].lower()
 
     if file_extension not in allowed_extensions:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Unsupported file type. Allowed: {', '.join(allowed_extensions)}"
+            detail=f"Unsupported file type. Allowed: {', '.join(allowed_extensions)}",
         )
 
     # Validate file size (10MB limit)
@@ -47,7 +47,7 @@ async def upload_resume(
     if len(file_content) > max_size:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="File size too large. Maximum 10MB allowed."
+            detail="File size too large. Maximum 10MB allowed.",
         )
 
     # Save file temporarily
@@ -67,19 +67,20 @@ async def upload_resume(
             "message": "Resume uploaded and processed successfully",
             "filename": file.filename,
             "parsed_data": parsed_data,
-            "processing_time_ms": processing_time
+            "processing_time_ms": processing_time,
         }
 
-    except Exception as e:
+    except Exception:  # noqa: E722
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to process resume: {str(e)}"
+            detail=f"Failed to process resume: {str(Exception)}",
         )
 
     finally:
         # Clean up temporary file
         if os.path.exists(tmp_file_path):
             os.unlink(tmp_file_path)
+
 
 @router.get("/")
 async def list_resumes():

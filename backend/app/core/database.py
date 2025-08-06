@@ -13,6 +13,8 @@ from app.models.analytics import (AnalyticsEvent, DailyMetrics,
 from app.models.candidate import Candidate
 from app.models.job import Job
 from app.models.resume import JobDescription, ResumeAnalysis, UploadedResume
+from app.models.resume_processing import (BatchProcessingJob, ProcessingStats,
+                                         ResumeDetails, ResumeMetadata)
 from app.models.user import User
 
 logger = logging.getLogger(__name__)
@@ -35,19 +37,19 @@ async def connect_to_mongo():
             settings.MONGODB_URL,
             serverSelectionTimeoutMS=5000,  # 5 second timeout
             connectTimeoutMS=5000,
-            socketTimeoutMS=5000
+            socketTimeoutMS=5000,
         )
 
         # Test connection
-        await client.admin.command('ping')
+        await client.admin.command("ping")
         logger.info("✅ Connected to MongoDB successfully")
 
         # List databases to verify connection
         db_list = await client.list_database_names()
         logger.info(f"Available databases: {db_list}")
 
-    except Exception as e:
-        logger.error(f"❌ Failed to connect to MongoDB: {e}")
+    except Exception:  # noqa: E722
+        logger.error(f"❌ Failed to connect to MongoDB: {str(Exception)}")
         logger.error(f"Connection URL: {settings.MONGODB_URL}")
         raise
 
@@ -77,17 +79,22 @@ async def init_database():
                 UploadedResume,
                 JobDescription,
                 ResumeAnalysis,
+                # Resume processing models
+                ResumeMetadata,
+                ResumeDetails,
+                BatchProcessingJob,
+                ProcessingStats,
                 # Analytics models
                 AnalyticsEvent,
                 DailyMetrics,
                 PlatformMetrics,
-                UserUsageStats
-            ]
+                UserUsageStats,
+            ],
         )
 
         logger.info("✅ Database initialized successfully")
         logger.info(f"Using database: {settings.MONGODB_DB_NAME}")
 
-    except Exception as e:
-        logger.error(f"❌ Failed to initialize database: {e}")
+    except Exception:  # noqa: E722
+        logger.error(f"❌ Failed to initialize database: {str(Exception)}")
         raise

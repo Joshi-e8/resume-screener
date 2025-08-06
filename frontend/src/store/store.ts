@@ -2,17 +2,19 @@ import { configureStore } from '@reduxjs/toolkit';
 import { useDispatch, useSelector, TypedUseSelectorHook } from 'react-redux';
 import dashboardReducer from './slices/dashboardSlice';
 import authStepReducer from './slices/authSlice';
+import resumeUploadReducer from './slices/resumeUploadSlice';
 
 export const store = configureStore({
   reducer: {
     dashboard: dashboardReducer,
-    authStep: authStepReducer, // Assuming you have an authStepReducer
+    authStep: authStepReducer,
+    resumeUpload: resumeUploadReducer,
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({
       serializableCheck: {
         ignoredActions: ['persist/PERSIST'],
-        ignoredPaths: ['dashboard.recentActivity'],
+        ignoredPaths: ['dashboard.recentActivity', 'resumeUpload.selectedFiles', 'resumeUpload.zipContents'],
       },
     }),
 });

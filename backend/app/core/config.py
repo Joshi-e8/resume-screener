@@ -2,7 +2,6 @@
 Application configuration settings
 """
 
-import os
 from typing import List, Optional
 
 from pydantic_settings import BaseSettings
@@ -15,6 +14,11 @@ class Settings(BaseSettings):
     MONGODB_URL: str
     MONGODB_DB_NAME: str
 
+    # Redis Configuration
+    REDIS_HOST: str = "localhost"
+    REDIS_PORT: int = 6379
+    REDIS_DB: int = 0
+
     # Server Configuration
     BACKEND_HOST: str = "localhost"
     BACKEND_PORT: int = 8000
@@ -24,17 +28,15 @@ class Settings(BaseSettings):
     # Security Configuration
     SECRET_KEY: str
     ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    ACCESS_TOKEN_EXPIRE_MINUTES: int
     API_V1_STR: str = "/api/v1"
     API_RATE_LIMIT: int = 100
-    
+
     # Social Configuration
     SOCIAL_AUTH_PROVIDERS: List[str] = ["google", "linkedin"]
     SOCIAL_AUTH_REDIRECT_URI: str = "http://localhost:8000/auth/callback"
     GOOGLE_CLIENT_ID: Optional[str] = None
     GOOGLE_CLIENT_SECRET: Optional[str] = None
-    # LINKEDIN_CLIENT_ID: Optional[str] = None
-    # LINKEDIN_CLIENT_SECRET: Optional[str] = None
 
     # AI Services Configuration
     GROQ_API_KEY: Optional[str] = None
@@ -56,6 +58,11 @@ class Settings(BaseSettings):
     # ZipRecruiter Integration
     ZIPRECRUITER_API_KEY: Optional[str] = None
     ZIPRECRUITER_ACCOUNT_ID: Optional[str] = None
+
+    # Google Drive Integration
+    GOOGLE_DRIVE_CLIENT_ID: Optional[str] = None
+    GOOGLE_DRIVE_CLIENT_SECRET: Optional[str] = None
+    GOOGLE_DRIVE_REDIRECT_URI: str = "http://localhost:8000/api/v1/google-drive/callback"
 
     # File Upload Configuration
     MAX_FILE_SIZE: int = 10485760  # 10MB

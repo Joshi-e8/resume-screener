@@ -13,11 +13,7 @@ router = APIRouter()
 @router.get("/")
 async def health_check():
     """Basic health check"""
-    return {
-        "status": "healthy",
-        "service": "Resume Screener API",
-        "version": "1.0.0"
-    }
+    return {"status": "healthy", "service": "Resume Screener API", "version": "1.0.0"}
 
 
 @router.get("/database")
@@ -25,13 +21,10 @@ async def database_health():
     """Database connection health check"""
     try:
         # Create a new client for health check
-        client = AsyncIOMotorClient(
-            settings.MONGODB_URL,
-            serverSelectionTimeoutMS=5000
-        )
+        client = AsyncIOMotorClient(settings.MONGODB_URL, serverSelectionTimeoutMS=5000)
 
         # Test database connection
-        await client.admin.command('ping')
+        await client.admin.command("ping")
 
         # Get database info
         db = client[settings.MONGODB_DB_NAME]
@@ -44,10 +37,9 @@ async def database_health():
             "status": "healthy",
             "database": settings.MONGODB_DB_NAME,
             "collections": collections,
-            "connection": "active"
+            "connection": "active",
         }
-    except Exception as e:
+    except Exception:  # noqa: E722
         raise HTTPException(
-            status_code=503,
-            detail=f"Database connection failed: {str(e)}"
+            status_code=503, detail=f"Database connection failed: {str(Exception)}"
         )

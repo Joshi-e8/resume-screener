@@ -4,8 +4,20 @@ Main API router
 
 from fastapi import APIRouter
 
-from app.api.endpoints import (analysis, analytics, auth, candidates, health,
-                               jobs, linkedin, platforms, resumes, users)
+from app.api.endpoints import (
+    analysis,
+    analytics,
+    auth,
+    candidates,
+    google_drive,
+    health,
+    jobs,
+    linkedin,
+    platforms,
+    resumes,
+    users,
+    websocket,
+)
 
 api_router = APIRouter()
 
@@ -20,3 +32,5 @@ api_router.include_router(analysis.router, prefix="/analysis", tags=["analysis"]
 api_router.include_router(analytics.router, prefix="/analytics", tags=["analytics"])
 api_router.include_router(platforms.router, prefix="/platforms", tags=["platforms"])
 api_router.include_router(linkedin.router, prefix="/linkedin", tags=["linkedin"])
+api_router.include_router(google_drive.router, prefix="/google-drive", tags=["google-drive"])
+api_router.include_router(websocket.router, prefix="/websocket", tags=["websocket"])
