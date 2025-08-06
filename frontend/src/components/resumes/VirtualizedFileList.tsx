@@ -133,6 +133,7 @@ export const VirtualizedFileList: React.FC<VirtualizedFileListProps> = ({
       
       <List
         height={height}
+        width="100%"
         itemCount={files.length}
         itemSize={itemHeight}
         itemData={itemData}

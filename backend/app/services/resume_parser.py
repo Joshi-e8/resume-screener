@@ -109,6 +109,17 @@ class ResumeParser:
             "internship",
         ]
 
+        # Pre-compile regex patterns for better performance
+        self.job_title_pattern = re.compile(
+            r"(manager|engineer|developer|analyst|specialist|coordinator|director|lead|senior|junior)",
+            re.IGNORECASE
+        )
+        self.year_pattern = re.compile(r"(19|20)\d{2}")
+        self.skills_section_pattern = re.compile(
+            r"(?:skills?|technologies?|technical skills?)[:\s]*(.*?)(?:\n\n|\n[A-Z]|$)",
+            re.IGNORECASE | re.DOTALL
+        )
+
     async def parse_resume(self, file_path: str) -> Dict[str, Any]:
         """
         Parse resume from file path and extract structured data
@@ -128,48 +139,118 @@ class ResumeParser:
         else:
             raise ValueError(f"Unsupported file format: {file_extension}")
 
+        # Handle empty text gracefully
+        if not text or not text.strip():
+            print(f"Warning: No text extracted from {file_path}")
+            return {
+                "raw_text": "",
+                "file_type": file_extension,
+                "parsed_at": datetime.now(timezone.utc).isoformat(),
+                "contact_info": {},
+                "skills": [],
+                "education": [],
+                "experience": [],
+                "summary": "",
+                "certifications": [],
+                "languages": [],
+                "projects": [],
+                "extraction_warning": "No text could be extracted from this file"
+            }
+
+        # Limit text size to prevent performance issues (max 20KB for fast processing)
+        fast_mode = False
+        if len(text) > 20000:
+            print(f"Warning: Large text file ({len(text)} chars), enabling fast mode for {file_path}")
+            text = text[:20000]
+            fast_mode = True
+
         # Parse structured data from text
-        parsed_data = await self._parse_text_content(text)
+        parsed_data = await self._parse_text_content(text, fast_mode)
         parsed_data["raw_text"] = text
         parsed_data["file_type"] = file_extension
         parsed_data["parsed_at"] = datetime.now(timezone.utc).isoformat()
+        if fast_mode:
+            parsed_data["processing_mode"] = "fast"
 
         return parsed_data
 
     async def _extract_pdf_text(self, file_path: str) -> str:
-        """Extract text from PDF using PDFPlumber"""
+        """Extract text from PDF using multiple methods"""
         text = ""
 
+        # Method 1: Try PDFPlumber first (best for complex layouts)
         try:
             with pdfplumber.open(file_path) as pdf:
                 for page in pdf.pages:
                     page_text = page.extract_text()
                     if page_text:
                         text += page_text + "\n"
-        except Exception:  # noqa: E722
-            # Fallback to PyPDF2 if PDFPlumber fails
-            try:
-                with open(file_path, "rb") as file:
-                    pdf_reader = PyPDF2.PdfReader(file)
-                    for page in pdf_reader.pages:
-                        text += page.extract_text() + "\n"
-            except Exception as fallback_error:  # noqa: E722
-                raise Exception(
-                    f"Failed to extract PDF text: {str(Exception)}, Fallback error: {fallback_error}"
-                )
+            if text.strip():
+                return text.strip()
+        except Exception as e:
+            print(f"PDFPlumber failed for {file_path}: {str(e)}")
 
-        return text.strip()
+        # Method 2: Fallback to PyPDF2
+        try:
+            with open(file_path, "rb") as file:
+                pdf_reader = PyPDF2.PdfReader(file)
+                for page in pdf_reader.pages:
+                    page_text = page.extract_text()
+                    if page_text:
+                        text += page_text + "\n"
+            if text.strip():
+                return text.strip()
+        except Exception as e:
+            print(f"PyPDF2 failed for {file_path}: {str(e)}")
+
+        # Method 3: Try with different PyPDF2 settings
+        try:
+            with open(file_path, "rb") as file:
+                pdf_reader = PyPDF2.PdfReader(file, strict=False)
+                for page_num in range(len(pdf_reader.pages)):
+                    page = pdf_reader.pages[page_num]
+                    page_text = page.extract_text()
+                    if page_text:
+                        text += page_text + "\n"
+            if text.strip():
+                return text.strip()
+        except Exception as e:
+            print(f"PyPDF2 (non-strict) failed for {file_path}: {str(e)}")
+
+        # If all methods fail, return empty string instead of raising exception
+        print(f"Warning: Could not extract text from PDF {file_path}, returning empty string")
+        return ""
 
     async def _extract_docx_text(self, file_path: str) -> str:
-        """Extract text from DOCX file"""
+        """Extract text from DOCX file with improved error handling"""
+        text = ""
+
         try:
             doc = Document(file_path)
-            text = ""
+
+            # Extract text from paragraphs
             for paragraph in doc.paragraphs:
-                text += paragraph.text + "\n"
-            return text.strip()
-        except Exception:  # noqa: E722
-            raise Exception(f"Failed to extract DOCX text: {str(Exception)}")
+                if paragraph.text.strip():
+                    text += paragraph.text + "\n"
+
+            # Also extract text from tables if any
+            for table in doc.tables:
+                for row in table.rows:
+                    for cell in row.cells:
+                        if cell.text.strip():
+                            text += cell.text + " "
+                    text += "\n"
+
+            if text.strip():
+                return text.strip()
+            else:
+                print(f"Warning: No text content found in DOCX {file_path}")
+                return ""
+
+        except Exception as e:
+            print(f"DOCX extraction failed for {file_path}: {str(e)}")
+            # Return empty string instead of raising exception
+            return ""
 
     async def _extract_txt_text(self, file_path: str) -> str:
         """Extract text from TXT file"""
@@ -177,26 +258,68 @@ class ResumeParser:
             async with aiofiles.open(file_path, "r", encoding="utf-8") as file:
                 text = await file.read()
             return text.strip()
-        except Exception:  # noqa: E722
-            raise Exception(f"Failed to extract TXT text: {str(Exception)}")
+        except Exception as e:  # noqa: E722
+            raise Exception(f"Failed to extract TXT text: {str(e)}")
 
-    async def _parse_text_content(self, text: str) -> Dict[str, Any]:
+    async def _parse_text_content(self, text: str, fast_mode: bool = False) -> Dict[str, Any]:
         """Parse structured data from resume text"""
+        import time
 
         # Clean and normalize text
+        start_time = time.time()
         cleaned_text = self._clean_text(text)
         lines = cleaned_text.split("\n")
 
-        parsed_data = {
-            "contact_info": self._extract_contact_info(cleaned_text),
-            "skills": self._extract_skills(cleaned_text),
-            "education": self._extract_education(lines),
-            "experience": self._extract_experience(lines),
-            "summary": self._extract_summary(lines),
-            "certifications": self._extract_certifications(cleaned_text),
-            "languages": self._extract_languages(cleaned_text),
-            "projects": self._extract_projects(lines),
-        }
+        # Limit number of lines to process for performance (max 500 lines)
+        if len(lines) > 500:
+            print(f"Warning: Large file with {len(lines)} lines, limiting to 500 lines for processing")
+            lines = lines[:500]
+
+        print(f"Text cleaning: {int((time.time() - start_time) * 1000)}ms, {len(lines)} lines")
+
+        parsed_data = {}
+
+        # Time each extraction method
+        start_time = time.time()
+        parsed_data["contact_info"] = self._extract_contact_info(cleaned_text)
+        print(f"Contact info extraction: {int((time.time() - start_time) * 1000)}ms")
+
+        start_time = time.time()
+        parsed_data["skills"] = self._extract_skills(cleaned_text)
+        print(f"Skills extraction: {int((time.time() - start_time) * 1000)}ms")
+
+        start_time = time.time()
+        parsed_data["education"] = self._extract_education(lines)
+        print(f"Education extraction: {int((time.time() - start_time) * 1000)}ms")
+
+        if fast_mode:
+            # In fast mode, skip expensive operations
+            print("Fast mode: skipping detailed experience, summary, certifications, languages, and projects extraction")
+            parsed_data["experience"] = []
+            parsed_data["summary"] = ""
+            parsed_data["certifications"] = []
+            parsed_data["languages"] = []
+            parsed_data["projects"] = []
+        else:
+            start_time = time.time()
+            parsed_data["experience"] = self._extract_experience(lines)
+            print(f"Experience extraction: {int((time.time() - start_time) * 1000)}ms")
+
+            start_time = time.time()
+            parsed_data["summary"] = self._extract_summary(lines)
+            print(f"Summary extraction: {int((time.time() - start_time) * 1000)}ms")
+
+            start_time = time.time()
+            parsed_data["certifications"] = self._extract_certifications(cleaned_text)
+            print(f"Certifications extraction: {int((time.time() - start_time) * 1000)}ms")
+
+            start_time = time.time()
+            parsed_data["languages"] = self._extract_languages(cleaned_text)
+            print(f"Languages extraction: {int((time.time() - start_time) * 1000)}ms")
+
+            start_time = time.time()
+            parsed_data["projects"] = self._extract_projects(lines)
+            print(f"Projects extraction: {int((time.time() - start_time) * 1000)}ms")
 
         return parsed_data
 
@@ -261,13 +384,8 @@ class ResumeParser:
             if skill.lower() in text_lower:
                 found_skills.append(skill)
 
-        # Look for skills sections
-        skills_section_pattern = (
-            r"(?:skills?|technologies?|technical skills?)[:\s]*(.*?)(?:\n\n|\n[A-Z]|$)"
-        )
-        skills_match = re.search(
-            skills_section_pattern, text, re.IGNORECASE | re.DOTALL
-        )
+        # Look for skills sections using pre-compiled pattern
+        skills_match = self.skills_section_pattern.search(text)
 
         if skills_match:
             skills_text = skills_match.group(1)
@@ -329,12 +447,15 @@ class ResumeParser:
         return education
 
     def _extract_experience(self, lines: List[str]) -> List[Dict[str, str]]:
-        """Extract work experience"""
+        """Extract work experience with performance optimization"""
         experience = []
         experience_section = False
         current_job = {}
 
-        for line in lines:
+        # Limit processing to first 200 lines for performance
+        lines_to_process = lines[:200] if len(lines) > 200 else lines
+
+        for line in lines_to_process:
             line = line.strip()
             if not line:
                 continue
@@ -344,12 +465,8 @@ class ResumeParser:
                 experience_section = True
 
             elif experience_section:
-                # Look for job titles and companies
-                if re.search(
-                    r"(manager|engineer|developer|analyst|specialist|coordinator)",
-                    line,
-                    re.IGNORECASE,
-                ):
+                # Look for job titles and companies using pre-compiled pattern
+                if self.job_title_pattern.search(line):
                     if current_job:
                         experience.append(current_job)
 
@@ -360,16 +477,17 @@ class ResumeParser:
                         "description": "",
                     }
 
-                # Look for years/duration
-                elif re.search(r"(19|20)\d{2}", line) and current_job:
+                # Look for years/duration using pre-compiled pattern
+                elif self.year_pattern.search(line) and current_job:
                     current_job["duration"] = line
 
-                # Add to description
+                # Add to description (limit description length)
                 elif current_job and len(line) > 20:
-                    if current_job["description"]:
-                        current_job["description"] += " " + line
-                    else:
-                        current_job["description"] = line
+                    if len(current_job.get("description", "")) < 500:  # Limit description length
+                        if current_job["description"]:
+                            current_job["description"] += " " + line
+                        else:
+                            current_job["description"] = line
 
         if current_job:
             experience.append(current_job)

@@ -34,6 +34,7 @@ interface EnhancedGoogleDrivePickerProps {
   onAuthRequired: () => void;
   multiSelect?: boolean;
   className?: string;
+  hideEmptyState?: boolean;
 }
 
 type ViewMode = 'browse' | 'search';
@@ -42,12 +43,16 @@ export const EnhancedGoogleDrivePicker: React.FC<EnhancedGoogleDrivePickerProps>
   onFilesSelected,
   onAuthRequired,
   multiSelect = true,
-  className = ''
+  className = '',
+  hideEmptyState = false
 }) => {
+  console.log('🚀 EnhancedGoogleDrivePicker component loaded!');
   // File and folder state
   const [files, setFiles] = useState<GoogleDriveFile[]>([]);
   const [folders, setFolders] = useState<GoogleDriveFolder[]>([]);
   const [selectedFiles, setSelectedFiles] = useState<GoogleDriveFile[]>([]);
+  const [selectedFolders, setSelectedFolders] = useState<GoogleDriveFolder[]>([]);
+  const [processingFolder, setProcessingFolder] = useState<string | null>(null);
   const [totalFiles, setTotalFiles] = useState(0);
   const [totalFolders, setTotalFolders] = useState(0);
 
@@ -186,7 +191,8 @@ export const EnhancedGoogleDrivePicker: React.FC<EnhancedGoogleDrivePickerProps>
         currentFolder: response.current_folder?.name,
         breadcrumbs: response.breadcrumbs.length,
         showAllFiles,
-        viewMode: 'browse'
+        viewMode: 'browse',
+        currentFolderId: currentFolderId
       });
 
       // Log folder names for debugging
@@ -306,6 +312,73 @@ export const EnhancedGoogleDrivePicker: React.FC<EnhancedGoogleDrivePickerProps>
   const handlePageChange = useCallback((page: number) => {
     setCurrentPage(page);
   }, []);
+
+  // Bulk folder processing
+  const processFolderBulk = useCallback(async (folder: GoogleDriveFolder) => {
+    setProcessingFolder(folder.id);
+    setError(null);
+
+    try {
+      console.log(`🗂️ Processing entire folder: ${folder.name}`);
+
+      // Browse the folder to get all files
+      const response = await googleDriveService.browseFolder(folder.id, showAllFiles);
+
+      // Filter for resume files only
+      const resumeFiles = response.files.filter(file =>
+        googleDriveService.isFileTypeSupported(file.mimeType)
+      );
+
+      if (resumeFiles.length === 0) {
+        setError(`No resume files found in folder "${folder.name}"`);
+        return;
+      }
+
+      console.log(`📄 Found ${resumeFiles.length} resume files in "${folder.name}"`);
+
+      // Add folder to selected folders and all its resume files to selected files
+      setSelectedFolders(prev => {
+        const isAlreadySelected = prev.some(f => f.id === folder.id);
+        if (isAlreadySelected) {
+          return prev.filter(f => f.id !== folder.id);
+        } else {
+          return [...prev, folder];
+        }
+      });
+
+      setSelectedFiles(prev => {
+        // Remove any files from this folder first
+        const filesNotFromThisFolder = prev.filter(file =>
+          !resumeFiles.some(rf => rf.id === file.id)
+        );
+
+        // Check if folder was already selected
+        const folderWasSelected = selectedFolders.some(f => f.id === folder.id);
+
+        if (folderWasSelected) {
+          // Deselecting folder - remove its files
+          return filesNotFromThisFolder;
+        } else {
+          // Selecting folder - add its files
+          return [...filesNotFromThisFolder, ...resumeFiles];
+        }
+      });
+
+      // Call the callback with all selected files
+      const allSelectedFiles = selectedFiles.filter(file =>
+        !resumeFiles.some(rf => rf.id === file.id)
+      ).concat(resumeFiles);
+
+      onFilesSelected(allSelectedFiles);
+
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to process folder';
+      setError(`Failed to process folder "${folder.name}": ${errorMessage}`);
+      console.error('🗂️ Folder processing failed:', errorMessage);
+    } finally {
+      setProcessingFolder(null);
+    }
+  }, [showAllFiles, selectedFolders, selectedFiles, onFilesSelected]);
 
   const handleItemsPerPageChange = useCallback((newItemsPerPage: number) => {
     setItemsPerPage(newItemsPerPage);
@@ -595,11 +668,11 @@ export const EnhancedGoogleDrivePicker: React.FC<EnhancedGoogleDrivePickerProps>
       {!currentFolderId && viewMode === 'browse' && !loading && (
         <div className="p-4 bg-blue-50 border-b border-blue-200">
           <div className="flex items-center gap-3">
-            <FolderOpen className="w-5 h-5 text-blue-600" />
+            <Zap className="w-5 h-5 text-blue-600" />
             <div>
-              <h4 className="text-sm font-medium text-blue-900">Folder-First Organization</h4>
+              <h4 className="text-sm font-medium text-blue-900">Bulk Folder Processing</h4>
               <p className="text-xs text-blue-700 mt-1">
-                Select a folder to browse resume files. This helps organize candidates by job position, department, or hiring round.
+                Click "Process Folder" to automatically select all resume files in a folder, or browse individual folders to select specific files.
               </p>
             </div>
           </div>
@@ -709,31 +782,72 @@ export const EnhancedGoogleDrivePicker: React.FC<EnhancedGoogleDrivePickerProps>
                     ? 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'
                     : 'space-y-2'
                 }`}>
-                  {getPaginatedItems(folders, currentPage, itemsPerPage).map((folder) => (
-                    <button
-                      key={folder.id}
-                      onClick={() => navigateToFolder(folder.id)}
-                      className={`border border-gray-200 rounded-lg hover:border-blue-300 hover:bg-blue-50 transition-all duration-200 text-left group ${
-                        viewType === 'grid' ? 'p-4' : 'p-3'
-                      }`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <FolderOpen className={`text-blue-500 group-hover:text-blue-600 ${
-                          viewType === 'grid' ? 'w-8 h-8' : 'w-6 h-6'
-                        }`} />
-                        <div className="flex-1 min-w-0">
-                          <h5 className={`font-medium text-gray-900 truncate group-hover:text-blue-900 ${
-                            viewType === 'grid' ? 'text-base' : 'text-sm'
-                          }`}>
-                            {folder.name}
-                          </h5>
-                          <p className="text-xs text-gray-500 mt-1">
-                            {new Date(folder.modifiedTime).toLocaleDateString()}
-                          </p>
+                  {getPaginatedItems(folders, currentPage, itemsPerPage).map((folder) => {
+                    const isSelected = selectedFolders.some(f => f.id === folder.id);
+                    const isProcessing = processingFolder === folder.id;
+
+                    return (
+                      <div
+                        key={folder.id}
+                        className={`border rounded-lg transition-all duration-200 ${
+                          isSelected
+                            ? 'border-green-300 bg-green-50'
+                            : 'border-gray-200 hover:border-blue-300'
+                        } ${viewType === 'grid' ? 'p-4' : 'p-3'}`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <FolderOpen className={`${
+                            isSelected ? 'text-green-600' : 'text-blue-500'
+                          } ${viewType === 'grid' ? 'w-8 h-8' : 'w-6 h-6'}`} />
+
+                          <div className="flex-1 min-w-0">
+                            <h5 className={`font-medium truncate ${
+                              isSelected ? 'text-green-900' : 'text-gray-900'
+                            } ${viewType === 'grid' ? 'text-base' : 'text-sm'}`}>
+                              {folder.name}
+                            </h5>
+                            <p className="text-xs text-gray-500 mt-1">
+                              {new Date(folder.modifiedTime).toLocaleDateString()}
+                            </p>
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            {/* Browse Folder Button */}
+                            <button
+                              onClick={() => navigateToFolder(folder.id)}
+                              className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-100 rounded-lg transition-colors"
+                              title="Browse folder contents"
+                            >
+                              <ChevronRight className="w-4 h-4" />
+                            </button>
+
+                            {/* Process Folder Button */}
+                            <button
+                              onClick={() => processFolderBulk(folder)}
+                              disabled={isProcessing}
+                              className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+                                isSelected
+                                  ? 'bg-green-600 text-white hover:bg-green-700'
+                                  : 'bg-blue-600 text-white hover:bg-blue-700'
+                              } disabled:opacity-50 disabled:cursor-not-allowed`}
+                              title={isSelected ? 'Remove folder from selection' : 'Process all resumes in this folder'}
+                            >
+                              {isProcessing ? (
+                                <div className="flex items-center gap-1">
+                                  <Loader2 className="w-3 h-3 animate-spin" />
+                                  <span>Processing...</span>
+                                </div>
+                              ) : isSelected ? (
+                                'Selected'
+                              ) : (
+                                'Process Folder'
+                              )}
+                            </button>
+                          </div>
                         </div>
                       </div>
-                    </button>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
               ) : (
@@ -754,14 +868,14 @@ export const EnhancedGoogleDrivePicker: React.FC<EnhancedGoogleDrivePickerProps>
             )}
 
             {/* Files */}
-            {files.length === 0 && !loading ? (
+            {files.length === 0 && !loading && !hideEmptyState ? (
               <div className="text-center py-12">
                 <FileText className="w-16 h-16 text-gray-300 mx-auto mb-4" />
                 <h4 className="text-lg font-medium text-gray-900 mb-2">
                   {viewMode === 'search'
                     ? 'No files found'
                     : !currentFolderId
-                      ? 'Navigate to a folder to see files'
+                      ? 'Browse folders to find resume files'
                       : 'No files in this folder'
                   }
                 </h4>
@@ -769,7 +883,7 @@ export const EnhancedGoogleDrivePicker: React.FC<EnhancedGoogleDrivePickerProps>
                   {viewMode === 'search'
                     ? 'Try adjusting your search terms or browse folders directly'
                     : !currentFolderId
-                      ? 'Select a folder above to browse resume files. Files are only shown inside folders to help organize your hiring workflow.'
+                      ? 'Click on any folder above to browse its contents and select resume files for processing.'
                       : showAllFiles
                         ? 'This folder is empty'
                         : 'No resume files found in this folder. Try enabling "Show all files" or navigate to a different folder.'
@@ -778,7 +892,7 @@ export const EnhancedGoogleDrivePicker: React.FC<EnhancedGoogleDrivePickerProps>
               </div>
             ) : (
               <>
-                {files.length > 0 && (
+                {files.length > 0 && selectedFiles.length === 0 && (
                   <div>
                     <h4 className="text-sm font-medium text-gray-700 mb-3 flex items-center gap-2">
                       <FileText className="w-4 h-4" />
@@ -854,6 +968,44 @@ export const EnhancedGoogleDrivePicker: React.FC<EnhancedGoogleDrivePickerProps>
                   </div>
                 )}
               </>
+            )}
+
+            {/* Selected Folders Summary */}
+            {selectedFolders.length > 0 && (
+              <div className="mt-6 p-4 bg-green-50 border border-green-200 rounded-lg">
+                <h4 className="text-sm font-medium text-green-900 mb-3 flex items-center gap-2">
+                  <CheckCircle className="w-4 h-4" />
+                  Selected Folders for Bulk Processing ({selectedFolders.length})
+                </h4>
+                <div className="space-y-2">
+                  {selectedFolders.map((folder) => (
+                      <div key={folder.id} className="flex items-center justify-between p-2 bg-white rounded border border-green-200">
+                        <div className="flex items-center gap-2">
+                          <FolderOpen className="w-4 h-4 text-green-600" />
+                          <span className="text-sm font-medium text-green-900">{folder.name}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-green-700">
+                            {Math.floor(selectedFiles.length / selectedFolders.length)} files
+                          </span>
+                          <button
+                            onClick={() => processFolderBulk(folder)}
+                            className="text-xs text-green-600 hover:text-green-800"
+                            title="Remove from selection"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </div>
+                      </div>
+                    )
+                  )}
+                </div>
+                <div className="mt-3 pt-3 border-t border-green-200">
+                  <p className="text-sm text-green-800">
+                    <strong>Total: {selectedFiles.length} resume files</strong> ready for bulk processing
+                  </p>
+                </div>
+              </div>
             )}
 
             {/* Pagination Controls */}

@@ -13,6 +13,8 @@ from app.models.analytics import (AnalyticsEvent, DailyMetrics,
 from app.models.candidate import Candidate
 from app.models.job import Job
 from app.models.resume import JobDescription, ResumeAnalysis, UploadedResume
+from app.models.resume_processing import (BatchProcessingJob, ProcessingStats,
+                                         ResumeDetails, ResumeMetadata)
 from app.models.user import User
 
 logger = logging.getLogger(__name__)
@@ -77,6 +79,11 @@ async def init_database():
                 UploadedResume,
                 JobDescription,
                 ResumeAnalysis,
+                # Resume processing models
+                ResumeMetadata,
+                ResumeDetails,
+                BatchProcessingJob,
+                ProcessingStats,
                 # Analytics models
                 AnalyticsEvent,
                 DailyMetrics,

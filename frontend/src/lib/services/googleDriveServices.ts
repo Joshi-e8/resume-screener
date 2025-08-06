@@ -14,6 +14,13 @@ export interface GoogleDriveFile {
   webViewLink: string;
 }
 
+export interface GoogleDriveFolder {
+  id: string;
+  name: string;
+  modifiedTime: string;
+  webViewLink: string;
+}
+
 export interface GoogleDriveAuthResponse {
   authorization_url: string;
   state: string;
@@ -28,22 +35,6 @@ export interface GoogleDriveFilesResponse {
   total: number;
 }
 
-export interface GoogleDriveUploadResponse {
-  result: string;
-  message: string;
-  filename: string;
-  file_id: string;
-  parsed_data: any;
-  processing_time_ms: number;
-}
-
-export interface GoogleDriveFolder {
-  id: string;
-  name: string;
-  modifiedTime: string;
-  webViewLink: string;
-}
-
 export interface GoogleDriveBrowseResponse {
   result: string;
   message: string;
@@ -54,10 +45,67 @@ export interface GoogleDriveBrowseResponse {
   breadcrumbs: GoogleDriveFolder[];
 }
 
+export interface GoogleDriveUploadResponse {
+  result: string;
+  message: string;
+  filename: string;
+  file_id: string;
+  parsed_data: any;
+  processing_time_ms: number;
+}
+
 export interface GoogleDriveTokenValidation {
   result: string;
   message: string;
   valid: boolean;
+}
+
+export interface GoogleDriveBulkFileResult {
+  file_id: string;
+  filename: string;
+  success: boolean;
+  parsed_data?: any;
+  error_message?: string;
+  processing_time_ms: number;
+}
+
+export interface GoogleDriveBulkUploadResponse {
+  result: string;
+  message: string;
+  total_files: number;
+  successful_files: number;
+  failed_files: number;
+  results: GoogleDriveBulkFileResult[];
+  total_processing_time_ms: number;
+  batch_id?: string;
+  task_id?: string;
+  async_processing?: boolean;
+}
+
+export interface BatchStatusResponse {
+  batch_id: string;
+  status: string;
+  total_files: number;
+  processed_files: number;
+  successful_files: number;
+  failed_files: number;
+  progress_percentage: number;
+  current_status_message: string;
+  created_at: string;
+  started_at?: string;
+  completed_at?: string;
+  celery_task_id?: string;
+  celery_task_status?: string;
+  results?: any;
+}
+
+export interface ProgressUpdate {
+  completed: number;
+  total: number;
+  results?: GoogleDriveBulkFileResult[];
+  status: string;
+  successful_files?: number;
+  failed_files?: number;
 }
 
 class GoogleDriveService {
@@ -183,7 +231,53 @@ class GoogleDriveService {
   }
 
   /**
-   * Browse Google Drive folders and files
+   * Search files in Google Drive
+   */
+  async searchFiles(query: string, pageSize: number = 50): Promise<GoogleDriveFilesResponse> {
+    return this.listFiles({ search: query, pageSize });
+  }
+
+  /**
+   * Bulk upload and process multiple resumes from Google Drive
+   */
+  async bulkUploadResumes(fileIds: string[], jobId?: string, userId?: string, asyncProcessing?: boolean): Promise<GoogleDriveBulkUploadResponse> {
+    if (!this.accessToken) {
+      throw new Error('Google Drive access token not set');
+    }
+
+    try {
+      // Create URLSearchParams to properly handle multiple file_ids parameters
+      const params = new URLSearchParams();
+      params.append('access_token', this.accessToken);
+
+      // Add each file_id as a separate parameter
+      fileIds.forEach(fileId => {
+        params.append('file_ids', fileId);
+      });
+
+      if (jobId) {
+        params.append('job_id', jobId);
+      }
+
+      if (userId) {
+        params.append('user_id', userId);
+      }
+
+      if (asyncProcessing !== undefined) {
+        params.append('async_processing', asyncProcessing.toString());
+      }
+
+      const response = await axios.post(`${this.baseURL}/api/v1/google-drive/bulk-upload-resumes?${params.toString()}`);
+
+      return response.data;
+    } catch (error) {
+      console.error('Failed to bulk upload resumes from Google Drive:', error);
+      throw new Error('Failed to bulk upload resumes from Google Drive');
+    }
+  }
+
+  /**
+   * Browse folder contents in Google Drive
    */
   async browseFolder(folderId?: string, showAllFiles: boolean = false): Promise<GoogleDriveBrowseResponse> {
     if (!this.accessToken) {
@@ -193,10 +287,10 @@ class GoogleDriveService {
     try {
       const params: any = {
         access_token: this.accessToken,
-        show_all_files: showAllFiles,
       };
 
       if (folderId) params.folder_id = folderId;
+      if (showAllFiles) params.show_all_files = showAllFiles;
 
       const response = await axios.get(`${this.baseURL}/api/v1/google-drive/browse`, {
         params,
@@ -210,36 +304,42 @@ class GoogleDriveService {
   }
 
   /**
-   * Search specifically for resume files
+   * Search for resume files in Google Drive
    */
-  async searchResumes(query: string, pageSize: number = 50): Promise<GoogleDriveFilesResponse> {
+  async searchResumes(query: string): Promise<GoogleDriveFilesResponse> {
     if (!this.accessToken) {
       throw new Error('Google Drive access token not set');
     }
 
     try {
-      const params = {
+      const params: any = {
         access_token: this.accessToken,
-        query: query,
-        page_size: pageSize,
+        search: query,
+        page_size: 50,
       };
 
-      const response = await axios.get(`${this.baseURL}/api/v1/google-drive/search-resumes`, {
+      const response = await axios.get(`${this.baseURL}/api/v1/google-drive/files`, {
         params,
       });
 
       return response.data;
     } catch (error) {
-      console.error('Failed to search resume files:', error);
-      throw new Error('Failed to search resume files');
+      console.error('Failed to search resumes in Google Drive:', error);
+      throw new Error('Failed to search resumes in Google Drive');
     }
   }
 
   /**
-   * Search files in Google Drive (legacy method)
+   * Get batch processing status
    */
-  async searchFiles(query: string, pageSize: number = 50): Promise<GoogleDriveFilesResponse> {
-    return this.listFiles({ search: query, pageSize });
+  async getBatchStatus(batchId: string): Promise<BatchStatusResponse> {
+    try {
+      const response = await axios.get(`${this.baseURL}/api/v1/google-drive/batch-status/${batchId}`);
+      return response.data;
+    } catch (error) {
+      console.error('Failed to get batch status:', error);
+      throw new Error('Failed to get batch status');
+    }
   }
 
   /**
