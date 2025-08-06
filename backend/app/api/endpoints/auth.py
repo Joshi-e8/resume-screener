@@ -10,11 +10,8 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, EmailStr
 
 from app.core.config import settings
-from app.core.security import (
-    create_access_token,
-    create_refresh_token,
-    get_current_user,
-)
+from app.core.security import (create_access_token, create_refresh_token,
+                               get_current_user)
 from app.models.user import User, UserCreate, UserResponse
 from app.services.user_service import UserService
 

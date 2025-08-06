@@ -7,15 +7,8 @@ import tempfile
 from datetime import datetime
 from typing import Any, List
 
-from fastapi import (
-    APIRouter,
-    Depends,
-    File,
-    Form,
-    HTTPException,
-    UploadFile,
-    status,
-)
+from fastapi import (APIRouter, Depends, File, Form, HTTPException, UploadFile,
+                     status)
 
 from app.core.security import get_current_user
 from app.models.analytics import EventType

@@ -54,6 +54,11 @@ class Settings(BaseSettings):
     ZIPRECRUITER_API_KEY: Optional[str] = None
     ZIPRECRUITER_ACCOUNT_ID: Optional[str] = None
 
+    # Google Drive Integration
+    GOOGLE_DRIVE_CLIENT_ID: Optional[str] = None
+    GOOGLE_DRIVE_CLIENT_SECRET: Optional[str] = None
+    GOOGLE_DRIVE_REDIRECT_URI: str = "http://localhost:8000/api/v1/google-drive/callback"
+
     # File Upload Configuration
     MAX_FILE_SIZE: int = 10485760  # 10MB
     UPLOAD_DIR: str = "./uploads"

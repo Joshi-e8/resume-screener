@@ -12,13 +12,9 @@ from beanie import PydanticObjectId
 from redis import asyncio as aioredis
 
 from app.core.config import settings
-from app.core.security import (
-    create_access_token,
-    create_refresh_token,
-    get_password_hash,
-    verify_password,
-    verify_refresh_token,
-)
+from app.core.security import (create_access_token, create_refresh_token,
+                               get_password_hash, verify_password,
+                               verify_refresh_token)
 from app.models.user import User, UserCreate, UserUpdate
 
 oauth = OAuth()

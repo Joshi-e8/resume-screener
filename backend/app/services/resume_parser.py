@@ -2,7 +2,7 @@
 Resume parsing service using PDFPlumber and other libraries
 """
 
-# import os  # noqa: F401
+import os
 import re
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
@@ -153,7 +153,7 @@ class ResumeParser:
                     pdf_reader = PyPDF2.PdfReader(file)
                     for page in pdf_reader.pages:
                         text += page.extract_text() + "\n"
-            except Exception:  # noqa: E722
+            except Exception as fallback_error:  # noqa: E722
                 raise Exception(
                     f"Failed to extract PDF text: {str(Exception)}, Fallback error: {fallback_error}"
                 )

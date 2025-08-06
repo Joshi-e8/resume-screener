@@ -8,13 +8,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 
 from app.core.security import get_current_user
-from app.models.candidate import (
-    Candidate,
-    CandidateCreate,
-    CandidateResponse,
-    CandidateSearchFilters,
-    CandidateUpdate,
-)
+from app.models.candidate import (Candidate, CandidateCreate,
+                                  CandidateResponse, CandidateSearchFilters,
+                                  CandidateUpdate)
 from app.models.user import User
 from app.services.candidate_service import CandidateService
 

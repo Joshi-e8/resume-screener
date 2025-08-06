@@ -1,16 +1,19 @@
 "use client";
 
-import { useState, useCallback, useMemo } from "react";
-import { Upload, FileText, X, AlertCircle, CheckCircle, Archive, Files, File, Loader2, CloudUpload, Zap } from "lucide-react";
+import { useState, useCallback, useMemo, useEffect } from "react";
+import { Upload, FileText, X, AlertCircle, CheckCircle, Archive, Files, File, Loader2, CloudUpload, Zap, Cloud } from "lucide-react";
+import { EnhancedGoogleDrivePicker } from './EnhancedGoogleDrivePicker';
+import { googleDriveService, GoogleDriveFile } from '@/lib/services/googleDriveServices';
+import GoogleDriveService from '@/lib/services/googleDriveServices';
 
 interface ResumeUploadProps {
   onFilesUploaded: (files: File[]) => void;
 }
 
-type UploadMode = 'single' | 'multiple' | 'zip';
+type UploadMode = 'single' | 'multiple' | 'zip' | 'google-drive';
 
 export function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
-  const [uploadMode, setUploadMode] = useState<UploadMode>('multiple');
+  const [uploadMode, setUploadMode] = useState<UploadMode>('google-drive');
   const [isDragOver, setIsDragOver] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [uploadProgress, setUploadProgress] = useState<{ [key: string]: number }>({});
@@ -18,11 +21,23 @@ export function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
   const [zipContents, setZipContents] = useState<File[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadSuccess, setUploadSuccess] = useState(false);
+  const [selectedGoogleDriveFiles, setSelectedGoogleDriveFiles] = useState<GoogleDriveFile[]>([]);
+  const [googleDriveUploading, setGoogleDriveUploading] = useState(false);
 
   const allowedTypes = useMemo(() => ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'], []);
   const allowedZipTypes = useMemo(() => ['application/zip', 'application/x-zip-compressed'], []);
   const maxFileSize = 10 * 1024 * 1024; // 10MB
   const maxZipSize = 50 * 1024 * 1024; // 50MB
+
+  // Handle Google Drive OAuth callback
+  useEffect(() => {
+    const accessToken = GoogleDriveService.handleOAuthCallback();
+    if (accessToken) {
+      GoogleDriveService.storeAccessToken(accessToken);
+      googleDriveService.setAccessToken(accessToken);
+      setUploadMode('google-drive');
+    }
+  }, []);
 
   const validateFile = useCallback((file: File): string | null => {
     // Check if it's a ZIP file
@@ -193,12 +208,106 @@ export function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
     }
   };
 
+  // Handle Google Drive file upload
+  const handleGoogleDriveUpload = async () => {
+    if (selectedGoogleDriveFiles.length === 0) return;
+
+    setGoogleDriveUploading(true);
+    setErrors([]);
+
+    try {
+      const uploadPromises = selectedGoogleDriveFiles.map(async (file) => {
+        try {
+          const response = await googleDriveService.uploadResume(file.id);
+          return {
+            name: file.name,
+            success: true,
+            data: response
+          };
+        } catch (error) {
+          return {
+            name: file.name,
+            success: false,
+            error: error instanceof Error ? error.message : 'Upload failed'
+          };
+        }
+      });
+
+      const results = await Promise.all(uploadPromises);
+
+      // Check for errors
+      const failedUploads = results.filter(r => !r.success);
+      if (failedUploads.length > 0) {
+        setErrors(failedUploads.map(f => `${f.name}: ${f.error}`));
+      }
+
+      // Get successful uploads
+      const successfulUploads = results.filter(r => r.success);
+      if (successfulUploads.length > 0) {
+        setUploadSuccess(true);
+
+        // Convert Google Drive files to File objects for callback
+        // This is a simplified conversion - in a real app you might want to handle this differently
+        const mockFiles = successfulUploads.map(result => {
+          const file = selectedGoogleDriveFiles.find(f => f.name === result.name);
+          // Create a mock File object
+          const mockFile = {
+            name: file?.name || 'unknown',
+            size: parseInt(file?.size || '0'),
+            type: 'application/pdf',
+            lastModified: Date.now(),
+          } as File;
+          return mockFile;
+        });
+
+        onFilesUploaded(mockFiles);
+
+        // Clear selection after delay
+        setTimeout(() => {
+          setSelectedGoogleDriveFiles([]);
+          setUploadSuccess(false);
+        }, 2000);
+      }
+
+    } catch (error) {
+      setErrors(['Failed to upload files from Google Drive. Please try again.']);
+    } finally {
+      setGoogleDriveUploading(false);
+    }
+  };
+
   return (
     <div className="p-6">
       {/* Upload Mode Selector */}
       <div className="mb-6">
         <h3 className="text-lg font-semibold text-gray-900 mb-4">Choose Upload Method</h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {/* Google Drive Upload - FIRST */}
+          <button
+            onClick={() => {
+              setUploadMode('google-drive');
+              setSelectedFiles([]);
+              setErrors([]);
+              setZipContents([]);
+              setSelectedGoogleDriveFiles([]);
+            }}
+            className={`p-4 rounded-xl border-2 transition-all duration-300 text-left transform hover:scale-105 ${
+              uploadMode === 'google-drive'
+                ? 'border-blue-500 bg-blue-50 shadow-lg scale-105'
+                : 'border-gray-200 hover:border-gray-300 hover:shadow-md'
+            }`}
+          >
+            <div className="flex items-center gap-3 mb-2">
+              <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+                uploadMode === 'google-drive' ? 'bg-blue-500' : 'bg-gray-100'
+              }`}>
+                <Cloud className={`w-4 h-4 ${uploadMode === 'google-drive' ? 'text-white' : 'text-gray-600'}`} />
+              </div>
+              <h4 className="font-medium text-gray-900">Google Drive</h4>
+            </div>
+            <p className="text-sm text-gray-600">Upload from your Google Drive</p>
+          </button>
+
           {/* Single Upload */}
           <button
             onClick={() => {
@@ -272,6 +381,8 @@ export function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
             </div>
             <p className="text-sm text-gray-600">Upload a ZIP file containing multiple resumes</p>
           </button>
+
+
         </div>
       </div>
 
@@ -283,11 +394,20 @@ export function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
           </div>
           <div>
             <h4 className="font-medium text-blue-900 mb-2">
+              {uploadMode === 'google-drive' && 'Google Drive Upload Instructions'}
               {uploadMode === 'single' && 'Single Upload Instructions'}
               {uploadMode === 'multiple' && 'Multiple Upload Instructions'}
               {uploadMode === 'zip' && 'ZIP Upload Instructions'}
             </h4>
             <ul className="text-blue-800 space-y-1 text-sm">
+              {uploadMode === 'google-drive' && (
+                <>
+                  <li>• Connect to your Google Drive account</li>
+                  <li>• Browse and select resume files from your Drive</li>
+                  <li>• Supported formats: PDF, DOC, DOCX</li>
+                  <li>• Files are downloaded and processed securely</li>
+                </>
+              )}
               {uploadMode === 'single' && (
                 <>
                   <li>• Upload one resume file (PDF, DOC, DOCX)</li>
@@ -316,8 +436,9 @@ export function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
         </div>
       </div>
 
-      {/* Drag & Drop Zone */}
-      <div
+      {/* Drag & Drop Zone - Only for non-Google Drive modes */}
+      {uploadMode !== 'google-drive' && (
+        <div
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
@@ -395,7 +516,20 @@ export function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
             )}
           </div>
         </div>
-      </div>
+        </div>
+      )}
+
+      {/* Google Drive Picker */}
+      {uploadMode === 'google-drive' && (
+        <EnhancedGoogleDrivePicker
+          onFilesSelected={setSelectedGoogleDriveFiles}
+          onAuthRequired={() => {
+            setErrors(['Google Drive authentication required. Please try again.']);
+          }}
+          multiSelect={true}
+          className="mb-6"
+        />
+      )}
 
       {/* Error Messages */}
       {errors.length > 0 && (
@@ -458,14 +592,16 @@ export function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
         </div>
       )}
 
-      {/* Selected Files */}
-      {selectedFiles.length > 0 && (
+      {/* Selected Files or Google Drive Files */}
+      {(selectedFiles.length > 0 || (uploadMode === 'google-drive' && selectedGoogleDriveFiles.length > 0)) && (
         <div className="mt-6">
           <h4 className="font-medium text-gray-900 mb-4">
-            {uploadMode === 'zip' ? 'Ready to Upload' : 'Selected Files'} ({selectedFiles.length})
+            {uploadMode === 'zip' ? 'Ready to Upload' : uploadMode === 'google-drive' ? 'Selected from Google Drive' : 'Selected Files'}
+            ({uploadMode === 'google-drive' ? selectedGoogleDriveFiles.length : selectedFiles.length})
           </h4>
           <div className="space-y-3">
-            {selectedFiles.map((file, index) => (
+            {/* Regular Files */}
+            {uploadMode !== 'google-drive' && selectedFiles.map((file, index) => (
               <div
                 key={index}
                 className="flex items-center justify-between p-4 bg-gray-50 rounded-xl"
@@ -526,35 +662,83 @@ export function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
                 </div>
               </div>
             ))}
+
+            {/* Google Drive Files */}
+            {uploadMode === 'google-drive' && selectedGoogleDriveFiles.map((file, index) => (
+              <div
+                key={file.id}
+                className="flex items-center justify-between p-4 bg-blue-50 rounded-xl border border-blue-200"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                    <Cloud className="w-5 h-5 text-blue-600" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h5 className="font-medium text-gray-900 truncate">{file.name}</h5>
+                    <div className="flex items-center gap-2 text-sm text-gray-500">
+                      <span>{googleDriveService.formatFileSize(file.size)}</span>
+                      <span>•</span>
+                      <span>Google Drive</span>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  {googleDriveUploading ? (
+                    <div className="flex items-center gap-3">
+                      <div className="relative w-8 h-8">
+                        <div className="absolute inset-0 rounded-full border-2 border-blue-500 border-t-transparent animate-spin"></div>
+                      </div>
+                      <span className="text-sm text-blue-600">Uploading...</span>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => {
+                        setSelectedGoogleDriveFiles(prev => prev.filter(f => f.id !== file.id));
+                      }}
+                      className="p-1 text-gray-400 hover:text-red-500 transition-colors duration-200"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
           </div>
 
           {/* Upload Button */}
           <div className="mt-6 flex justify-end">
             <button
-              onClick={handleUpload}
-              disabled={isUploading || Object.keys(uploadProgress).length > 0 || uploadSuccess}
+              onClick={uploadMode === 'google-drive' ? handleGoogleDriveUpload : handleUpload}
+              disabled={
+                (uploadMode === 'google-drive' ? googleDriveUploading : isUploading) ||
+                Object.keys(uploadProgress).length > 0 ||
+                uploadSuccess
+              }
               className={`px-6 py-3 font-medium rounded-xl transition-all duration-300 transform hover:scale-105 disabled:scale-100 disabled:cursor-not-allowed flex items-center gap-2 ${
                 uploadSuccess
                   ? 'bg-green-500 text-white'
-                  : isUploading
-                  ? 'bg-yellow-400 text-white'
-                  : 'bg-yellow-500 text-white hover:bg-yellow-600'
-              } ${isUploading ? 'animate-pulse' : ''}`}
+                  : (uploadMode === 'google-drive' ? googleDriveUploading : isUploading)
+                  ? (uploadMode === 'google-drive' ? 'bg-blue-400 text-white' : 'bg-yellow-400 text-white')
+                  : (uploadMode === 'google-drive' ? 'bg-blue-500 text-white hover:bg-blue-600' : 'bg-yellow-500 text-white hover:bg-yellow-600')
+              } ${(uploadMode === 'google-drive' ? googleDriveUploading : isUploading) ? 'animate-pulse' : ''}`}
             >
               {uploadSuccess ? (
                 <>
                   <CheckCircle className="w-4 h-4" />
                   Upload Complete!
                 </>
-              ) : isUploading ? (
+              ) : (uploadMode === 'google-drive' ? googleDriveUploading : isUploading) ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  Uploading...
+                  {uploadMode === 'google-drive' ? 'Processing from Drive...' : 'Uploading...'}
                 </>
               ) : (
                 <>
-                  <Zap className="w-4 h-4" />
-                  Upload {selectedFiles.length} File{selectedFiles.length !== 1 ? 's' : ''}
+                  {uploadMode === 'google-drive' ? <Cloud className="w-4 h-4" /> : <Zap className="w-4 h-4" />}
+                  {uploadMode === 'google-drive'
+                    ? `Process ${selectedGoogleDriveFiles.length} File${selectedGoogleDriveFiles.length !== 1 ? 's' : ''} from Drive`
+                    : `Upload ${selectedFiles.length} File${selectedFiles.length !== 1 ? 's' : ''}`
+                  }
                 </>
               )}
             </button>

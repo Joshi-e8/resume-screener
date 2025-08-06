@@ -4,8 +4,7 @@ Creates indexes, default data, and performs initial setup
 """
 
 import asyncio
-
-# import os  # noqa: F401
+import os
 import sys
 from datetime import datetime
 

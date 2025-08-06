@@ -8,12 +8,8 @@ from beanie import init_beanie
 from motor.motor_asyncio import AsyncIOMotorClient
 
 from app.core.config import settings
-from app.models.analytics import (
-    AnalyticsEvent,
-    DailyMetrics,
-    PlatformMetrics,
-    UserUsageStats,
-)
+from app.models.analytics import (AnalyticsEvent, DailyMetrics,
+                                  PlatformMetrics, UserUsageStats)
 from app.models.candidate import Candidate
 from app.models.job import Job
 from app.models.resume import JobDescription, ResumeAnalysis, UploadedResume

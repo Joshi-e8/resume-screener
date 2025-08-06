@@ -6,12 +6,8 @@ from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional
 
-from app.models.analytics import (
-    AnalyticsEvent,
-    DailyMetrics,
-    EventType,
-    PlatformMetrics,
-)
+from app.models.analytics import (AnalyticsEvent, DailyMetrics, EventType,
+                                  PlatformMetrics)
 from app.services.candidate_service import CandidateService
 from app.services.job_service import JobService
 from app.services.user_service import UserService

@@ -7,14 +7,9 @@ from typing import Dict, List, Optional, Tuple
 
 from beanie import PydanticObjectId
 
-from app.models.candidate import (
-    Candidate,
-    CandidateCreate,
-    CandidateSearchFilters,
-    CandidateStatus,
-    CandidateUpdate,
-    JobMatchScore,
-)
+from app.models.candidate import (Candidate, CandidateCreate,
+                                  CandidateSearchFilters, CandidateStatus,
+                                  CandidateUpdate, JobMatchScore)
 
 
 class CandidateService:
