@@ -14,7 +14,7 @@ export interface ProgressUpdate {
 }
 
 export interface WebSocketMessage {
-  type: 'progress' | 'connected' | 'error' | 'keepalive';
+  type: 'progress' | 'connected' | 'error' | 'keepalive' | 'subscribed';
   data?: ProgressUpdate;
   message?: string;
   user_id?: string;

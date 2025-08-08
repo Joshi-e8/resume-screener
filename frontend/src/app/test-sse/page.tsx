@@ -204,10 +204,10 @@ export default function TestSSEPage() {
                 <span>{progress.completed}/{progress.total}</span>
               </div>
               
-              {progress.message && (
+              {(progress as any).message && (
                 <div className="flex justify-between">
                   <span>Message:</span>
-                  <span className="text-gray-600">{progress.message}</span>
+                  <span className="text-gray-600">{(progress as any).message}</span>
                 </div>
               )}
               
