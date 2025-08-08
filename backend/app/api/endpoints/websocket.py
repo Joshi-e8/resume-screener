@@ -22,8 +22,8 @@ async def websocket_progress_endpoint(websocket: WebSocket, user_id: str):
         # Send initial connection confirmation
         await websocket_manager.send_personal_message(
             json.dumps({
-                "type": "connection_established",
-                "message": "Connected to progress updates",
+                "type": "connected",
+                "message": f"Connected to progress updates for user {user_id}",
                 "user_id": user_id
             }),
             user_id
@@ -103,4 +103,44 @@ async def websocket_health():
         "status": "healthy",
         "active_connections": websocket_manager.get_connection_count(),
         "service": "websocket"
+    }
+
+
+# Test endpoint to send progress update
+@router.post("/ws/test-progress/{user_id}")
+async def test_progress_update(user_id: str):
+    """
+    Test endpoint to send a progress update to a specific user
+    """
+    test_progress = {
+        "completed": 5,
+        "total": 10,
+        "status": "processing",
+        "message": "Test progress update"
+    }
+
+    await websocket_manager.send_progress_update(user_id, test_progress)
+
+    return {
+        "status": "sent",
+        "user_id": user_id,
+        "progress": test_progress,
+        "active_connections": websocket_manager.get_connection_count()
+    }
+
+
+# Progress update endpoint for Celery tasks
+@router.post("/ws/progress/{user_id}")
+async def send_progress_update(user_id: str, progress_data: dict):
+    """
+    Send progress update to a specific user via WebSocket
+    Used by Celery tasks to send progress updates
+    """
+    await websocket_manager.send_progress_update(user_id, progress_data)
+
+    return {
+        "status": "sent",
+        "user_id": user_id,
+        "progress": progress_data,
+        "active_connections": websocket_manager.get_connection_count()
     }

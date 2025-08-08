@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useEffect } from "react";
+import { useCallback, useMemo, useEffect, useRef } from "react";
 import {
   Upload,
   FileText,
@@ -63,69 +63,208 @@ export function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
     selectedGoogleDriveFiles,
     googleDriveUploading,
     processingProgress,
-    batchId,
+    batchId, // Used for tracking async processing batches
     isAsyncProcessing,
     wsConnected,
     userId,
     folderProcessed,
   } = useAppSelector((state) => state.resumeUpload);
 
+  // Refs for cleanup and preventing memory leaks
+  const isMountedRef = useRef(true);
+  const connectionMonitorRef = useRef<NodeJS.Timeout | null>(null);
+  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const progressCallbackRef = useRef<((progress: ProgressUpdate) => void) | null>(null);
+
+  // Component cleanup effect
+  useEffect(() => {
+    return () => {
+      console.log('🧹 Component unmounting, cleaning up...');
+      isMountedRef.current = false;
+
+      // Clean up connection monitor
+      if (connectionMonitorRef.current) {
+        clearInterval(connectionMonitorRef.current);
+        connectionMonitorRef.current = null;
+      }
+
+      // Clean up reconnect timeout
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = null;
+      }
+
+      // Clean up WebSocket connection
+      websocketService.disconnect();
+
+      // Remove progress callback
+      if (progressCallbackRef.current) {
+        websocketService.offProgress(progressCallbackRef.current);
+        progressCallbackRef.current = null;
+      }
+    };
+  }, []);
+
+  // Single progress callback - no multiple registrations
+  const handleProgressUpdate = useCallback((progress: ProgressUpdate) => {
+    // Check if component is still mounted
+    if (!isMountedRef.current) {
+      console.log('⚠️ Component unmounted, ignoring progress update');
+      return;
+    }
+
+    console.log('📡 SSE Progress Update Received:', progress);
+
+    // Validate progress data
+    if (!progress || typeof progress !== 'object') {
+      console.error('❌ Invalid progress data received:', progress);
+      return;
+    }
+
+    console.log('🔄 Updating progress state with:', {
+      completed: progress.completed,
+      total: progress.total,
+      status: progress.status
+    });
+
+    dispatch(setProcessingProgress(progress));
+    console.log('✅ Progress state updated successfully');
+
+    if (progress.status === 'completed') {
+      console.log('🎉 Processing completed, calling completion handler...');
+      handleAsyncProcessingComplete(progress);
+    }
+  }, []);
+
+  // Debug effect to track processingProgress changes
+  useEffect(() => {
+    console.log('🔍 processingProgress changed:', processingProgress);
+    if (processingProgress) {
+      const percentage = (processingProgress.completed / processingProgress.total) * 100;
+      console.log(`🔍 Current progress: ${processingProgress.completed}/${processingProgress.total} = ${percentage}%`);
+    }
+  }, [processingProgress]);
+
   // Enhanced tab/window switching protection during processing
   useEffect(() => {
-    let reconnectTimeout: NodeJS.Timeout | null = null;
-
     const handleVisibilityChange = () => {
+      // Check if component is still mounted
+      if (!isMountedRef.current) {
+        return;
+      }
+
       console.log(`👁️ Page visibility changed: ${document.visibilityState}`);
 
       if (document.visibilityState === 'visible' && isAsyncProcessing) {
-        console.log('👁️ Page became visible during processing, checking WebSocket...');
+        console.log('👁️ Page became visible during processing, performing comprehensive check...');
 
         // Clear any pending reconnect timeout
-        if (reconnectTimeout) {
-          clearTimeout(reconnectTimeout);
-          reconnectTimeout = null;
+        if (reconnectTimeoutRef.current) {
+          clearTimeout(reconnectTimeoutRef.current);
+          reconnectTimeoutRef.current = null;
         }
 
-        // Immediate connection check when page becomes visible
+        // Comprehensive recovery when tab becomes visible
+        handleTabVisibilityRecovery();
+
+      } else if (document.visibilityState === 'hidden' && isAsyncProcessing) {
+        console.log('👁️ Page became hidden during processing, preparing for background mode...');
+
+        // Increase polling frequency to compensate for potential throttling
+        handleTabHiddenMode();
+      }
+    };
+
+    // Handle tab becoming visible - comprehensive recovery
+    const handleTabVisibilityRecovery = async () => {
+      if (!isMountedRef.current || !isAsyncProcessing) return;
+
+      console.log('🔄 Starting comprehensive tab visibility recovery...');
+
+      try {
+        // 1. Force WebSocket reconnection
         if (!wsConnected) {
           console.log('🔄 WebSocket disconnected, attempting immediate reconnection...');
-          console.log(`🔧 Using stored userId: ${userId}`);
-          websocketService.connect(userId).then(() => {
+          await websocketService.connect(userId);
+          if (isMountedRef.current) {
             setWsConnected(true);
-            console.log('✅ WebSocket reconnected after page became visible');
-          }).catch((error) => {
-            console.error('❌ Failed to reconnect WebSocket after page became visible:', error);
-          });
-        }
-      } else if (document.visibilityState === 'hidden' && isAsyncProcessing) {
-        console.log('👁️ Page became hidden during processing, setting up reconnect strategy...');
 
-        // Set up delayed reconnection attempt for when page becomes visible again
-        reconnectTimeout = setTimeout(() => {
-          if (document.visibilityState === 'visible' && isAsyncProcessing && !wsConnected) {
-            console.log('🔄 Delayed reconnection attempt after page was hidden...');
-            console.log(`🔧 Using stored userId: ${userId}`);
-            websocketService.connect(userId).then(() => {
-              setWsConnected(true);
-              console.log('✅ WebSocket reconnected via delayed attempt');
-            }).catch((error) => {
-              console.error('❌ Failed delayed WebSocket reconnection:', error);
-            });
+            // Re-establish progress callback
+            websocketService.onProgress(handleProgressUpdate);
+            console.log('✅ WebSocket reconnected after page became visible');
           }
-        }, 2000); // Wait 2 seconds after page becomes visible
+        }
+
+        // 2. Immediate batch status check to catch up on missed progress
+        if (batchId) {
+          console.log('🔍 Checking batch status after tab became visible...');
+          const response = await fetch(`http://localhost:8000/api/v1/google-drive/batch-status/${batchId}`);
+          if (response.ok && isMountedRef.current) {
+            const batchStatus = await response.json();
+            console.log('📊 Batch status after tab visibility:', batchStatus);
+
+            if (batchStatus.status === 'COMPLETED' || batchStatus.status === 'completed') {
+              console.log('🎉 Found completed batch after tab became visible!');
+              const progressData = {
+                completed: batchStatus.total_files,
+                total: batchStatus.total_files,
+                status: 'completed',
+                successful_files: batchStatus.successful_files,
+                failed_files: batchStatus.failed_files,
+                results: batchStatus.results?.results || []
+              };
+              handleAsyncProcessingComplete(progressData);
+              return;
+            } else if (batchStatus.status === 'PROCESSING' || batchStatus.status === 'processing') {
+              // Update with current progress
+              const progressData = {
+                completed: batchStatus.processed_files || 0,
+                total: batchStatus.total_files,
+                status: 'processing',
+                successful_files: batchStatus.successful_files || 0,
+                failed_files: batchStatus.failed_files || 0,
+                message: batchStatus.current_status_message
+              };
+              console.log('� Updated progress after tab became visible:', progressData);
+              dispatch(setProcessingProgress(progressData));
+            }
+          }
+        }
+
+      } catch (error) {
+        console.error('❌ Error during tab visibility recovery:', error);
       }
+    };
+
+    // Handle tab becoming hidden - prepare for background throttling
+    const handleTabHiddenMode = () => {
+      console.log('🌙 Preparing for background mode due to tab switching...');
+
+      // Set up more aggressive polling when tab becomes visible again
+      // This compensates for potential missed SSE messages during background throttling
+      reconnectTimeoutRef.current = setTimeout(() => {
+        if (document.visibilityState === 'visible' && isAsyncProcessing && isMountedRef.current) {
+          console.log('🔄 Delayed recovery check after tab was hidden...');
+          handleTabVisibilityRecovery();
+        }
+      }, 1000); // Quick check when tab becomes visible
     };
 
     const handleWindowFocus = () => {
       console.log('🪟 Window gained focus during processing');
-      if (isAsyncProcessing && !wsConnected) {
-        console.log('🔄 Window focused, attempting WebSocket reconnection...');
+      if (isAsyncProcessing) {
+        console.log('🔄 Window focused, ensuring WebSocket connection...');
         console.log(`🔧 Using stored userId: ${userId}`);
+
+        // Always try to reconnect on focus, regardless of wsConnected state
         websocketService.connect(userId).then(() => {
           setWsConnected(true);
+          // Re-establish progress callback
+          websocketService.onProgress(handleProgressUpdate);
           console.log('✅ WebSocket reconnected after window focus');
-        }).catch((error) => {
+        }).catch((error: any) => {
           console.error('❌ Failed to reconnect WebSocket after window focus:', error);
+          setWsConnected(false);
         });
       }
     };
@@ -144,15 +283,16 @@ export function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
       // If more than 60 seconds have passed, likely system was sleeping
       if (timeDiff > 60000 && isAsyncProcessing) {
         console.log('😴 System wake detected during processing, reconnecting WebSocket...');
-        if (!wsConnected) {
-          console.log(`🔧 Using stored userId: ${userId}`);
-          websocketService.connect(userId).then(() => {
-            setWsConnected(true);
-            console.log('✅ WebSocket reconnected after system wake');
-          }).catch((error) => {
-            console.error('❌ Failed to reconnect WebSocket after system wake:', error);
-          });
-        }
+        console.log(`🔧 Using stored userId: ${userId}`);
+        websocketService.connect(userId).then(() => {
+          setWsConnected(true);
+          // Re-establish progress callback
+          websocketService.onProgress(handleProgressUpdate);
+          console.log('✅ WebSocket reconnected after system wake');
+        }).catch((error: any) => {
+          console.error('❌ Failed to reconnect WebSocket after system wake:', error);
+          setWsConnected(false);
+        });
       }
       lastActiveTime = now;
     };
@@ -166,8 +306,9 @@ export function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
     window.addEventListener('blur', handleWindowBlur);
 
     return () => {
-      if (reconnectTimeout) {
-        clearTimeout(reconnectTimeout);
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = null;
       }
       clearInterval(sleepWakeInterval);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
@@ -415,6 +556,12 @@ export function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
       const currentUserId = `user_${Date.now()}`; // Generate a temporary user ID
       dispatch(setUserId(currentUserId)); // Store it in state for reconnections
 
+      console.log('🔧 FRONTEND: Upload configuration:');
+      console.log(`   📊 Batch size: ${batchSize}`);
+      console.log(`   🔄 Use async: ${useAsync}`);
+      console.log(`   👤 User ID: ${currentUserId}`);
+      console.log(`   📁 File IDs: ${fileIds.slice(0, 3)}...`);
+
       // Always show processing state when starting
       dispatch(setIsAsyncProcessing(true));
       dispatch(setProcessingProgress({
@@ -426,56 +573,38 @@ export function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
       if (useAsync) {
         // Setup WebSocket connection for progress tracking
         try {
+          console.log('🔗 Setting up WebSocket for progress tracking...');
+
+          // Clear any existing callbacks to prevent duplicates
+          websocketService.clearAllCallbacks();
+
           await websocketService.connect(currentUserId);
           setWsConnected(true);
 
-          // Setup progress callback
-          const progressCallback = (progress: ProgressUpdate) => {
-            console.log('📡 Received WebSocket progress update:', progress);
-            console.log('📊 Current processing progress state:', processingProgress);
+          // Register single progress callback
+          console.log('📡 Registering progress callback for real-time updates...');
+          websocketService.onProgress(handleProgressUpdate);
 
-            // Validate progress data
-            if (!progress || typeof progress !== 'object') {
-              console.error('❌ Invalid progress data received:', progress);
-              return;
-            }
-
-            console.log('🔄 Updating progress state...');
-            setProcessingProgress(progress);
-            console.log('✅ Progress state updated');
-
-            if (progress.status === 'completed') {
-              console.log('🎉 Processing completed, calling completion handler...');
-              handleAsyncProcessingComplete(progress);
-            }
-          };
-
-          // Setup connection status callback
+          // Register connection status callback
           const connectionCallback = (connected: boolean) => {
-            console.log('🔗 WebSocket connection status changed:', connected);
-            setWsConnected(connected);
+            if (isMountedRef.current) {
+              console.log('🔗 WebSocket connection status changed:', connected);
+              setWsConnected(connected);
+            }
           };
-
-          websocketService.onProgress(progressCallback);
           websocketService.onConnectionChange(connectionCallback);
 
-          // Cleanup function
-          const cleanup = () => {
-            websocketService.offProgress(progressCallback);
-            websocketService.offConnectionChange(connectionCallback);
-            websocketService.disconnect();
-            setWsConnected(false);
-          };
-
-          // Store cleanup function for later use
-          (window as any).wsCleanup = cleanup;
+          console.log('✅ WebSocket setup complete, waiting for progress updates...');
 
         } catch (wsError) {
-          console.warn('WebSocket connection failed, proceeding without real-time updates:', wsError);
+          console.error('❌ WebSocket connection failed:', wsError);
+          setWsConnected(false);
         }
       }
 
       // Use bulk upload API with async processing option
+      console.log('📤 FRONTEND: Calling bulkUploadResumes API...');
+      console.log('👤 FRONTEND: Using user_id:', currentUserId);
       const response = await googleDriveService.bulkUploadResumes(
         fileIds,
         undefined, // jobId
@@ -483,16 +612,23 @@ export function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
         useAsync
       );
 
+      console.log('📥 FRONTEND: API response received:', {
+        async_processing: response.async_processing,
+        batch_id: response.batch_id,
+        task_id: response.task_id,
+        total_files: response.total_files
+      });
+
       if (response.async_processing) {
         // Async processing started - update batch ID
         setBatchId(response.batch_id || null);
+        console.log('📦 Batch processing started with ID:', response.batch_id, 'Current batch ID:', batchId);
 
-        // Ensure WebSocket stays connected during processing
-        if (response.batch_id) {
-          ensureWebSocketConnection(currentUserId);
-        }
+        // SSE is already connected and ready for progress updates
+        console.log('✅ SSE already connected, ready to receive progress updates for batch:', response.batch_id);
       } else {
         // Synchronous processing completed
+        console.log('⚡ FRONTEND: Synchronous processing completed');
         handleSyncProcessingComplete(response);
       }
 
@@ -543,66 +679,121 @@ export function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
     setGoogleDriveUploading(false);
   };
 
-  // Ensure WebSocket connection stays active during processing
-  const ensureWebSocketConnection = async (userId: string) => {
-    console.log('🔗 Ensuring WebSocket connection for processing...');
+  // DISABLED: WebSocket connection stays active automatically - no need for aggressive monitoring
+  const ensureSSEConnection = async (userId: string, currentBatchId?: string) => {
+    // This function is disabled to prevent breaking WebSocket streams
+    console.log('⚠️ ensureSSEConnection disabled - WebSocket already connected');
+    return;
+    console.log('🔗 Ensuring SSE connection for processing...');
 
     // Force reconnection to ensure fresh connection
     console.log('🔄 Forcing WebSocket reconnection for processing...');
     try {
-      websocketService.disconnect();
-      await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second
+      // Don't disconnect - keep existing connection stable
+      // websocketService.disconnect();
+      // await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second
       await websocketService.connect(userId);
       setWsConnected(true);
       console.log('✅ WebSocket connected successfully for processing');
+
+      // Re-establish progress callback after reconnection
+      websocketService.onProgress(handleProgressUpdate);
+
+      // Setup connection status callback
+      const connectionCallback = (connected: boolean) => {
+        if (isMountedRef.current) {
+          console.log('🔗 WebSocket connection status changed:', connected);
+          setWsConnected(connected);
+        }
+      };
+      websocketService.onConnectionChange(connectionCallback);
+      console.log('✅ Progress callbacks re-established');
+
     } catch (error) {
       console.error('❌ Failed to connect WebSocket:', error);
       setWsConnected(false);
     }
 
-    // Set up aggressive connection monitoring during processing
-    const connectionMonitor = setInterval(async () => {
-      console.log('🔍 Checking WebSocket connection status...');
+    // Pure SSE - let SSE handle all progress updates
+    console.log('🔗 Setting up pure SSE progress tracking...');
+
+    // Set up connection monitoring during processing
+    connectionMonitorRef.current = setInterval(async () => {
+      // Check if component is still mounted
+      if (!isMountedRef.current) {
+        console.log('⚠️ Component unmounted, stopping connection monitor');
+        if (connectionMonitorRef.current) {
+          clearInterval(connectionMonitorRef.current);
+          connectionMonitorRef.current = null;
+        }
+        return;
+      }
+
+      console.log('� Checking SSE connection status...');
 
       if (!wsConnected) {
         console.log('🔄 WebSocket disconnected during processing, attempting reconnect...');
         try {
           await websocketService.connect(userId);
-          setWsConnected(true);
-          console.log('✅ WebSocket reconnected during processing');
+          if (isMountedRef.current) {
+            setWsConnected(true);
+            console.log('✅ WebSocket reconnected during processing');
+
+            // Re-establish progress callback after reconnection
+            websocketService.onProgress(handleProgressUpdate);
+
+            // Setup connection status callback
+            const connectionCallback = (connected: boolean) => {
+              if (isMountedRef.current) {
+                console.log('🔗 WebSocket connection status changed:', connected);
+                setWsConnected(connected);
+              }
+            };
+            websocketService.onConnectionChange(connectionCallback);
+            console.log('✅ Progress callbacks re-established after reconnection');
+          }
         } catch (error) {
           console.error('❌ Failed to reconnect WebSocket during processing:', error);
-          setWsConnected(false);
+          if (isMountedRef.current) {
+            setWsConnected(false);
+          }
         }
       } else {
         console.log('✅ WebSocket connection is active');
       }
-    }, 5000); // Check every 5 seconds (more aggressive)
 
-    // Store monitor reference for cleanup
-    (window as any).connectionMonitor = connectionMonitor;
+      // Pure SSE - no API polling needed
+    }, 60000); // Check every 60 seconds - much less aggressive to avoid breaking SSE streams
 
     // Clear monitor after 30 minutes (extended for large batches)
     setTimeout(() => {
       console.log('⏰ Stopping connection monitor after timeout');
-      clearInterval(connectionMonitor);
-      (window as any).connectionMonitor = null;
+      if (connectionMonitorRef.current) {
+        clearInterval(connectionMonitorRef.current);
+        connectionMonitorRef.current = null;
+      }
     }, 1800000); // 30 minutes
   };
 
   // Handle completion of asynchronous processing
   const handleAsyncProcessingComplete = (progress: ProgressUpdate) => {
+    // Check if component is still mounted
+    if (!isMountedRef.current) {
+      console.log('⚠️ Component unmounted, ignoring completion');
+      return;
+    }
+
     console.log('🎉 Async processing completed:', progress);
 
     // Update progress state with completion data
     console.log('📊 Updating progress state with completion data...');
-    setProcessingProgress(progress);
+    dispatch(setProcessingProgress(progress));
 
     // Stop any ongoing connection monitoring
-    if ((window as any).connectionMonitor) {
-      console.log('🛑 Stopping WebSocket connection monitor');
-      clearInterval((window as any).connectionMonitor);
-      (window as any).connectionMonitor = null;
+    if (connectionMonitorRef.current) {
+      console.log('🛑 Stopping SSE connection monitor');
+      clearInterval(connectionMonitorRef.current);
+      connectionMonitorRef.current = null;
     }
 
     if (progress.results) {
@@ -615,40 +806,25 @@ export function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
 
       if (successfulUploads.length > 0) {
         setUploadSuccess(true);
-
-        const mockFiles = successfulUploads.map((result) => {
-          const file = selectedGoogleDriveFiles.find(
-            (f) => f.id === result.file_id
-          );
-          return {
-            name: result.filename,
-            size: parseInt(file?.size || "0"),
-            type: "application/pdf",
-            lastModified: Date.now(),
-          } as File;
-        });
-
-        onFilesUploaded(mockFiles);
+        // Don't call onFilesUploaded for async processing to avoid showing uploaded files list
       }
     }
 
-    // Cleanup - but keep processing state visible for a moment
+    // Cleanup - immediately transition to completion state
     setGoogleDriveUploading(false);
 
-    // Delay cleanup to show completion state
-    setTimeout(() => {
-      console.log('🧹 Cleaning up async processing state...');
-      setIsAsyncProcessing(false);
-      setBatchId(null);
-      setSelectedGoogleDriveFiles([]);
-      setUploadSuccess(false);
-      setProcessingProgress(null);
-    }, 5000); // Increased to 5 seconds to show completion
+    // Immediately stop processing state to show completion
+    console.log('🧹 Cleaning up async processing state...');
+    setIsAsyncProcessing(false);
 
-    // Cleanup WebSocket
-    if ((window as any).wsCleanup) {
-      (window as any).wsCleanup();
-      delete (window as any).wsCleanup;
+    // Don't auto-cleanup - let user manually proceed to view resumes
+    // Keep the completion state visible with "View Resumes" option
+    console.log('✅ Processing completed - showing completion state');
+
+    // Cleanup SSE
+    if ((window as any).sseCleanup) {
+      (window as any).sseCleanup();
+      delete (window as any).sseCleanup;
     }
   };
 
@@ -1001,24 +1177,50 @@ export function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
                   </div>
                   <div>
                     <h3 className="text-lg font-medium text-blue-900">
-                      Processing {selectedGoogleDriveFiles.length} Files
+                      {processingProgress?.status === 'completed' ?
+                        `✅ Completed ${selectedGoogleDriveFiles.length} Files` :
+                        `Processing ${selectedGoogleDriveFiles.length} Files`
+                      }
                     </h3>
                     <p className="text-sm text-blue-700">
-                      {processingProgress ?
-                        `${processingProgress.completed} of ${processingProgress.total} files processed` :
-                        'Initializing processing...'
+                      {processingProgress ? (
+                        processingProgress.status === 'completed' ?
+                          `Successfully processed ${processingProgress.completed} of ${processingProgress.total} files` :
+                          `${processingProgress.completed} of ${processingProgress.total} files processed`
+                      ) : 'Initializing processing...'
                       }
                     </p>
                   </div>
                 </div>
                 <div className="text-right">
-                  <div className="text-sm font-medium text-blue-900">
-                    {processingProgress ?
-                      `${Math.round((processingProgress.completed / processingProgress.total) * 100)}%` :
-                      '0%'
-                    }
-                  </div>
-                  <div className="text-xs text-blue-700">Complete</div>
+                  {processingProgress?.status === 'completed' ? (
+                    <button
+                      onClick={() => {
+                        // Reset to initial state and navigate to view resumes
+                        dispatch(setIsAsyncProcessing(false));
+                        dispatch(setGoogleDriveUploading(false));
+                        dispatch(setSelectedGoogleDriveFiles([]));
+                        dispatch(setProcessingProgress(null));
+                        dispatch(setUploadSuccess(false));
+                        setBatchId(null);
+                        console.log('🔄 Navigating to view resumes...');
+                      }}
+                      className="px-4 py-2 bg-green-500 text-white font-medium rounded-lg hover:bg-green-600 transition-colors duration-200 flex items-center gap-2"
+                    >
+                      <CheckCircle className="w-4 h-4" />
+                      View Resumes
+                    </button>
+                  ) : (
+                    <div>
+                      <div className="text-sm font-medium text-blue-900">
+                        {processingProgress ?
+                          `${Math.round((processingProgress.completed / processingProgress.total) * 100)}%` :
+                          '0%'
+                        }
+                      </div>
+                      <div className="text-xs text-blue-700">Complete</div>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -1027,9 +1229,11 @@ export function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
                 <div
                   className="bg-blue-600 h-2 rounded-full transition-all duration-300"
                   style={{
-                    width: processingProgress ?
-                      `${(processingProgress.completed / processingProgress.total) * 100}%` :
-                      '0%'
+                    width: processingProgress ? (() => {
+                      const percentage = (processingProgress.completed / processingProgress.total) * 100;
+                      console.log(`📊 Progress bar calculation: ${processingProgress.completed}/${processingProgress.total} = ${percentage}%`);
+                      return `${percentage}%`;
+                    })() : '0%'
                   }}
                 ></div>
               </div>
@@ -1101,8 +1305,8 @@ export function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
         </div>
       )}
 
-      {/* Selected Files or Google Drive Files - Hide during processing or after folder processing */}
-      {!isAsyncProcessing && !googleDriveUploading && !folderProcessed && (selectedFiles.length > 0 ||
+      {/* Selected Files or Google Drive Files - Hide during processing, after folder processing, or after successful upload */}
+      {!isAsyncProcessing && !googleDriveUploading && !folderProcessed && !uploadSuccess && (selectedFiles.length > 0 ||
         (uploadMode === "google-drive" &&
           selectedGoogleDriveFiles.length > 0)) && (
         <div className="mt-6">

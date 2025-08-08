@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>WebSocket Test</title>
+</head>
+<body>
+    <h1>WebSocket Connection Test</h1>
+    <div id="status">Disconnected</div>
+    <div id="messages"></div>
+    
+    <script>
+        const userId = 'test_user_' + Date.now();
+        const wsUrl = `ws://localhost:8000/api/v1/websocket/ws/progress/${userId}`;
+        
+        console.log('Connecting to:', wsUrl);
+        
+        const ws = new WebSocket(wsUrl);
+        
+        ws.onopen = function(event) {
+            console.log('WebSocket connected');
+            document.getElementById('status').textContent = 'Connected';
+            document.getElementById('status').style.color = 'green';
+
+            // Send subscribe message like the React app does
+            ws.send(JSON.stringify({
+                type: "subscribe",
+                user_id: userId
+            }));
+            console.log('Sent subscribe message');
+        };
+        
+        ws.onmessage = function(event) {
+            console.log('Message received:', event.data);
+            const messagesDiv = document.getElementById('messages');
+            messagesDiv.innerHTML += '<div>' + event.data + '</div>';
+        };
+        
+        ws.onclose = function(event) {
+            console.log('WebSocket disconnected:', event.code, event.reason);
+            document.getElementById('status').textContent = 'Disconnected';
+            document.getElementById('status').style.color = 'red';
+        };
+        
+        ws.onerror = function(error) {
+            console.error('WebSocket error:', error);
+            document.getElementById('status').textContent = 'Error';
+            document.getElementById('status').style.color = 'red';
+        };
+    </script>
+</body>
+</html>

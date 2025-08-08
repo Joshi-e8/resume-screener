@@ -120,6 +120,55 @@ class ResumeParser:
             re.IGNORECASE | re.DOTALL
         )
 
+    async def parse_resume_from_memory(self, file_content: bytes, filename: str, file_extension: str) -> Dict[str, Any]:
+        """
+        Parse resume directly from memory (much faster than file I/O)
+        """
+        if file_extension not in self.supported_formats:
+            raise ValueError(f"Unsupported file format: {file_extension}")
+
+        # Extract text based on file type directly from memory
+        if file_extension == ".pdf":
+            text = await self._extract_pdf_text_from_memory(file_content)
+        elif file_extension in [".docx", ".doc"]:
+            text = await self._extract_docx_text_from_memory(file_content)
+        elif file_extension == ".txt":
+            text = file_content.decode('utf-8', errors='ignore')
+        else:
+            raise ValueError(f"Unsupported file format: {file_extension}")
+
+        # Handle empty text gracefully
+        if not text or not text.strip():
+            print(f"Warning: No text extracted from {filename}")
+            return {
+                "raw_text": "",
+                "file_type": file_extension,
+                "parsed_at": datetime.now(timezone.utc).isoformat(),
+                "contact_info": {},
+                "skills": [],
+                "education": [],
+                "experience": [],
+                "summary": "",
+                "certifications": [],
+                "languages": [],
+                "projects": [],
+                "extraction_warning": "No text could be extracted from this file"
+            }
+
+        # Always use fast mode for bulk processing
+        fast_mode = True
+        if len(text) > 10000:  # Even more aggressive text limiting
+            text = text[:10000]
+
+        # Parse structured data from text (fast mode only)
+        parsed_data = await self._parse_text_content(text, fast_mode)
+        parsed_data["raw_text"] = text
+        parsed_data["file_type"] = file_extension
+        parsed_data["parsed_at"] = datetime.now(timezone.utc).isoformat()
+        parsed_data["processing_mode"] = "fast_bulk"
+
+        return parsed_data
+
     async def parse_resume(self, file_path: str) -> Dict[str, Any]:
         """
         Parse resume from file path and extract structured data
@@ -173,6 +222,66 @@ class ResumeParser:
             parsed_data["processing_mode"] = "fast"
 
         return parsed_data
+
+    async def _extract_pdf_text_from_memory(self, file_content: bytes) -> str:
+        """
+        Extract text from PDF file content in memory (faster)
+        """
+        try:
+            # Try PDFPlumber first (most reliable)
+            import io
+            with pdfplumber.open(io.BytesIO(file_content)) as pdf:
+                text_parts = []
+                for page in pdf.pages:
+                    page_text = page.extract_text()
+                    if page_text:
+                        text_parts.append(page_text)
+
+                if text_parts:
+                    return "\n".join(text_parts)
+        except Exception as e:
+            print(f"PDFPlumber failed for memory content: {e}")
+
+        # Fallback to PyPDF2
+        try:
+            import io
+            from PyPDF2 import PdfReader
+
+            pdf_reader = PdfReader(io.BytesIO(file_content))
+            text_parts = []
+
+            for page in pdf_reader.pages:
+                page_text = page.extract_text()
+                if page_text:
+                    text_parts.append(page_text)
+
+            if text_parts:
+                return "\n".join(text_parts)
+        except Exception as e:
+            print(f"PyPDF2 failed for memory content: {e}")
+
+        print("Warning: Could not extract text from PDF memory content, returning empty string")
+        return ""
+
+    async def _extract_docx_text_from_memory(self, file_content: bytes) -> str:
+        """
+        Extract text from DOCX file content in memory (faster)
+        """
+        try:
+            import io
+            from docx import Document
+
+            doc = Document(io.BytesIO(file_content))
+            text_parts = []
+
+            for paragraph in doc.paragraphs:
+                if paragraph.text.strip():
+                    text_parts.append(paragraph.text)
+
+            return "\n".join(text_parts)
+        except Exception as e:
+            print(f"DOCX extraction failed for memory content: {e}")
+            return ""
 
     async def _extract_pdf_text(self, file_path: str) -> str:
         """Extract text from PDF using multiple methods"""

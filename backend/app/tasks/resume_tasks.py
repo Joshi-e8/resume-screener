@@ -9,7 +9,8 @@ from celery import current_task
 from app.core.celery_app import celery_app
 from app.services.google_drive_service import GoogleDriveService
 from app.services.resume_parser import ResumeParser
-from app.core.websocket_manager import websocket_manager
+# WebSocket manager no longer needed - using SSE instead
+# from app.core.websocket_manager import websocket_manager
 from app.models.resume_processing import BatchProcessingJob, ProcessingStatus
 import os
 from loguru import logger
@@ -113,15 +114,19 @@ def process_bulk_resumes_task(self, file_ids: List[str], access_token: str, cred
         drive_service = GoogleDriveService()
         parser = ResumeParser()
         
-        # Process files in chunks of 5 for better performance
-        chunk_size = 5
+        # Process files in much larger chunks for maximum performance
+        chunk_size = 20
         chunks = [file_ids[i:i+chunk_size] for i in range(0, len(file_ids), chunk_size)]
         
         processed_count = 0
 
-        # Send initial progress update
+        # Send initial progress update via WebSocket
         if user_id:
             try:
+                from app.core.websocket_manager import websocket_manager
+                logger.info(f"🚀 TASK: Starting bulk processing for user_id: {user_id}")
+                logger.info(f"📊 TASK: Processing {total_files} files")
+
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
                 loop.run_until_complete(websocket_manager.send_progress_update(
@@ -133,8 +138,11 @@ def process_bulk_resumes_task(self, file_ids: List[str], access_token: str, cred
                     }
                 ))
                 loop.close()
+                logger.info(f"✅ TASK: Sent initial WebSocket progress update for user {user_id}")
             except Exception as e:
-                logger.warning(f"Failed to send initial progress update: {e}")
+                logger.error(f"❌ TASK: Failed to send initial WebSocket progress update: {e}")
+                import traceback
+                logger.error(f"❌ TASK: Traceback: {traceback.format_exc()}")
 
         for chunk_index, chunk in enumerate(chunks):
             # Update progress
@@ -152,9 +160,12 @@ def process_bulk_resumes_task(self, file_ids: List[str], access_token: str, cred
             results.extend(chunk_results)
             processed_count += len(chunk)
             
-            # Send WebSocket update if user_id provided
-            if user_id:
+            # Send WebSocket progress update if user_id provided (only every 2 chunks to reduce overhead)
+            if user_id and (chunk_index % 2 == 0 or chunk_index == len(chunks) - 1):
                 try:
+                    from app.core.websocket_manager import websocket_manager
+                    logger.info(f"📊 TASK: Sending progress update {processed_count}/{total_files} for user {user_id}")
+
                     loop = asyncio.new_event_loop()
                     asyncio.set_event_loop(loop)
                     loop.run_until_complete(websocket_manager.send_progress_update(
@@ -166,8 +177,11 @@ def process_bulk_resumes_task(self, file_ids: List[str], access_token: str, cred
                         }
                     ))
                     loop.close()
+                    logger.info(f"✅ TASK: Sent WebSocket progress update {processed_count}/{total_files}")
                 except Exception as e:
-                    logger.warning(f"Failed to send progress update: {e}")
+                    logger.error(f"❌ TASK: Failed to send WebSocket progress update: {e}")
+                    import traceback
+                    logger.error(f"❌ TASK: Traceback: {traceback.format_exc()}")
         
         # Final update
         successful_files = sum(1 for r in results if r['success'])
@@ -285,8 +299,11 @@ def process_bulk_resumes_task(self, file_ids: List[str], access_token: str, cred
         # Send final WebSocket update
         if user_id:
             try:
-                logger.info(f"📡 Preparing to send WebSocket update to user_id: {user_id}")
-                logger.info(f"🔄 Creating fresh event loop for WebSocket update")
+                logger.info(f"📡 TASK: Preparing to send final WebSocket update to user_id: {user_id}")
+                logger.info(f"🔄 TASK: Creating fresh event loop for WebSocket update")
+                logger.info(f"🎉 TASK: Final results - successful: {successful_files}, failed: {failed_files}")
+
+                from app.core.websocket_manager import websocket_manager
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
 
@@ -302,8 +319,11 @@ def process_bulk_resumes_task(self, file_ids: List[str], access_token: str, cred
                 ))
 
                 loop.close()
+                logger.info(f"✅ TASK: Successfully sent final WebSocket update for user {user_id}")
             except Exception as e:
-                logger.warning(f"Failed to send WebSocket update: {e}")
+                logger.error(f"❌ TASK: Failed to send final WebSocket update: {e}")
+                import traceback
+                logger.error(f"❌ TASK: Traceback: {traceback.format_exc()}")
         
         return {
             'total_files': total_files,
@@ -365,11 +385,11 @@ def process_chunk_sync(file_ids: List[str], credentials_dict: Dict[str, Any],
     try:
         # Process files concurrently within the chunk
         async def process_files():
-            semaphore = asyncio.Semaphore(3)  # Limit concurrent processing
+            semaphore = asyncio.Semaphore(12)  # Maximum concurrent processing for speed
             
             async def process_single_file(file_id: str):
                 async with semaphore:
-                    return await process_file_async(file_id, credentials_dict, drive_service, parser)
+                    return await process_file_async_fast(file_id, credentials_dict, drive_service, parser)
             
             tasks = [process_single_file(file_id) for file_id in file_ids]
             return await asyncio.gather(*tasks, return_exceptions=True)
@@ -395,7 +415,49 @@ def process_chunk_sync(file_ids: List[str], credentials_dict: Dict[str, Any],
     return results
 
 
-async def process_file_async(file_id: str, credentials_dict: Dict[str, Any], 
+async def process_file_async_fast(file_id: str, credentials_dict: Dict[str, Any],
+                                 drive_service: GoogleDriveService, parser: ResumeParser) -> Dict[str, Any]:
+    """
+    Process a single file asynchronously with high-performance in-memory processing
+    """
+    start_time = time.time()
+
+    try:
+        # Download file directly to memory (much faster than temp files)
+        file_content, filename, file_extension = await drive_service.download_file_to_memory(credentials_dict, file_id)
+
+        # Parse resume directly from memory with aggressive timeout
+        parsed_data = await asyncio.wait_for(
+            parser.parse_resume_from_memory(file_content, filename, file_extension),
+            timeout=5.0  # Much more aggressive timeout
+        )
+
+        return {
+            'file_id': file_id,
+            'filename': filename,
+            'success': True,
+            'parsed_data': parsed_data,
+            'processing_time_ms': int((time.time() - start_time) * 1000)
+        }
+
+    except asyncio.TimeoutError:
+        return {
+            'file_id': file_id,
+            'filename': f'timeout_{file_id}',
+            'success': False,
+            'error_message': "File processing timed out (5 seconds)",
+            'processing_time_ms': int((time.time() - start_time) * 1000)
+        }
+    except Exception as e:
+        return {
+            'file_id': file_id,
+            'filename': f'error_{file_id}',
+            'success': False,
+            'error_message': str(e),
+            'processing_time_ms': int((time.time() - start_time) * 1000)
+        }
+
+async def process_file_async(file_id: str, credentials_dict: Dict[str, Any],
                            drive_service: GoogleDriveService, parser: ResumeParser) -> Dict[str, Any]:
     """
     Process a single file asynchronously
@@ -422,10 +484,10 @@ async def process_file_async(file_id: str, credentials_dict: Dict[str, Any],
         tmp_file_path = await drive_service.save_file_temporarily(credentials_dict, file_id)
         
         try:
-            # Parse resume with timeout
+            # Parse resume with reduced timeout for faster processing
             parsed_data = await asyncio.wait_for(
                 parser.parse_resume(tmp_file_path),
-                timeout=30.0
+                timeout=15.0
             )
             
             return {
@@ -441,7 +503,7 @@ async def process_file_async(file_id: str, credentials_dict: Dict[str, Any],
                 'file_id': file_id,
                 'filename': filename,
                 'success': False,
-                'error_message': "File processing timed out (30 seconds)",
+                'error_message': "File processing timed out (15 seconds)",
                 'processing_time_ms': int((time.time() - start_time) * 1000)
             }
         finally:
