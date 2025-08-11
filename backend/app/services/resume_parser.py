@@ -122,7 +122,7 @@ class ResumeParser:
 
     async def parse_resume_from_memory(self, file_content: bytes, filename: str, file_extension: str) -> Dict[str, Any]:
         """
-        Parse resume directly from memory (much faster than file I/O)
+        Parse resume directly from memory for high-performance bulk processing
         """
         if file_extension not in self.supported_formats:
             raise ValueError(f"Unsupported file format: {file_extension}")
@@ -139,7 +139,6 @@ class ResumeParser:
 
         # Handle empty text gracefully
         if not text or not text.strip():
-            print(f"Warning: No text extracted from {filename}")
             return {
                 "raw_text": "",
                 "file_type": file_extension,
@@ -155,19 +154,80 @@ class ResumeParser:
                 "extraction_warning": "No text could be extracted from this file"
             }
 
-        # Always use fast mode for bulk processing
-        fast_mode = True
-        if len(text) > 10000:  # Even more aggressive text limiting
-            text = text[:10000]
+        # Limit text for fast processing
+        if len(text) > 5000:
+            text = text[:5000]
 
-        # Parse structured data from text (fast mode only)
-        parsed_data = await self._parse_text_content(text, fast_mode)
+        # Parse essential data for maximum speed
+        parsed_data = await self._parse_text_content_ultra_fast(text)
         parsed_data["raw_text"] = text
         parsed_data["file_type"] = file_extension
         parsed_data["parsed_at"] = datetime.now(timezone.utc).isoformat()
         parsed_data["processing_mode"] = "fast_bulk"
 
         return parsed_data
+
+    async def _parse_text_content_ultra_fast(self, text: str) -> Dict[str, Any]:
+        """
+        Ultra-fast parsing - only extract essential information for maximum speed
+        """
+        # Skip expensive operations, only extract basics
+        lines = text.split('\n')[:50]  # Only process first 50 lines for speed
+        cleaned_text = ' '.join(line.strip() for line in lines if line.strip())
+
+        # Only extract the most essential information
+        parsed_data = {
+            "contact_info": self._extract_contact_info_fast(cleaned_text),
+            "skills": self._extract_skills_fast(cleaned_text),
+            "education": [],  # Skip for speed
+            "experience": [],  # Skip for speed
+            "summary": "",  # Skip for speed
+            "certifications": [],  # Skip for speed
+            "languages": [],  # Skip for speed
+            "projects": []  # Skip for speed
+        }
+
+        return parsed_data
+
+    def _extract_contact_info_fast(self, text: str) -> Dict[str, Any]:
+        """
+        Fast contact info extraction - only email and phone
+        """
+        import re
+
+        contact_info = {}
+
+        # Extract email (simple regex for speed)
+        email_match = re.search(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b', text)
+        if email_match:
+            contact_info["email"] = email_match.group()
+
+        # Extract phone (simple regex for speed)
+        phone_match = re.search(r'\b(?:\+?1[-.\s]?)?\(?([0-9]{3})\)?[-.\s]?([0-9]{3})[-.\s]?([0-9]{4})\b', text)
+        if phone_match:
+            contact_info["phone"] = phone_match.group()
+
+        return contact_info
+
+    def _extract_skills_fast(self, text: str) -> List[str]:
+        """
+        Fast skills extraction - only common tech skills
+        """
+        # Common tech skills for fast matching
+        common_skills = [
+            'Python', 'Java', 'JavaScript', 'React', 'Node.js', 'SQL', 'AWS', 'Docker',
+            'Git', 'HTML', 'CSS', 'TypeScript', 'MongoDB', 'PostgreSQL', 'Redis',
+            'Kubernetes', 'Linux', 'REST', 'API', 'Machine Learning', 'AI'
+        ]
+
+        text_upper = text.upper()
+        found_skills = []
+
+        for skill in common_skills:
+            if skill.upper() in text_upper:
+                found_skills.append(skill)
+
+        return found_skills[:10]  # Limit to 10 skills for speed
 
     async def parse_resume(self, file_path: str) -> Dict[str, Any]:
         """

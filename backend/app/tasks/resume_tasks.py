@@ -5,7 +5,7 @@ Celery tasks for resume processing
 import asyncio
 import time
 from typing import Dict, List, Any
-from celery import current_task
+
 from app.core.celery_app import celery_app
 from app.services.google_drive_service import GoogleDriveService
 from app.services.resume_parser import ResumeParser
@@ -14,7 +14,7 @@ from app.services.resume_parser import ResumeParser
 from app.models.resume_processing import BatchProcessingJob, ProcessingStatus
 import os
 from loguru import logger
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 @celery_app.task
@@ -154,7 +154,7 @@ def process_bulk_resumes_task(self, file_ids: List[str], access_token: str, cred
                     'status': f'Processing chunk {chunk_index + 1}/{len(chunks)}...'
                 }
             )
-            
+
             # Process chunk
             chunk_results = process_chunk_sync(chunk, credentials_dict, drive_service, parser)
             results.extend(chunk_results)
@@ -244,7 +244,7 @@ def process_bulk_resumes_task(self, file_ids: List[str], access_token: str, cred
                         batch_job.successful_files = successful_files
                         batch_job.failed_files = failed_files
                         batch_job.status = ProcessingStatus.COMPLETED
-                        batch_job.completed_at = datetime.utcnow()
+                        batch_job.completed_at = datetime.now(timezone.utc)
                         batch_job.progress_percentage = 100.0
                         batch_job.current_status_message = f"Completed: {successful_files}/{total_files} files processed successfully"
 
@@ -259,7 +259,7 @@ def process_bulk_resumes_task(self, file_ids: List[str], access_token: str, cred
                             'total_files': total_files,
                             'successful_files': successful_files,
                             'failed_files': failed_files,
-                            'completion_time': datetime.utcnow().isoformat(),
+                            'completion_time': datetime.now(timezone.utc).isoformat(),
                             'task_id': task_id
                         }
 
@@ -347,13 +347,13 @@ def process_bulk_resumes_task(self, file_ids: List[str], access_token: str, cred
                 batch_job = await BatchProcessingJob.find_one({"celery_task_id": task_id})
                 if batch_job:
                     batch_job.status = ProcessingStatus.FAILED
-                    batch_job.completed_at = datetime.utcnow()
+                    batch_job.completed_at = datetime.now(timezone.utc)
                     batch_job.current_status_message = f"Failed: {str(e)}"
                     batch_job.processing_summary = {
                         'error': str(e),
                         'status': ProcessingStatus.FAILED.value,
                         'task_id': task_id,
-                        'failure_time': datetime.utcnow().isoformat()
+                        'failure_time': datetime.now(timezone.utc).isoformat()
                     }
                     await batch_job.save()
                     logger.info(f"Updated batch job {batch_job.batch_id} status to failed")
@@ -371,47 +371,82 @@ def process_bulk_resumes_task(self, file_ids: List[str], access_token: str, cred
         raise
 
 
-def process_chunk_sync(file_ids: List[str], credentials_dict: Dict[str, Any], 
+def process_chunk_sync(file_ids: List[str], credentials_dict: Dict[str, Any],
                       drive_service: GoogleDriveService, parser: ResumeParser) -> List[Dict[str, Any]]:
     """
-    Process a chunk of files synchronously
+    Process a chunk of files with ultra-high performance
     """
     results = []
-    
+
     # Create new event loop for this chunk
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
-    
+
     try:
-        # Process files concurrently within the chunk
-        async def process_files():
-            semaphore = asyncio.Semaphore(12)  # Maximum concurrent processing for speed
-            
-            async def process_single_file(file_id: str):
+        # Process files with maximum concurrency
+        async def process_files_ultra_fast():
+            # Use much higher concurrency for maximum speed
+            semaphore = asyncio.Semaphore(20)  # Ultra-high concurrency
+
+            async def process_single_file_ultra_fast(file_id: str):
                 async with semaphore:
-                    return await process_file_async_fast(file_id, credentials_dict, drive_service, parser)
-            
-            tasks = [process_single_file(file_id) for file_id in file_ids]
+                    start_time = time.time()
+                    try:
+                        # Download file directly to memory and parse
+                        file_content, filename, file_extension = await drive_service.download_file_to_memory(credentials_dict, file_id)
+
+                        parsed_data = await asyncio.wait_for(
+                            parser.parse_resume_from_memory(file_content, filename, file_extension),
+                            timeout=3.0
+                        )
+
+                        return {
+                            'file_id': file_id,
+                            'filename': filename,
+                            'success': True,
+                            'parsed_data': parsed_data,
+                            'processing_time_ms': int((time.time() - start_time) * 1000)
+                        }
+
+                    except asyncio.TimeoutError:
+                        return {
+                            'file_id': file_id,
+                            'filename': f'timeout_{file_id}',
+                            'success': False,
+                            'error_message': "Processing timeout",
+                            'processing_time_ms': int((time.time() - start_time) * 1000)
+                        }
+                    except Exception as e:
+                        return {
+                            'file_id': file_id,
+                            'filename': f'error_{file_id}',
+                            'success': False,
+                            'error_message': str(e),
+                            'processing_time_ms': int((time.time() - start_time) * 1000)
+                        }
+
+            # Process all files simultaneously
+            tasks = [process_single_file_ultra_fast(file_id) for file_id in file_ids]
             return await asyncio.gather(*tasks, return_exceptions=True)
-        
-        chunk_results = loop.run_until_complete(process_files())
-        
+
+        chunk_results = loop.run_until_complete(process_files_ultra_fast())
+
         # Convert exceptions to error results
         for i, result in enumerate(chunk_results):
             if isinstance(result, Exception):
                 results.append({
                     'file_id': file_ids[i],
-                    'filename': f'unknown_{file_ids[i]}',
+                    'filename': f'exception_{file_ids[i]}',
                     'success': False,
                     'error_message': str(result),
                     'processing_time_ms': 0
                 })
             else:
                 results.append(result)
-                
+
     finally:
         loop.close()
-    
+
     return results
 
 

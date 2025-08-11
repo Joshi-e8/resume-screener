@@ -211,23 +211,31 @@ class GoogleDriveService:
             raise ValueError(f"Failed to list files: {str(e)}")
 
     async def get_file_metadata(
-        self, 
-        credentials_dict: Dict[str, Any], 
+        self,
+        credentials_dict: Dict[str, Any],
         file_id: str
     ) -> Dict[str, Any]:
         """
-        Get file metadata from Google Drive
+        Get file metadata from Google Drive (async)
         """
         try:
-            service = self.build_service(credentials_dict)
-            
-            file_metadata = service.files().get(
-                fileId=file_id,
-                fields="id, name, mimeType, size, modifiedTime, parents, webViewLink, description"
-            ).execute()
-            
+            import asyncio
+            import concurrent.futures
+
+            def _get_metadata():
+                service = self.build_service(credentials_dict)
+                return service.files().get(
+                    fileId=file_id,
+                    fields="id, name, mimeType, size, modifiedTime, parents, webViewLink, description"
+                ).execute()
+
+            # Run in thread pool to avoid blocking
+            loop = asyncio.get_event_loop()
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                file_metadata = await loop.run_in_executor(executor, _get_metadata)
+
             return file_metadata
-            
+
         except HttpError as e:
             raise ValueError(f"Google Drive API error: {str(e)}")
         except Exception as e:
@@ -299,32 +307,46 @@ class GoogleDriveService:
         file_id: str
     ) -> Tuple[bytes, str, str]:
         """
-        Download file from Google Drive directly to memory (faster than temp files)
+        Download file from Google Drive directly to memory (fully async)
         Returns: (file_content, filename, file_extension)
         """
         try:
-            service = self.build_service(credentials_dict)
+            import asyncio
+            import concurrent.futures
 
-            # Get file metadata first
-            file_metadata = await self.get_file_metadata(credentials_dict, file_id)
-            filename = file_metadata.get('name', f'file_{file_id}')
+            def _download_file():
+                service = self.build_service(credentials_dict)
 
-            # Determine file extension
-            file_extension = ""
-            if '.' in filename:
-                file_extension = '.' + filename.split('.')[-1].lower()
+                # Get file metadata
+                file_metadata = service.files().get(
+                    fileId=file_id,
+                    fields="id, name, mimeType, size"
+                ).execute()
+                filename = file_metadata.get('name', f'file_{file_id}')
 
-            # Download file content directly to memory
-            request = service.files().get_media(fileId=file_id)
-            file_io = io.BytesIO()
-            downloader = MediaIoBaseDownload(file_io, request)
+                # Determine file extension
+                file_extension = ""
+                if '.' in filename:
+                    file_extension = '.' + filename.split('.')[-1].lower()
 
-            done = False
-            while done is False:
-                status, done = downloader.next_chunk()
+                # Download file content
+                request = service.files().get_media(fileId=file_id)
+                file_io = io.BytesIO()
+                downloader = MediaIoBaseDownload(file_io, request)
 
-            file_content = file_io.getvalue()
-            return file_content, filename, file_extension
+                done = False
+                while done is False:
+                    status, done = downloader.next_chunk()
+
+                file_content = file_io.getvalue()
+                return file_content, filename, file_extension
+
+            # Run in thread pool to avoid blocking the event loop
+            loop = asyncio.get_event_loop()
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                result = await loop.run_in_executor(executor, _download_file)
+
+            return result
 
         except Exception as e:
             raise ValueError(f"Failed to download file to memory: {str(e)}")
