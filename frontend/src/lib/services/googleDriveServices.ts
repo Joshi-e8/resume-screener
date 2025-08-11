@@ -67,6 +67,9 @@ export interface GoogleDriveBulkFileResult {
   parsed_data?: any;
   error_message?: string;
   processing_time_ms: number;
+  // Additive fields for AI Scoring
+  ai_overall_score?: number;
+  ai_scoring?: any;
 }
 
 export interface GoogleDriveBulkUploadResponse {

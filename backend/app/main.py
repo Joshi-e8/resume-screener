@@ -64,6 +64,10 @@ app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 # Include API router
 app.include_router(api_router, prefix="/api/v1")
 
+# Include new scoring routes (additive, versioned separately)
+from app.api.routes import scoring as scoring
+app.include_router(scoring.router)
+
 
 @app.get("/")
 async def root():

@@ -517,7 +517,18 @@ function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
     if (successfulUploads.length > 0) {
       dispatch(setUploadSuccess(true));
 
-      // Convert Google Drive files to File objects for callback
+      // Publish a completion progress payload so ResumeGrid can render real results
+      const progressPayload: ProgressUpdate = {
+        completed: response.total_files,
+        total: response.total_files,
+        results: response.results as any,
+        status: 'completed',
+        successful_files: response.successful_files,
+        failed_files: response.failed_files,
+      } as any;
+      dispatch(setProcessingProgress(progressPayload));
+
+      // Convert Google Drive files to File objects for callback (existing behavior)
       const mockFiles = successfulUploads.map((result) => {
         const file = selectedGoogleDriveFiles.find(
           (f) => f.id === result.file_id
@@ -530,9 +541,14 @@ function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
         } as File;
       });
 
+      // Persist results locally so ResumeGrid can render after navigation/refresh
+      try {
+        localStorage.setItem('latestResumeResults', JSON.stringify(response.results || []));
+      } catch {}
+
       onFilesUploaded(mockFiles);
 
-      // Clear selection after delay
+      // Clear selection after delay (do not clear processingProgress)
       setTimeout(() => {
         dispatch(setSelectedGoogleDriveFiles([]));
         dispatch(setUploadSuccess(false));

@@ -125,18 +125,18 @@ export function ResumeCard({
           {getStatusIcon(resume.status)}
           {resume.status.charAt(0).toUpperCase() + resume.status.slice(1)}
         </div>
-        
-        {resume.matchScore && (
+
+        {(resume.matchScore ?? (resume as any).ai_overall_score) && (
           <div className="flex items-center gap-2">
             <div className="text-xs text-gray-500">Match</div>
             <div className="flex items-center gap-1">
               <div className="w-16 h-2 bg-gray-200 rounded-full overflow-hidden">
-                <div 
+                <div
                   className="h-full bg-gradient-to-r from-yellow-400 to-green-500 rounded-full transition-all duration-300"
-                  style={{ width: `${resume.matchScore}%` }}
+                  style={{ width: `${(resume.matchScore ?? (resume as any).ai_overall_score) as number}%` }}
                 />
               </div>
-              <span className="text-sm font-medium text-gray-900">{resume.matchScore}%</span>
+              <span className="text-sm font-medium text-gray-900">{(resume.matchScore ?? (resume as any).ai_overall_score) as number}%</span>
             </div>
           </div>
         )}
@@ -159,7 +159,7 @@ export function ResumeCard({
       </div>
 
       {/* Skills */}
-      <div className="mb-4">
+      <div className="mb-3">
         <div className="flex flex-wrap gap-1">
           {resume.skills.slice(0, 4).map((skill, index) => (
             <span
@@ -177,16 +177,50 @@ export function ResumeCard({
         </div>
       </div>
 
+      {/* Summary */}
+      {resume.summary && (
+        <div className="mb-3 text-sm text-gray-600">
+          <p className="line-clamp-2 truncate">{resume.summary}</p>
+        </div>
+      )}
+
+      {/* Education (first) */}
+      {Array.isArray(resume.education) && resume.education.length > 0 && (
+        <div className="mb-3 text-xs text-gray-500">
+          <span>
+            {resume.education[0].degree}
+            {resume.education[0].school ? ` • ${resume.education[0].school}` : ''}
+            {resume.education[0].year ? ` • ${resume.education[0].year}` : ''}
+          </span>
+        </div>
+      )}
+
+      {/* Tags */}
+      {Array.isArray(resume.tags) && resume.tags.length > 0 && (
+        <div className="mb-3 flex flex-wrap gap-1">
+          {resume.tags.slice(0, 5).map((tag, i) => (
+            <span key={i} className="px-2 py-0.5 bg-gray-100 text-gray-600 text-xs rounded-full">{tag}</span>
+          ))}
+          {resume.tags.length > 5 && (
+            <span className="px-2 py-0.5 bg-gray-100 text-gray-400 text-xs rounded-full">+{resume.tags.length - 5}</span>
+          )}
+        </div>
+      )}
+
       {/* Footer */}
       <div className="flex items-center justify-between pt-4 border-t border-gray-100">
         <div className="flex items-center gap-2 text-xs text-gray-500">
           <Calendar className="w-3 h-3" />
           <span>Uploaded {formatDistanceToNow(new Date(resume.uploadDate), { addSuffix: true })}</span>
         </div>
-        
+
         <div className="flex items-center gap-2 text-xs text-gray-500">
           <FileText className="w-3 h-3" />
-          <span>{resume.fileType.toUpperCase()} • {formatFileSize(resume.fileSize)}</span>
+          <span>
+            {resume.fileType?.toUpperCase()}
+            {typeof resume.fileSize === 'number' && resume.fileSize > 0 ? ` • ${formatFileSize(resume.fileSize)}` : ''}
+            {resume.source ? ` • ${resume.source}` : ''}
+          </span>
         </div>
       </div>
 

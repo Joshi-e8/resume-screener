@@ -177,15 +177,15 @@ export function ResumeListView({
 
                 {/* Match Score */}
                 <div className="col-span-1">
-                  {resume.matchScore ? (
+                  {(resume.matchScore ?? (resume as any).ai_overall_score) ? (
                     <div className="flex items-center gap-2">
                       <div className="w-12 h-2 bg-gray-200 rounded-full overflow-hidden">
-                        <div 
+                        <div
                           className="h-full bg-gradient-to-r from-yellow-400 to-green-500 rounded-full"
-                          style={{ width: `${resume.matchScore}%` }}
+                          style={{ width: `${(resume.matchScore ?? (resume as any).ai_overall_score) as number}%` }}
                         />
                       </div>
-                      <span className="text-xs font-medium text-gray-900">{resume.matchScore}%</span>
+                      <span className="text-xs font-medium text-gray-900">{(resume.matchScore ?? (resume as any).ai_overall_score) as number}%</span>
                     </div>
                   ) : (
                     <span className="text-xs text-gray-400">-</span>
@@ -199,7 +199,8 @@ export function ResumeListView({
                   </div>
                   <div className="text-xs text-gray-500 flex items-center gap-1">
                     <FileText className="w-3 h-3" />
-                    {resume.fileType.toUpperCase()} • {formatFileSize(resume.fileSize)}
+                    {resume.fileType?.toUpperCase()} • {typeof resume.fileSize === 'number' && resume.fileSize > 0 ? formatFileSize(resume.fileSize) : '—'}
+                    {resume.source ? ` • ${resume.source}` : ''}
                   </div>
                 </div>
 

@@ -35,10 +35,11 @@ const useAxiosClient = (userType: string = "unauthorized"): AxiosInstance => {
         // Type guard for session
         const typedSession = session as ExtendedSession | null;
         
-        // Add Authorization header
-        if (!config.headers?.["Authorization"]) {
+        // Add Authorization header only if we have a token
+        const token = typedSession?.user?.accessToken;
+        if (token && !config.headers?.["Authorization"]) {
           config.headers = config.headers || {};
-          config.headers["Authorization"] = `Bearer ${typedSession?.user?.accessToken || ''}`;
+          config.headers["Authorization"] = `Bearer ${token}`;
         }
 
         // Add user type channel
@@ -79,8 +80,13 @@ const useAxiosClient = (userType: string = "unauthorized"): AxiosInstance => {
         
         // Handle 401 specifically for authentication
         if (status === 401) {
-          console.log('🔒 401 Unauthorized - Clearing session and redirecting');
-          await signOut({ redirect: false });
+          // Be gentle on 401 during SSR/initial hydration or when unauthenticated
+          console.log('🔒 401 Unauthorized - skipping auto sign-out (no token or initial load)');
+          const hasToken = Boolean((session as any)?.user?.accessToken);
+          if (hasToken) {
+            // Optional: try to refresh or sign out only if we had a token
+            // await signOut({ redirect: false });
+          }
         }
         
         // Use centralized error handling

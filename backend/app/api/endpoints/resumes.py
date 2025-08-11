@@ -3,6 +3,8 @@ Resume upload and management endpoints
 """
 
 # import os  # noqa: F401
+import os
+
 import tempfile
 from datetime import datetime
 from typing import Any, List
@@ -14,6 +16,8 @@ from app.core.security import get_current_user
 from app.models.analytics import EventType
 from app.models.candidate import CandidateCreate
 from app.models.user import User
+from app.models.resume_processing import ResumeMetadata, ResumeDetails, ProcessingStatus
+
 from app.services.analytics_service import AnalyticsService
 from app.services.candidate_service import CandidateService
 from app.services.resume_parser import ResumeParser
@@ -70,19 +74,149 @@ async def upload_resume(
             "processing_time_ms": processing_time,
         }
 
-    except Exception:  # noqa: E722
+    except Exception as e:  # noqa: E722
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to process resume: {str(Exception)}",
+            detail=f"Failed to process resume: {str(e)}",
         )
 
     finally:
         # Clean up temporary file
-        if os.path.exists(tmp_file_path):
-            os.unlink(tmp_file_path)
+        try:
+            if os.path.exists(tmp_file_path):
+                os.unlink(tmp_file_path)
+        except Exception:
+            pass
+
+@router.get("/job/{job_id}")
+async def list_resumes_by_job(job_id: str, current_user: User = Depends(get_current_user)) -> Any:
+    """
+    List resumes associated with a specific job, newest first
+    Returns minimal fields required by UI
+    """
+    # Query metadata by job_id and completed status
+    metas = await ResumeMetadata.find({
+        "job_id": job_id,
+        "status": ProcessingStatus.COMPLETED
+    }).sort("-created_at").to_list()
+
+    results = []
+    for m in metas:
+        # Try to load details for ai scoring and extra fields
+        details = await ResumeDetails.find_one({"resume_id": str(m.id)})
+        ai_overall = None
+        ai_scoring = None
+        location = None
+        phone = None
+        title = None
+        summary = None
+        education = []
+        file_size = getattr(m, 'file_size', None)
+        mime_type = getattr(m, 'mime_type', None)
+        if details:
+            if isinstance(details.analysis_results, dict):
+                ai_overall = details.analysis_results.get("ai_overall_score")
+                ai_scoring = details.analysis_results.get("ai_scoring")
+            if isinstance(details.parsed_data, dict):
+                pd = details.parsed_data or {}
+                contact = pd.get("contact_info") or {}
+                location = contact.get("location")
+                phone = contact.get("phone")
+                exp = pd.get("experience") or []
+                summary = pd.get("summary")
+                education = pd.get("education") or []
+                if isinstance(exp, list) and exp:
+                    first = exp[0] or {}
+                    title = first.get("title")
+
+        results.append({
+            "id": str(m.id),
+            "file_id": m.file_id,
+            "filename": m.filename,
+            "candidate_name": m.candidate_name,
+            "candidate_email": m.candidate_email,
+            "key_skills": m.key_skills,
+            "created_at": m.created_at.isoformat(),
+            "ai_overall_score": ai_overall,
+            "ai_scoring": ai_scoring,
+            "location": location,
+            "phone": phone,
+            "title": title,
+            "summary": summary,
+            "education": education,
+            "file_size": file_size,
+            "mime_type": mime_type,
+            "source": "Google Drive",
+        })
+
+    return {
+        "result": "success",
+        "message": "Resumes retrieved successfully",
+        "records": results,
+        "total": len(results)
+    }
+
 
 
 @router.get("/")
-async def list_resumes():
-    """List all uploaded resumes"""
-    return {"message": "Resume endpoints - Coming soon"}
+async def list_resumes(current_user: User = Depends(get_current_user)) -> Any:
+    """List all completed resumes across jobs, newest first"""
+    metas = await ResumeMetadata.find({
+        "status": ProcessingStatus.COMPLETED
+    }).sort("-created_at").to_list()
+
+    results = []
+    for m in metas:
+        details = await ResumeDetails.find_one({"resume_id": str(m.id)})
+        ai_overall = None
+        ai_scoring = None
+        location = None
+        phone = None
+        title = None
+        summary = None
+        education = []
+        file_size = getattr(m, 'file_size', None)
+        mime_type = getattr(m, 'mime_type', None)
+        if details:
+            if isinstance(details.analysis_results, dict):
+                ai_overall = details.analysis_results.get("ai_overall_score")
+                ai_scoring = details.analysis_results.get("ai_scoring")
+            if isinstance(details.parsed_data, dict):
+                pd = details.parsed_data or {}
+                contact = pd.get("contact_info") or {}
+                location = contact.get("location")
+                phone = contact.get("phone")
+                exp = pd.get("experience") or []
+                summary = pd.get("summary")
+                education = pd.get("education") or []
+                if isinstance(exp, list) and exp:
+                    first = exp[0] or {}
+                    title = first.get("title")
+
+        results.append({
+            "id": str(m.id),
+            "file_id": m.file_id,
+            "filename": m.filename,
+            "candidate_name": m.candidate_name,
+            "candidate_email": m.candidate_email,
+            "key_skills": m.key_skills,
+            "created_at": m.created_at.isoformat(),
+            "ai_overall_score": ai_overall,
+            "ai_scoring": ai_scoring,
+            "job_id": m.job_id,
+            "location": location,
+            "phone": phone,
+            "title": title,
+            "summary": summary,
+            "education": education,
+            "file_size": file_size,
+            "mime_type": mime_type,
+            "source": "Google Drive",
+        })
+
+    return {
+        "result": "success",
+        "message": "Resumes retrieved successfully",
+        "records": results,
+        "total": len(results)
+    }

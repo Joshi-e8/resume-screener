@@ -2,9 +2,13 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { Grid, List, Filter, SortAsc, Search } from "lucide-react";
-import { Resume, allMockResumes } from "@/data/mockResumes";
+import { Resume } from "@/data/mockResumes";
 import { ResumeCard } from "./ResumeCard";
 import { ResumeListView } from "./ResumeListView";
+import { useAppSelector } from "@/store/store";
+import useResumeServices from "@/lib/services/resumeServices";
+
+import { useSession } from "next-auth/react";
 
 import { EnhancedSearch } from "./EnhancedSearch";
 import { ResumeDetailModal } from "./ResumeDetailModal";
@@ -47,19 +51,213 @@ export function ResumeGrid({ initialSearchQuery = '' }: ResumeGridProps) {
   const itemsPerPage = 12;
 
   // Load recent searches on mount
+
+  const { status } = useSession();
+
   useEffect(() => {
     setRecentSearches(getSearchHistory());
   }, []);
 
-  // Generate search suggestions
-  const searchSuggestions = useMemo(() =>
-    generateSearchSuggestions(allMockResumes),
-    []
-  );
+  const { getResumesByJob, getAllResumes } = useResumeServices();
+  const deriveNameFromEmail = (email?: string) => {
+    if (!email) return undefined;
+    const local = email.split('@')[0];
+    const parts = local.split(/[._-]+/).filter(Boolean);
+    if (!parts.length) return undefined;
+    return parts.map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(' ');
+  };
+  const deriveNameFromFilename = (filename?: string) => {
+    if (!filename) return undefined;
+    const base = filename.replace(/\.[^/.]+$/, '');
+    const parts = base.split(/[._-]+/).filter(Boolean).slice(0, 3);
+    if (!parts.length) return undefined;
+    return parts.map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(' ');
+  };
+
+  const [apiResumes, setApiResumes] = useState<any[] | null>(null);
+
+  // TODO: select a job to fetch by. For now, if cached has job_id, fetch that.
+
+  const processingProgress = useAppSelector((s) => s.resumeUpload.processingProgress);
+  const uploadSuccess = useAppSelector((s) => s.resumeUpload.uploadSuccess);
+
+  const [cachedResults, setCachedResults] = useState<any[] | null>(null);
+
+  // Build runtime resumes list from processing results when available
+  const runtimeResumes = useMemo(() => {
+    const results = processingProgress?.results;
+    if (results && Array.isArray(results) && results.length > 0) {
+      return results
+        .filter((r: any) => r && r.success)
+        .map((r: any, idx: number) => ({
+          id: r.file_id || String(idx),
+          name: r.parsed_data?.contact_info?.name || r.parsed_data?.name || r.filename || `Candidate ${idx + 1}`,
+          email: r.parsed_data?.contact_info?.email || r.parsed_data?.email || "",
+          phone: r.parsed_data?.contact_info?.phone || "",
+          location: r.parsed_data?.contact_info?.location || "",
+          title:
+            r.parsed_data?.title ||
+            (Array.isArray(r.parsed_data?.experience) && r.parsed_data.experience.length > 0
+              ? r.parsed_data.experience[0]?.title || ""
+              : r.parsed_data?.designation || ""),
+          experience: Number(r.parsed_data?.total_experience_years || 0),
+          skills: Array.isArray(r.parsed_data?.skills) ? r.parsed_data.skills : [],
+          education: Array.isArray(r.parsed_data?.education)
+            ? r.parsed_data.education.map((e: any) => ({
+                degree: e?.degree || "",
+                school: e?.institution || e?.school || "",
+                year: Number(e?.year || 0),
+              }))
+            : [],
+          summary: r.parsed_data?.summary || "",
+          status: "reviewed" as Resume["status"],
+          uploadDate: new Date().toISOString(),
+          fileType: "pdf" as const,
+          fileSize: 0,
+          matchScore: (r as any).ai_overall_score ?? undefined,
+          tags: [],
+          lastActivity: new Date().toISOString(),
+          source: "Google Drive",
+          ai_overall_score: (r as any).ai_overall_score,
+          ai_scoring: (r as any).ai_scoring,
+        }));
+    }
+    return null;
+  }, [processingProgress, uploadSuccess]);
+
+  // If no live progress results, map from cachedResults too
+  const runtimeFromCache = useMemo(() => {
+    if (cachedResults && cachedResults.length > 0 && (!processingProgress?.results || processingProgress.results.length === 0)) {
+      return cachedResults
+        .filter((r: any) => r && r.success)
+        .map((r: any, idx: number) => ({
+          id: r.file_id || String(idx),
+          name: r.parsed_data?.contact_info?.name || r.parsed_data?.name || r.filename || `Candidate ${idx + 1}`,
+          email: r.parsed_data?.contact_info?.email || r.parsed_data?.email || "",
+          phone: r.parsed_data?.contact_info?.phone || "",
+          location: r.parsed_data?.contact_info?.location || "",
+          title:
+            r.parsed_data?.title ||
+            (Array.isArray(r.parsed_data?.experience) && r.parsed_data.experience.length > 0
+              ? r.parsed_data.experience[0]?.title || ""
+              : r.parsed_data?.designation || ""),
+          experience: Number(r.parsed_data?.total_experience_years || 0),
+          skills: Array.isArray(r.parsed_data?.skills) ? r.parsed_data.skills : [],
+          education: Array.isArray(r.parsed_data?.education)
+            ? r.parsed_data.education.map((e: any) => ({ degree: e?.degree || "", school: e?.institution || e?.school || "", year: Number(e?.year || 0) }))
+            : [],
+          summary: r.parsed_data?.summary || "",
+          status: "reviewed" as Resume["status"],
+          uploadDate: new Date().toISOString(),
+          fileType: "pdf" as const,
+          fileSize: 0,
+          matchScore: (r as any).ai_overall_score ?? undefined,
+          tags: [],
+          lastActivity: new Date().toISOString(),
+          source: "Google Drive",
+          ai_overall_score: (r as any).ai_overall_score,
+          ai_scoring: (r as any).ai_scoring,
+        }));
+    }
+    return null;
+  }, [cachedResults, processingProgress?.results]);
+
+  // Map from API list when present and no live/cached results
+  const runtimeFromApi = useMemo(() => {
+    if (!apiResumes || apiResumes.length === 0) return null;
+    return apiResumes.map((rec: any, idx: number) => {
+      const fallbackName = deriveNameFromEmail(rec.candidate_email) || deriveNameFromFilename(rec.filename);
+      return {
+        id: rec.id || rec.file_id || String(idx),
+        name: rec.candidate_name || fallbackName || rec.filename || `Candidate ${idx + 1}`,
+        email: rec.candidate_email || "",
+        phone: rec.phone || "",
+        location: rec.location || "",
+        title: rec.title || "",
+        experience: Number(rec.total_experience_years || 0),
+        skills: Array.isArray(rec.key_skills) ? rec.key_skills : [],
+        education: Array.isArray(rec.education)
+          ? rec.education.map((e: any) => ({ degree: e?.degree || '', school: e?.institution || e?.school || '', year: Number(e?.year || 0) }))
+          : [],
+        summary: rec.summary || "",
+        status: "reviewed" as Resume["status"],
+        uploadDate: rec.created_at || new Date().toISOString(),
+        fileType: (rec.mime_type?.includes('pdf') ? 'pdf' : rec.mime_type?.includes('word') ? 'docx' : undefined) as 'pdf' | 'doc' | 'docx' | undefined as any,
+        fileSize: typeof rec.file_size === 'number' ? rec.file_size : 0,
+        matchScore: rec.ai_overall_score ?? undefined,
+        tags: Array.isArray(rec.tags) ? rec.tags : [],
+        lastActivity: rec.created_at || new Date().toISOString(),
+        source: rec.source || 'Google Drive',
+        ai_overall_score: rec.ai_overall_score,
+        ai_scoring: rec.ai_scoring,
+      } as Resume & { ai_overall_score?: number; ai_scoring?: any };
+    });
+  }, [apiResumes, processingProgress?.results, cachedResults]);
+
+  // On mount, if we have no in-memory results, hydrate from localStorage persisted results
+  useEffect(() => {
+    if (!processingProgress?.results) {
+      try {
+        const cached = localStorage.getItem('latestResumeResults');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setCachedResults(parsed);
+          }
+        }
+      } catch {}
+    }
+  }, [processingProgress?.results]);
+
+  // Try fetching by jobId found in cached or live results
+  useEffect(() => {
+    const runtimeWithJob = ((processingProgress?.results as any[]) || []).find((r: any) => r?.job_id);
+    const jobIdFromRuntime = (runtimeWithJob as any)?.job_id as string | undefined;
+    const jobIdFromCache = (cachedResults || []).find((r: any) => r?.job_id)?.job_id as string | undefined;
+    const jobId = jobIdFromRuntime || jobIdFromCache;
+
+    console.debug('[ResumeGrid] Job fetch effect', { status, jobId, hasApiResumes: Boolean(apiResumes) });
+
+    if (!apiResumes && jobId && status !== 'loading') {
+      (async () => {
+        try {
+          console.debug('[ResumeGrid] Fetching resumes by job', jobId);
+          const data = await getResumesByJob(jobId);
+          if (data?.records) setApiResumes(data.records);
+        } catch (e) {
+          console.warn('Failed to fetch resumes by job', e);
+        }
+      })();
+    }
+  }, [processingProgress?.results, cachedResults, getResumesByJob, apiResumes, status]);
+
+  // If no jobId is present, fetch recent resumes across jobs
+  useEffect(() => {
+    const runtimeWithJob = ((processingProgress?.results as any[]) || []).find((r: any) => r?.job_id);
+    const jobIdFromRuntime = (runtimeWithJob as any)?.job_id as string | undefined;
+    const jobIdFromCache = (cachedResults || []).find((r: any) => r?.job_id)?.job_id as string | undefined;
+    const jobId = jobIdFromRuntime || jobIdFromCache;
+
+    if (!jobId && !apiResumes && status !== 'loading') {
+      (async () => {
+        try {
+          const data = await getAllResumes();
+          if (data?.records) setApiResumes(data.records);
+        } catch (e) {
+          console.warn('Failed to fetch all resumes', e);
+        }
+      })();
+    }
+  }, [processingProgress?.results, cachedResults, getAllResumes, apiResumes, status]);
+  // Choose data source: only real data; no mock fallback
+  const baseResumes: Resume[] = useMemo(() => runtimeResumes ?? runtimeFromCache ?? runtimeFromApi ?? [], [runtimeResumes, runtimeFromCache, runtimeFromApi]);
+
+  // Generate search suggestions based on current data source
+  const searchSuggestions = useMemo(() => generateSearchSuggestions(baseResumes), [baseResumes]);
 
   // Filter and search resumes with advanced search
   const filteredResumes = useMemo(() => {
-    let results = filterResumesAdvanced(allMockResumes, searchQuery);
+    let results = filterResumesAdvanced(baseResumes, searchQuery);
 
     // Apply additional filters
     results = results.filter(resume => {
@@ -108,12 +306,12 @@ export function ResumeGrid({ initialSearchQuery = '' }: ResumeGridProps) {
     });
 
     return results;
-  }, [searchQuery, selectedFilters]);
+  }, [baseResumes, searchQuery, selectedFilters]);
 
   // Sort resumes
   const sortedResumes = [...filteredResumes].sort((a, b) => {
     let comparison = 0;
-    
+
     switch (sortBy) {
       case 'name':
         comparison = a.name.localeCompare(b.name);
@@ -125,15 +323,16 @@ export function ResumeGrid({ initialSearchQuery = '' }: ResumeGridProps) {
         comparison = a.experience - b.experience;
         break;
       case 'match':
-        comparison = (a.matchScore || 0) - (b.matchScore || 0);
+        comparison = ((a.matchScore ?? (a as any).ai_overall_score ?? 0) as number)
+          - ((b.matchScore ?? (b as any).ai_overall_score ?? 0) as number);
         break;
     }
-    
+
     return sortOrder === 'asc' ? comparison : -comparison;
   });
 
   // Pagination
-  const totalPages = Math.ceil(sortedResumes.length / itemsPerPage);
+  const totalPages = Math.ceil(sortedResumes.length / itemsPerPage) || 1;
   const startIndex = (currentPage - 1) * itemsPerPage;
   const paginatedResumes = sortedResumes.slice(startIndex, startIndex + itemsPerPage);
 

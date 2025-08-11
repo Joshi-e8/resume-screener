@@ -11,10 +11,16 @@ from app.services.google_drive_service import GoogleDriveService
 from app.services.resume_parser import ResumeParser
 # WebSocket manager no longer needed - using SSE instead
 # from app.core.websocket_manager import websocket_manager
-from app.models.resume_processing import BatchProcessingJob, ProcessingStatus
+from app.models.resume_processing import BatchProcessingJob, ProcessingStatus, ResumeMetadata, ResumeDetails, ProcessingMode
+from app.models.job import Job
+from app.scoring.service import score_resume_against_job
+from app.core.database import init_database
+from app.core.config import settings
 import os
 from loguru import logger
 from datetime import datetime, timezone
+
+import re
 
 
 @celery_app.task
@@ -34,62 +40,136 @@ def process_resume_task(self, file_id: str, access_token: str, credentials_dict:
             state='PROGRESS',
             meta={'current': 0, 'total': 1, 'status': 'Starting...'}
         )
-        
+
         # Initialize services
         drive_service = GoogleDriveService()
         parser = ResumeParser()
-        
+
         # Get file metadata
         self.update_state(
             state='PROGRESS',
             meta={'current': 0, 'total': 1, 'status': 'Fetching metadata...'}
         )
-        
+
         # Run async operations in sync context
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-        
+
         try:
             file_metadata = loop.run_until_complete(
                 drive_service.get_file_metadata(credentials_dict, file_id)
             )
-            filename = file_metadata["name"]
-            
+            filename = file_metadata.get("name") or file_id
+            mime_type = file_metadata.get("mimeType")
+            size_val = file_metadata.get("size")
+            try:
+                file_size = int(size_val) if size_val is not None else None
+            except Exception:
+                file_size = None
+
             # Download file
             self.update_state(
                 state='PROGRESS',
                 meta={'current': 0, 'total': 1, 'status': f'Downloading {filename}...'}
             )
-            
+
             tmp_file_path = loop.run_until_complete(
                 drive_service.save_file_temporarily(credentials_dict, file_id)
             )
-            
+
             # Parse resume
             self.update_state(
                 state='PROGRESS',
                 meta={'current': 0, 'total': 1, 'status': f'Parsing {filename}...'}
             )
-            
+
             parsed_data = loop.run_until_complete(
                 parser.parse_resume(tmp_file_path)
             )
-            
+
+            # Optional: auto-scoring when enabled and job context provided
+            ai_scoring = None
+            ai_overall = None
+            try:
+                if bool(int(str(getattr(settings, "ENABLE_SCORING", 1)) or "1")) and job_id:
+                    # Ensure DB available for Job fetch
+                    try:
+                        loop.run_until_complete(init_database())
+                    except Exception:
+                        pass
+                    job_doc = loop.run_until_complete(Job.get(job_id)) if job_id else None
+                    job_payload = job_doc.model_dump() if job_doc else {"title": ""}
+                    scoring = score_resume_against_job(parsed_data, job_payload)
+                    ai_scoring = scoring
+                    ai_overall = scoring.get("overall_score")
+            except Exception as score_err:
+                logger.warning(f"AI scoring skipped for {filename}: {score_err}")
+
+            # Persist to DB: ResumeMetadata + ResumeDetails
+            try:
+                loop.run_until_complete(init_database())
+            except Exception:
+                pass
+            try:
+                # Create metadata
+                meta = ResumeMetadata(
+                    file_id=file_id,
+                    filename=filename,
+                    user_id=str(user_id or "unknown"),
+                    status=ProcessingStatus.COMPLETED,
+                    processing_mode=ProcessingMode.FAST if parsed_data.get("processing_mode") in ("fast", "fast_bulk") else ProcessingMode.STANDARD,
+                    processing_completed_at=datetime.now(timezone.utc),
+                    processing_time_ms=None,
+                    job_id=job_id or None,
+                    candidate_name=(parsed_data.get("contact_info") or {}).get("name"),
+                    candidate_email=(parsed_data.get("contact_info") or {}).get("email"),
+                    key_skills=(parsed_data.get("skills") or []),
+                    file_size=file_size,
+                    mime_type=mime_type,
+                )
+                # Save metadata
+                saved_meta = loop.run_until_complete(meta.insert())
+
+                # Prepare analysis results to include AI scoring if available
+                analysis_results = {}
+                if ai_scoring is not None:
+                    analysis_results = {
+                        "ai_scoring": ai_scoring,
+                        "ai_overall_score": ai_overall,
+                    }
+
+                # Create details
+                details = ResumeDetails(
+                    resume_id=str(saved_meta.id),
+                    raw_text=parsed_data.get("raw_text"),
+                    parsed_data=parsed_data,
+                    analysis_results=analysis_results,
+                )
+                loop.run_until_complete(details.insert())
+            except Exception as persist_err:
+                logger.warning(f"⚠️ Failed to persist resume data for {filename}: {persist_err}")
+
             # Clean up
             if os.path.exists(tmp_file_path):
                 os.unlink(tmp_file_path)
-            
-            return {
+
+            result = {
                 'file_id': file_id,
                 'filename': filename,
                 'success': True,
                 'parsed_data': parsed_data,
-                'status': 'completed'
+                'status': 'completed',
+                'job_id': job_id,
             }
-            
+            if ai_scoring is not None:
+                result['ai_scoring'] = ai_scoring
+            if ai_overall is not None:
+                result['ai_overall_score'] = ai_overall
+            return result
+
         finally:
             loop.close()
-            
+
     except Exception as e:
         return {
             'file_id': file_id,
@@ -101,23 +181,23 @@ def process_resume_task(self, file_id: str, access_token: str, credentials_dict:
 
 
 @celery_app.task(bind=True)
-def process_bulk_resumes_task(self, file_ids: List[str], access_token: str, credentials_dict: Dict[str, Any], 
+def process_bulk_resumes_task(self, file_ids: List[str], access_token: str, credentials_dict: Dict[str, Any],
                              user_id: str = None, job_id: str = None):
     """
     Process multiple resume files with progress tracking
     """
     total_files = len(file_ids)
     results = []
-    
+
     try:
         # Initialize services
         drive_service = GoogleDriveService()
         parser = ResumeParser()
-        
+
         # Process files in much larger chunks for maximum performance
         chunk_size = 20
         chunks = [file_ids[i:i+chunk_size] for i in range(0, len(file_ids), chunk_size)]
-        
+
         processed_count = 0
 
         # Send initial progress update via WebSocket
@@ -156,10 +236,10 @@ def process_bulk_resumes_task(self, file_ids: List[str], access_token: str, cred
             )
 
             # Process chunk
-            chunk_results = process_chunk_sync(chunk, credentials_dict, drive_service, parser)
+            chunk_results = process_chunk_sync(chunk, credentials_dict, drive_service, parser, job_id=job_id, user_id=user_id)
             results.extend(chunk_results)
             processed_count += len(chunk)
-            
+
             # Send WebSocket progress update if user_id provided (only every 2 chunks to reduce overhead)
             if user_id and (chunk_index % 2 == 0 or chunk_index == len(chunks) - 1):
                 try:
@@ -182,11 +262,11 @@ def process_bulk_resumes_task(self, file_ids: List[str], access_token: str, cred
                     logger.error(f"❌ TASK: Failed to send WebSocket progress update: {e}")
                     import traceback
                     logger.error(f"❌ TASK: Traceback: {traceback.format_exc()}")
-        
+
         # Final update
         successful_files = sum(1 for r in results if r['success'])
         failed_files = total_files - successful_files
-        
+
         self.update_state(
             state='SUCCESS',
             meta={
@@ -198,7 +278,7 @@ def process_bulk_resumes_task(self, file_ids: List[str], access_token: str, cred
                 'results': results
             }
         )
-        
+
         # Update batch job status in database
         try:
             # Find and update the batch job by celery task ID
@@ -324,7 +404,7 @@ def process_bulk_resumes_task(self, file_ids: List[str], access_token: str, cred
                 logger.error(f"❌ TASK: Failed to send final WebSocket update: {e}")
                 import traceback
                 logger.error(f"❌ TASK: Traceback: {traceback.format_exc()}")
-        
+
         return {
             'total_files': total_files,
             'successful_files': successful_files,
@@ -332,7 +412,7 @@ def process_bulk_resumes_task(self, file_ids: List[str], access_token: str, cred
             'results': results,
             'status': 'completed'
         }
-        
+
     except Exception as e:
         # Update batch job status to failed
         try:
@@ -372,7 +452,8 @@ def process_bulk_resumes_task(self, file_ids: List[str], access_token: str, cred
 
 
 def process_chunk_sync(file_ids: List[str], credentials_dict: Dict[str, Any],
-                      drive_service: GoogleDriveService, parser: ResumeParser) -> List[Dict[str, Any]]:
+                      drive_service: GoogleDriveService, parser: ResumeParser,
+                      job_id: str | None = None, user_id: str | None = None) -> List[Dict[str, Any]]:
     """
     Process a chunk of files with ultra-high performance
     """
@@ -432,6 +513,7 @@ def process_chunk_sync(file_ids: List[str], credentials_dict: Dict[str, Any],
         chunk_results = loop.run_until_complete(process_files_ultra_fast())
 
         # Convert exceptions to error results
+        db_inited = False
         for i, result in enumerate(chunk_results):
             if isinstance(result, Exception):
                 results.append({
@@ -442,6 +524,173 @@ def process_chunk_sync(file_ids: List[str], credentials_dict: Dict[str, Any],
                     'processing_time_ms': 0
                 })
             else:
+                # Additive: auto-score if possible
+                try:
+                    if result.get('success') and bool(int(str(getattr(settings, "ENABLE_SCORING", 1)) or "1")):
+                        # Ensure DB is initialized and fetch job list once outside the loop if needed
+                        # Build job list to score against
+                        jobs_cache = getattr(process_chunk_sync, "_jobs_cache", None)
+                        if jobs_cache is None:
+                            try:
+                                loop.run_until_complete(init_database())
+                                db_inited = True
+                            except Exception:
+                                pass
+                            jobs: list = []
+                            if job_id:
+                                try:
+                                    jd = loop.run_until_complete(Job.get(job_id))
+                                    if jd:
+                                        jobs = [jd]
+                                except Exception:
+                                    jobs = []
+                            else:
+                                if user_id:
+                                    # All ACTIVE jobs for this user; fallback to all user jobs
+                                    try:
+                                        jobs = loop.run_until_complete(Job.find({"user_id": str(user_id), "status": "active"}).sort("-created_at").to_list())
+                                    except Exception:
+                                        jobs = []
+                                    if not jobs:
+                                        try:
+                                            jobs = loop.run_until_complete(Job.find({"user_id": str(user_id)}).sort("-created_at").to_list())
+                                        except Exception:
+                                            jobs = []
+                            setattr(process_chunk_sync, "_jobs_cache", jobs)
+                            jobs_cache = jobs
+
+                        # If no user/job-scoped jobs found, fall back to all active jobs, then all jobs
+                        if not jobs_cache:
+                            try:
+                                jobs_cache = loop.run_until_complete(Job.find({"status": "active"}).sort("-created_at").to_list())
+                            except Exception:
+                                jobs_cache = []
+                            if not jobs_cache:
+                                try:
+                                    jobs_cache = loop.run_until_complete(Job.find({}).sort("-created_at").to_list())
+                                except Exception:
+                                    jobs_cache = []
+
+                        matching_scores = {}
+                        best_job = None
+                        best_scoring = None
+                        best_overall = None
+
+                        for jd in (jobs_cache or []):
+                            try:
+                                scoring = score_resume_against_job(result['parsed_data'], jd.model_dump())
+                                overall = scoring.get('overall_score')
+                                matching_scores[str(jd.id)] = float(overall) if overall is not None else 0.0
+                                if best_overall is None or (overall or 0) > (best_overall or 0):
+                                    best_overall = overall
+                                    best_scoring = scoring
+                                    best_job = jd
+                            except Exception as e:
+                                logger.warning(f"Scoring failed for job {getattr(jd, 'id', '?')}: {e}")
+
+                        if best_scoring is not None:
+                            result['ai_scoring'] = best_scoring
+                            result['ai_overall_score'] = best_overall
+                            result['matching_scores'] = matching_scores
+                            try:
+                                result['job_id'] = str(best_job.id) if best_job else result.get('job_id')
+                            except Exception:
+                                pass
+                except Exception as e:
+                    logger.warning(f"AI scoring skipped for {result.get('filename')}: {e}")
+
+                # Persist successful results to DB
+                if result.get('success'):
+                    # Initialize DB once if not already
+                    if not db_inited:
+                        try:
+                            loop.run_until_complete(init_database())
+                        except Exception:
+                            pass
+                        db_inited = True
+                    try:
+                        parsed_data = result.get('parsed_data') or {}
+
+                        # Fetch file metadata for size and mime_type
+                        file_size = None
+                        mime_type = None
+                        try:
+                            meta_info = loop.run_until_complete(drive_service.get_file_metadata(credentials_dict, result.get('file_id')))
+                            size_val = meta_info.get('size')
+                            mime_type = meta_info.get('mimeType')
+                            try:
+                                file_size = int(size_val) if size_val is not None else None
+                            except Exception:
+                                file_size = None
+                        except Exception:
+                            pass
+
+                        # Fallback name derivation from email or filename
+                        contact = (parsed_data.get('contact_info') or {})
+                        candidate_email = contact.get('email') or parsed_data.get('email')
+                        candidate_name = contact.get('name') or parsed_data.get('name')
+                        if not candidate_name:
+                            # derive from email local part
+                            if candidate_email and isinstance(candidate_email, str):
+                                local = candidate_email.split('@')[0]
+                                parts = [p for p in re.split(r"[._-]+", local) if p]
+                                if parts:
+                                    candidate_name = ' '.join([p[:1].upper() + p[1:] for p in parts])
+                        if not candidate_name:
+                            # derive from filename
+                            fname = result.get('filename') or ''
+                            base = re.sub(r"\.[^./]+$", "", fname)
+                            parts = [p for p in re.split(r"[._-]+", base) if p]
+                            if parts:
+                                candidate_name = ' '.join([p[:1].upper() + p[1:] for p in parts[:3]])
+
+                        # Effective job id: use provided job_id or auto-selected nonlocal_job_doc
+                        effective_job_id = job_id
+                        try:
+                            nonlocal_job_doc = getattr(process_chunk_sync, "_job_doc", None)
+                            if not effective_job_id and nonlocal_job_doc is not None and getattr(nonlocal_job_doc, 'id', None):
+                                effective_job_id = str(nonlocal_job_doc.id)
+                        except Exception:
+                            pass
+
+                        # Create metadata
+                        meta = ResumeMetadata(
+                            file_id=result.get('file_id'),
+                            filename=result.get('filename'),
+                            user_id=str(user_id or "unknown"),
+                            status=ProcessingStatus.COMPLETED,
+                            processing_mode=ProcessingMode.FAST if (parsed_data.get("processing_mode") in ("fast", "fast_bulk")) else ProcessingMode.STANDARD,
+                            processing_completed_at=datetime.now(timezone.utc),
+                            processing_time_ms=result.get('processing_time_ms'),
+                            job_id=effective_job_id or None,
+                            candidate_name=candidate_name,
+                            candidate_email=candidate_email,
+                            key_skills=(parsed_data.get("skills") or []),
+                            file_size=file_size,
+                            mime_type=mime_type,
+                        )
+                        saved_meta = loop.run_until_complete(meta.insert())
+
+                        analysis_results = {}
+                        if result.get('ai_scoring') is not None:
+                            analysis_results["ai_scoring"] = result.get('ai_scoring')
+                        if result.get('ai_overall_score') is not None:
+                            analysis_results["ai_overall_score"] = result.get('ai_overall_score')
+
+                        details = ResumeDetails(
+                            resume_id=str(saved_meta.id),
+                            raw_text=parsed_data.get("raw_text"),
+                            parsed_data=parsed_data,
+                            analysis_results=analysis_results,
+                        )
+                        loop.run_until_complete(details.insert())
+                    except Exception as persist_err:
+                        logger.warning(f"⚠️ Failed to persist resume data for {result.get('filename')}: {persist_err}")
+
+                # Include job_id in the per-file result for frontend hydration
+                if job_id:
+                    result['job_id'] = job_id
+
                 results.append(result)
 
     finally:
@@ -498,12 +747,12 @@ async def process_file_async(file_id: str, credentials_dict: Dict[str, Any],
     Process a single file asynchronously
     """
     start_time = time.time()
-    
+
     try:
         # Get file metadata
         file_metadata = await drive_service.get_file_metadata(credentials_dict, file_id)
         filename = file_metadata["name"]
-        
+
         # Validate file type
         allowed_mime_types = drive_service.get_resume_mime_types()
         if file_metadata["mimeType"] not in allowed_mime_types:
@@ -514,17 +763,17 @@ async def process_file_async(file_id: str, credentials_dict: Dict[str, Any],
                 'error_message': f"Unsupported file type: {file_metadata['mimeType']}",
                 'processing_time_ms': int((time.time() - start_time) * 1000)
             }
-        
+
         # Download and process file
         tmp_file_path = await drive_service.save_file_temporarily(credentials_dict, file_id)
-        
+
         try:
             # Parse resume with reduced timeout for faster processing
             parsed_data = await asyncio.wait_for(
                 parser.parse_resume(tmp_file_path),
                 timeout=15.0
             )
-            
+
             return {
                 'file_id': file_id,
                 'filename': filename,
@@ -532,7 +781,7 @@ async def process_file_async(file_id: str, credentials_dict: Dict[str, Any],
                 'parsed_data': parsed_data,
                 'processing_time_ms': int((time.time() - start_time) * 1000)
             }
-            
+
         except asyncio.TimeoutError:
             return {
                 'file_id': file_id,
@@ -545,7 +794,7 @@ async def process_file_async(file_id: str, credentials_dict: Dict[str, Any],
             # Clean up temporary file
             if os.path.exists(tmp_file_path):
                 os.unlink(tmp_file_path)
-                
+
     except Exception as e:
         return {
             'file_id': file_id,
