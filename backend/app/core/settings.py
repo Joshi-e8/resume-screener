@@ -30,6 +30,11 @@ class ScoringSettings(BaseSettings):
     # Caching
     CACHE_TTL_SECONDS: int = Field(default=300)
 
+    # Logging controls
+    LOG_SCORING_PROMPTS: bool = Field(default=False)
+    LOG_SCORING_RESPONSES: bool = Field(default=False)
+    LOG_SCORING_TRUNCATE_CHARS: int = Field(default=2000)
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

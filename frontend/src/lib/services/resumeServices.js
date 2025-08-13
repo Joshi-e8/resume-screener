@@ -7,14 +7,15 @@ const useResumeServices = () => {
   const axios = useAxiosClient("admin");
 
   // Upload single resume file
-  const uploadSingleResume = async (file, jobId) => {
+  const uploadSingleResume = async (file, jobId, onUploadProgress) => {
     try {
       const formData = new FormData();
       formData.append('file', file);
-      formData.append('job_id', jobId);
+      if (jobId) formData.append('job_id', jobId);
 
       const response = await axios.post(CONSTANTS.RESUMES.UPLOAD.SINGLE, formData, {
-        headers: { "Content-Type": "multipart/form-data" }
+        headers: { "Content-Type": "multipart/form-data" },
+        onUploadProgress: onUploadProgress,
       });
       return response?.data;
     } catch (error) {

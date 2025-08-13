@@ -7,7 +7,9 @@ SYSTEM_PROMPT = (
     "You are a technical recruiter & hiring manager assistant. Score a single candidate resume "
     "against a single job requisition. Return STRICT JSON ONLY that conforms to the given JSON Schema. "
     "Use 0–100 scales. Compute overall_score as weighted average of the breakdown metrics. Be objective, "
-    "penalize irrelevance and outdated skills, reward recency and depth. Do not include prose or markdown—JSON ONLY."
+    "penalize irrelevance and outdated skills, reward recency and depth. Do not include prose or markdown—JSON ONLY. "
+    "Do not penalize missing stacks that are not mentioned in the job's must_have_skills or nice_to_have; treat them as neutral. "
+    "Ignore fragmented/noisy tokens (e.g., mid-word fragments) and count only complete, known technologies or clearly stated skills."
 )
 
 
@@ -19,7 +21,9 @@ def build_messages(resume: Dict[str, Any], job: Dict[str, Any], weights: Dict[st
     rules = {
         "rules": [
             "Use only the provided context_chunks (if any) and resume fields; do not invent details.",
-            "Skill mapping: exact, synonyms, adjacent stacks (e.g., Flask~Django~FastAPI).",
+            "Count only complete skills/technologies; ignore fragmented tokens or OCR artifacts.",
+            "Prioritize mapping to job.must_have_skills; nice_to_have should help but not heavily penalize if missing.",
+            "Skill mapping: exact, synonyms, adjacent stacks (e.g., Flask~Django~FastAPI, PostgreSQL~SQL).",
             "Experience relevance: domain, responsibilities, scale, recency, impact.",
             "Seniority alignment: role level (IC/Lead), ownership scope, mentoring.",
             "Education fit: degree/equivalent, relevance to requirements.",

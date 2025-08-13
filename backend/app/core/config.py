@@ -52,6 +52,11 @@ class Settings(BaseSettings):
     SCORING_MAX_TOKENS: int = 1200
     CACHE_TTL_SECONDS: int = 300
 
+    # Scoring Prompt/Response Logging
+    LOG_SCORING_PROMPTS: bool = False
+    LOG_SCORING_RESPONSES: bool = False
+    LOG_SCORING_TRUNCATE_CHARS: int = 2000
+
 
     # Vector DB (Qdrant) Configuration
     QDRANT_URL: Optional[str] = None
@@ -143,7 +148,9 @@ class Settings(BaseSettings):
         return f"{self.MONGODB_URL}/{self.MONGODB_DB_NAME}"
 
     class Config:
-        env_file = ".env"
+        # Ensure we always read backend/.env regardless of current working directory
+        import os as _os
+        env_file = _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.dirname(__file__))), ".env")
         env_file_encoding = "utf-8"
         case_sensitive = True
         extra = "ignore"

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useEffect } from "react";
+import { useCallback, useMemo, useEffect, useState } from "react";
 import {
   Upload,
   FileText,
@@ -42,6 +42,8 @@ import {
 } from "@/lib/services/googleDriveServices";
 import { websocketService } from "@/lib/services/websocketService";
 import GoogleDriveService from "@/lib/services/googleDriveServices";
+import useResumeServices from "@/lib/services/resumeServices";
+import useJobServices from "@/lib/services/jobServices";
 
 interface ResumeUploadProps {
   onFilesUploaded: (files: File[]) => void;
@@ -69,6 +71,25 @@ function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
     userId,
     folderProcessed,
   } = useAppSelector((state) => state.resumeUpload);
+
+  // Optional job selection (kept inside upload component for clarity)
+  const [jobs, setJobs] = useState<any[]>([]);
+  const [selectedJobId, setSelectedJobId] = useState<string>("");
+  const { getAllJobs } = useJobServices();
+  useEffect(() => {
+    let isMounted = true;
+    (async () => {
+      try {
+        const data = await getAllJobs({ page: 1, size: 100 });
+        if (isMounted) setJobs(data?.records || []);
+      } catch {}
+    })();
+    return () => {
+      isMounted = false;
+    };
+    // intentionally run once on mount to avoid re-fetch loops
+  }, []);
+
 
   // Enhanced tab/window switching protection during processing
   useEffect(() => {
@@ -346,18 +367,21 @@ function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
     dispatch(setSelectedFiles(selectedFiles.filter((_, i) => i !== index)));
   };
 
-  const simulateUpload = async (file: File): Promise<void> => {
-    return new Promise((resolve) => {
-      let progress = 0;
-      const interval = setInterval(() => {
-        progress += Math.random() * 30;
-        if (progress >= 100) {
-          progress = 100;
-          clearInterval(interval);
-          resolve();
-        }
-        dispatch(setUploadProgress({ ...uploadProgress, [file.name]: progress }));
-      }, 200);
+  const { uploadSingleResume } = useResumeServices();
+
+  const simulateUpload = async (file: File, jobId?: string): Promise<void> => {
+    return new Promise(async (resolve, reject) => {
+      try {
+        await uploadSingleResume(file, selectedJobId || jobId, (e) => {
+          const total = e.total || file.size || 1;
+          const loaded = e.loaded || 0;
+          const progress = Math.min(100, Math.round((loaded / total) * 100));
+          dispatch(setUploadProgress({ ...uploadProgress, [file.name]: progress }));
+        });
+        resolve();
+      } catch (err) {
+        reject(err);
+      }
     });
   };
 
@@ -369,25 +393,29 @@ function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
     dispatch(setErrors([]));
 
     try {
-      // Simulate upload process
-      for (const file of selectedFiles) {
-        await simulateUpload(file);
+      if (!selectedJobId) {
+        dispatch(setErrors(["Please select a position before uploading."]));
+        dispatch(setIsUploading(false));
+        return;
       }
 
-      // Call the callback with uploaded files
+      const jobId = undefined; // keep UI unchanged; can be integrated with SmartJobAssociation later
+
+      for (const file of selectedFiles) {
+        await simulateUpload(file, jobId);
+      }
+
       onFilesUploaded(selectedFiles);
 
-      // Show success state
       dispatch(setUploadSuccess(true));
 
-      // Clear selected files after a delay
       setTimeout(() => {
         dispatch(setSelectedFiles([]));
         dispatch(setUploadProgress({}));
         dispatch(setUploadSuccess(false));
         dispatch(setZipContents([]));
       }, 2000);
-    } catch {
+    } catch (e) {
       dispatch(setErrors(["Upload failed. Please try again."]));
     } finally {
       dispatch(setIsUploading(false));
@@ -795,6 +823,25 @@ function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
           </button>
         </div>
       </div>
+
+      {/* Optional Job Association (inside upload component for clarity) */}
+      <div className="mb-6">
+        <label className="block text-sm font-medium text-gray-700 mb-2">
+          Associate with position (required)
+        </label>
+        <select
+          required
+          value={selectedJobId}
+          onChange={(e) => setSelectedJobId(e.target.value)}
+          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-blue-500 focus:border-transparent bg-white"
+        >
+          <option value="">— None —</option>
+          {jobs.map((j) => (
+            <option key={j.id} value={j.id}>{j.title}</option>
+          ))}
+        </select>
+      </div>
+
 
       {/* Upload Instructions */}
       <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-xl">
@@ -1266,7 +1313,8 @@ function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
                   ? googleDriveUploading || isAsyncProcessing
                   : isUploading) ||
                 Object.keys(uploadProgress).length > 0 ||
-                uploadSuccess
+                uploadSuccess ||
+                (uploadMode !== "google-drive" && !selectedJobId)
               }
               className={`px-6 py-3 font-medium rounded-xl transition-all duration-300 transform hover:scale-105 disabled:scale-100 disabled:cursor-not-allowed flex items-center gap-2 ${
                 uploadSuccess

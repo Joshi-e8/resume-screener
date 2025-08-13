@@ -4,6 +4,8 @@ import hashlib
 import json
 import time
 from typing import Any, Dict, Tuple
+from pathlib import Path
+from datetime import datetime, timezone
 
 from cachetools import TTLCache
 from jsonschema import validate, ValidationError
@@ -60,6 +62,33 @@ def _cache_key(payload: Dict[str, Any]) -> str:
     m = hashlib.sha256()
     m.update(json.dumps(payload, sort_keys=True, ensure_ascii=False).encode("utf-8"))
     return m.hexdigest()
+
+
+def _write_scoring_log(kind: str, data: Any) -> None:
+    """Append a line to backend/logs/scoring.log and mirror to ai_analysis_<date>.log. Best-effort; never raise."""
+    try:
+        base_dir = Path(__file__).resolve().parents[2]  # backend/
+        log_dir = base_dir / "logs"
+        log_dir.mkdir(parents=True, exist_ok=True)
+        ts = datetime.now(timezone.utc).isoformat()
+        line = f"{ts} [{kind}] "
+        try:
+            if isinstance(data, str):
+                line += data
+            else:
+                line += json.dumps(data, ensure_ascii=False)
+        except Exception:
+            line += str(data)
+        # scoring.log
+        with (log_dir / "scoring.log").open("a", encoding="utf-8") as f:
+            f.write(line + "\n")
+        # mirror to ai_analysis_<date>.log
+        today = datetime.now(timezone.utc).date().isoformat()
+        with (log_dir / f"ai_analysis_{today}.log").open("a", encoding="utf-8") as f2:
+            f2.write(line + "\n")
+    except Exception:
+        # swallow any file I/O errors silently
+        pass
 
 
 class LLMClient:
@@ -195,7 +224,43 @@ class LLMClient:
             return result, obs
 
         messages = build_messages(resume, job, weights, context_chunks=context_chunks)
+
+        # Optional logging of prompts
+        try:
+            from app.core.config import settings
+            if getattr(settings, "LOG_SCORING_PROMPTS", False):
+                try:
+                    trunc = int(getattr(settings, "LOG_SCORING_TRUNCATE_CHARS", 2000) or 2000)
+                except Exception:
+                    trunc = 2000
+                # Mask PII in log output
+                safe_messages = []
+                for m in messages:
+                    c = m.get("content", "")
+                    if isinstance(c, str):
+                        c = _mask_pii(c)
+                    safe_messages.append({"role": m.get("role"), "content": (c[:trunc] if isinstance(c, str) else c)})
+                logger.info("[scoring] prompt messages={}…", safe_messages)
+                _write_scoring_log("PROMPT", {"provider": self.cfg.provider, "model": self.cfg.model, "messages": safe_messages})
+        except Exception:
+            pass
+
         raw = self._invoke(messages)
+
+        # Optional logging of raw responses
+        try:
+            from app.core.config import settings
+            if getattr(settings, "LOG_SCORING_RESPONSES", False):
+                try:
+                    trunc = int(getattr(settings, "LOG_SCORING_TRUNCATE_CHARS", 2000) or 2000)
+                except Exception:
+                    trunc = 2000
+                masked = _mask_pii((raw or "")[:trunc])
+                logger.info("[scoring] raw_response={}…", masked)
+                _write_scoring_log("RESPONSE", {"provider": self.cfg.provider, "model": self.cfg.model, "raw": masked})
+        except Exception:
+            pass
+
         data = self._validate_or_repair(raw)
         _cache[key] = data
         obs = self._obs(start, cache_hit=False)

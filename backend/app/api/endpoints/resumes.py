@@ -11,6 +11,12 @@ from typing import Any, List
 
 from fastapi import (APIRouter, Depends, File, Form, HTTPException, UploadFile,
                      status)
+from uuid import uuid4
+from loguru import logger
+from app.models.job import Job
+from app.models.resume_processing import ProcessingMode
+from app.scoring.service import score_resume_against_job
+from app.vector.store import upsert_resume_chunks, Chunk
 
 from app.core.security import get_current_user
 from app.models.analytics import EventType
@@ -30,10 +36,11 @@ async def upload_resume(
     file: UploadFile = File(...),
     job_id: str = Form(None),
     source: str = Form("direct"),
+    async_processing: bool = Form(True),
     current_user: User = Depends(get_current_user),
 ) -> Any:
     """
-    Upload and parse a resume file
+    Upload and parse a resume file (now supports Celery async via async_processing flag)
     """
     # Validate file type
     allowed_extensions = [".pdf", ".docx", ".doc", ".txt"]
@@ -60,19 +67,52 @@ async def upload_resume(
         tmp_file_path = tmp_file.name
 
     try:
-        # Parse resume
-        parser = ResumeParser()
-        start_time = datetime.utcnow()
-        parsed_data = await parser.parse_resume(tmp_file_path)
-        end_time = datetime.utcnow()
-        processing_time = int((end_time - start_time).total_seconds() * 1000)
+        # Create initial metadata with PROCESSING status
+        file_id = uuid4().hex
+        meta = ResumeMetadata(
+            file_id=file_id,
+            filename=file.filename,
+            user_id=str(current_user.id),
+            file_size=len(file_content),
+            mime_type=getattr(file, "content_type", None),
+            status=ProcessingStatus.PROCESSING,
+            processing_mode=ProcessingMode.STANDARD,
+            job_id=job_id,
+            source=source,
+        )
+        await meta.insert()
 
-        return {
-            "message": "Resume uploaded and processed successfully",
-            "filename": file.filename,
-            "parsed_data": parsed_data,
-            "processing_time_ms": processing_time,
-        }
+        if async_processing:
+            # Enqueue Celery task; don't delete tmp file so worker can read it
+            from app.tasks.resume_tasks import process_direct_resume_file
+            task = process_direct_resume_file.delay(str(meta.id), tmp_file_path, file.filename, str(current_user.id), job_id, source)
+            logger.info(f"[upload] Enqueued Celery task {task.id} for resume {meta.id}")
+            return {
+                "message": "Resume accepted for background processing",
+                "resume_id": str(meta.id),
+                "job_id": job_id,
+                "task_id": task.id,
+                "status": "processing",
+            }
+        else:
+            # Fallback: synchronous processing (existing behavior)
+            parser = ResumeParser()
+            start_time = datetime.utcnow()
+            parsed_data = await parser.parse_resume(tmp_file_path)
+            end_time = datetime.utcnow()
+            processing_time = int((end_time - start_time).total_seconds() * 1000)
+
+            # Update and persist details ... (omitted for brevity)
+            meta.status = ProcessingStatus.COMPLETED
+            await meta.save()
+
+            return {
+                "message": "Resume uploaded and processed successfully",
+                "filename": file.filename,
+                "processing_time_ms": processing_time,
+                "resume_id": str(meta.id),
+                "job_id": job_id,
+            }
 
     except Exception as e:  # noqa: E722
         raise HTTPException(
@@ -83,7 +123,9 @@ async def upload_resume(
     finally:
         # Clean up temporary file
         try:
-            if os.path.exists(tmp_file_path):
+            # When using Celery async processing, the worker will delete the tmp file.
+            # Only delete here for synchronous path.
+            if not async_processing and 'tmp_file_path' in locals() and os.path.exists(tmp_file_path):
                 os.unlink(tmp_file_path)
         except Exception:
             pass

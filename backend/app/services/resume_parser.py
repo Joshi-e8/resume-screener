@@ -454,7 +454,8 @@ class ResumeParser:
         print(f"Contact info extraction: {int((time.time() - start_time) * 1000)}ms")
 
         start_time = time.time()
-        parsed_data["skills"] = self._extract_skills(cleaned_text)
+        skills = self._extract_skills_nlp(cleaned_text) or self._extract_skills(cleaned_text)
+        parsed_data["skills"] = skills
         print(f"Skills extraction: {int((time.time() - start_time) * 1000)}ms")
 
         start_time = time.time()
@@ -473,6 +474,20 @@ class ResumeParser:
             start_time = time.time()
             parsed_data["experience"] = self._extract_experience(lines)
             print(f"Experience extraction: {int((time.time() - start_time) * 1000)}ms")
+
+            # Try to extract a probable title from the first few lines
+            try:
+                head = " ".join(lines[:5])[:200].lower()
+                titles = [
+                    "python developer", "backend developer", "software engineer",
+                    "backend engineer", "full stack developer", "full-stack developer"
+                ]
+                for t in titles:
+                    if t in head:
+                        parsed_data["title"] = t.title()
+                        break
+            except Exception:
+                pass
 
             start_time = time.time()
             parsed_data["summary"] = self._extract_summary(lines)
@@ -493,11 +508,16 @@ class ResumeParser:
         return parsed_data
 
     def _clean_text(self, text: str) -> str:
-        """Clean and normalize text"""
-        # Remove extra whitespace
-        text = re.sub(r"\s+", " ", text)
-        # Remove special characters but keep basic punctuation
-        text = re.sub(r"[^\w\s@.-]", " ", text)
+        """Clean and normalize text while preserving newlines for section parsing."""
+        # Normalize line endings
+        text = text.replace("\r\n", "\n").replace("\r", "\n")
+        # Collapse spaces and tabs but keep newlines
+        text = re.sub(r"[\t\x0b\x0c\f]+", " ", text)
+        text = re.sub(r"[ ]{2,}", " ", text)
+        # Collapse excessive newlines to single
+        text = re.sub(r"\n{3,}", "\n\n", text)
+        # Keep punctuation useful for skills (.,-/+ and commas for splitting)
+        text = re.sub(r"[^\w\s@\.,\-/\+]", " ", text)
         return text.strip()
 
     def _extract_contact_info(self, text: str) -> Dict[str, Optional[str]]:
@@ -530,44 +550,129 @@ class ResumeParser:
         if github_match:
             contact_info["github"] = github_match.group()
 
-        # Extract location (simple heuristic)
-        location_patterns = [
-            r"([A-Z][a-z]+,\s*[A-Z]{2})",  # City, State
-            r"([A-Z][a-z]+\s+[A-Z][a-z]+,\s*[A-Z]{2})",  # City Name, State
-        ]
 
-        for pattern in location_patterns:
-            location_match = re.search(pattern, text)
-            if location_match:
-                contact_info["location"] = location_match.group()
-                break
+    def _extract_skills_nlp(self, text: str) -> List[str]:
+        """
+        NLP-based skills/keyword extraction using spaCy if available.
+        Returns a cleaned, deduplicated list of plausible skills/technologies/keywords.
+        """
+        try:
+            import re
+            nlp = None
+            try:
+                import spacy
+                try:
+                    nlp = spacy.load("en_core_web_sm")
+                except Exception:
+                    # Fall back to a blank English pipeline if model is missing
+                    nlp = spacy.blank("en")
+                    if "sentencizer" not in nlp.pipe_names:
+                        nlp.add_pipe("sentencizer")
+            except Exception:
+                nlp = None
 
-        return contact_info
+            text = text or ""
+            if not text.strip():
+                return []
+
+            # Limit for performance
+            sample = text[:15000]
+            doc = nlp(sample) if nlp is not None else None
+
+            candidates: List[str] = []
+
+            # 1) Noun chunks as candidate skills/phrases (when model available)
+            if doc is not None and hasattr(doc, "noun_chunks"):
+                for chunk in doc.noun_chunks:
+                    tok = chunk.text.strip()
+                    if len(tok) >= 3 and len(tok.split()) <= 5:
+                        candidates.append(tok)
+
+            # 2) Named entities (ORG/PRODUCT often capture tech/product names)
+            if doc is not None:
+                for ent in getattr(doc, "ents", []):
+                    if ent.label_ in ("ORG", "PRODUCT", "WORK_OF_ART"):
+                        tok = ent.text.strip()
+                        if len(tok) >= 3:
+                            candidates.append(tok)
+
+            # 3) Token pattern capturing dotted/slashed tech tokens (Next.js, CI/CD)
+            for m in re.finditer(r"\b[A-Za-z][A-Za-z0-9\.\+\/#-]{2,}\b", sample):
+                tok = m.group(0)
+                if any(c in tok for c in [".", "/", "+", "-"]):
+                    candidates.append(tok)
+
+            # Clean and dedupe
+            cleaned: List[str] = []
+            seen = set()
+            for s in candidates:
+                s = re.sub(r"\s+", " ", s).strip()
+                if len(s) <= 2:
+                    continue
+                # Skip long multi-word phrases unless they include tech punctuation
+                if len(s.split()) > 5 and not any(c in s for c in [".", "/", "+", "-"]):
+                    continue
+                # Filter obvious fragments unless allowlisted
+                toks = s.split()
+                if any(len(t) <= 2 for t in toks):
+                    if not any(x in s for x in ["CI/CD", "C++", "C#", ".js", "S3", "EC2"]):
+                        if not (s.isupper() and len(s) <= 5):
+                            continue
+                key = s.lower()
+                if key not in seen:
+                    seen.add(key)
+                    cleaned.append(s)
+
+            # Prioritize tokens appearing in a skills section
+            m = self.skills_section_pattern.search(text)
+            if m:
+                sec = (m.group(1) or "").lower()
+                cleaned.sort(key=lambda t: 0 if t.lower() in sec else 1)
+
+            return cleaned[:30]
+        except Exception:
+            return []
 
     def _extract_skills(self, text: str) -> List[str]:
-        """Extract technical skills"""
-        found_skills = []
-        text_lower = text.lower()
+        """Domain-agnostic skills/keywords extraction with noise suppression and proper tokenization."""
+        found: List[str] = []
+        import re
 
-        for skill in self.tech_skills:
-            if skill.lower() in text_lower:
-                found_skills.append(skill)
+        def add_skill(s: str):
+            s_norm = re.sub(r"\s+", " ", s).strip()
+            if not s_norm:
+                return
+            if len(s_norm) <= 2:
+                return
+            # Avoid obvious fragments unless common allowlist
+            toks = s_norm.split()
+            if any(len(t) <= 2 for t in toks):
+                if not any(x in s_norm for x in ["CI/CD", "C++", "C#", ".js", "S3", "EC2"]):
+                    if not (s_norm.isupper() and len(s_norm) <= 5):
+                        return
+            if s_norm not in found:
+                found.append(s_norm)
 
-        # Look for skills sections using pre-compiled pattern
-        skills_match = self.skills_section_pattern.search(text)
+        # 1) Prefer items from an explicit Skills section
+        m = self.skills_section_pattern.search(text)
+        if m:
+            skills_text = m.group(1)
+            parts = re.split(r"[,;\|\n\r\t•\-]+", skills_text)
+            for p in parts:
+                token = p.strip()
+                if not token:
+                    continue
+                # keep short phrases (<=5 words) and tokens with tech punctuation
+                if len(token.split()) <= 5 or any(c in token for c in ["/", ".", "+", "-"]):
+                    add_skill(token)
 
-        if skills_match:
-            skills_text = skills_match.group(1)
-            # Extract comma-separated or bullet-pointed skills
-            additional_skills = re.findall(
-                r"[•\-\*]?\s*([A-Za-z][A-Za-z0-9\s\.\+\#]{2,20})", skills_text
-            )
-            for skill in additional_skills:
-                skill = skill.strip()
-                if len(skill) > 2 and skill not in found_skills:
-                    found_skills.append(skill)
+        # 2) Also capture globally any token with tech/business punctuation
+        for m in re.finditer(r"\b[A-Za-z][A-Za-z0-9\.\+\/#-]{2,}\b", text):
+            tok = m.group(0)
+            if any(c in tok for c in [".", "/", "+", "-"]):
+                add_skill(tok)
 
-        return list(set(found_skills))  # Remove duplicates
+        return found[:30]
 
     def _extract_education(self, lines: List[str]) -> List[Dict[str, str]]:
         """Extract education information"""

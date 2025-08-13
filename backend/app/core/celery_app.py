@@ -34,6 +34,7 @@ celery_app.conf.update(
 celery_app.conf.task_routes = {
     "app.tasks.resume_tasks.process_resume_task": {"queue": "resume_processing"},
     "app.tasks.resume_tasks.process_bulk_resumes_task": {"queue": "bulk_processing"},
+    "app.tasks.resume_tasks.process_direct_resume_file": {"queue": "resume_processing"},
 }
 
 
