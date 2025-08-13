@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from typing import Optional
 
@@ -17,16 +18,21 @@ class LLMConfig:
 
 
 def get_llm_config() -> LLMConfig:
-    provider = (getattr(settings, "PROVIDER", None) or "openai").lower()
+    provider = (getattr(settings, "PROVIDER", None) or os.getenv("PROVIDER") or "openai").lower()
 
     # Defaults aligned with requirement
-    temperature = float(getattr(settings, "SCORING_TEMPERATURE", 0.2) or 0.2)
-    max_tokens = int(getattr(settings, "SCORING_MAX_TOKENS", 1200) or 1200)
+    temperature = float(getattr(settings, "SCORING_TEMPERATURE", 0.2) or os.getenv("SCORING_TEMPERATURE") or 0.2)
+    max_tokens = int(getattr(settings, "SCORING_MAX_TOKENS", 1200) or os.getenv("SCORING_MAX_TOKENS") or 1200)
 
     if provider == "openai":
-        api_key = getattr(settings, "OPENAI_API_KEY", None)
-        base_url = getattr(settings, "OPENAI_BASE_URL", None) or "https://api.openai.com/v1"
-        model = getattr(settings, "OPENAI_MODEL", None) or "gpt-4"
+        # Prefer env vars if provided; fall back to settings, then to your gateway as the default
+        api_key = os.getenv("OPENAI_API_KEY") or getattr(settings, "OPENAI_API_KEY", None)
+        base_url = (
+            os.getenv("OPENAI_BASE_URL")
+            or getattr(settings, "OPENAI_BASE_URL", None)
+            or "https://ai.nuox.io/v1"
+        )
+        model = os.getenv("OPENAI_MODEL") or getattr(settings, "OPENAI_MODEL", None) or "gpt-4"
         return LLMConfig(
             provider="openai",
             api_key=api_key,

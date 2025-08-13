@@ -28,6 +28,19 @@ except Exception:  # pragma: no cover
 
 _cache = TTLCache(maxsize=1024, ttl=300)
 
+# Runtime gating if provider repeatedly fails
+_LLM_DISABLED = False
+_LAST_ERROR: str | None = None
+_CONFIG_LOGGED = False
+
+
+
+def reset_llm_gate():
+    """Reset the in-process LLM failure gate (used at the start of each Celery task)."""
+    global _LLM_DISABLED, _LAST_ERROR
+    _LLM_DISABLED = False
+    _LAST_ERROR = None
+
 
 class ProviderError(Exception):
     pass
@@ -67,6 +80,12 @@ class LLMClient:
             self.client = Groq(api_key=self.cfg.api_key)
         else:
             self.client = None
+
+        # Log active config once per process for debugging
+        global _CONFIG_LOGGED
+        if not _CONFIG_LOGGED:
+            logger.info(f"[scoring] LLM config provider={self.cfg.provider} base_url={self.cfg.base_url} model={self.cfg.model} key_present={'yes' if bool(self.cfg.api_key) else 'no'}")
+            _CONFIG_LOGGED = True
 
     def _obs(self, start: float, cache_hit: bool, extra: Dict[str, Any] | None = None) -> Dict[str, Any]:
         obs = {
@@ -111,6 +130,9 @@ class LLMClient:
         reraise=True,
     )
     def _invoke(self, messages: Any) -> str:
+        global _LLM_DISABLED, _LAST_ERROR
+        if _LLM_DISABLED:
+            raise ProviderError(f"LLM disabled due to prior failures: {_LAST_ERROR}")
         try:
             if self.client is None:
                 raise ProviderError("No client for provider")
@@ -120,6 +142,9 @@ class LLMClient:
                 return self._call_groq(messages)
             raise ProviderError("Unsupported provider")
         except Exception as e:  # map 429/5xx into ProviderError for retry
+            _LAST_ERROR = str(e)
+            # After repeated failures tenacity will re-raise; mark disabled to avoid cascades in batch
+            _LLM_DISABLED = True
             raise ProviderError(str(e))
 
     def _validate_or_repair(self, data_str: str) -> Dict[str, Any]:
@@ -151,13 +176,14 @@ class LLMClient:
         except Exception as e:
             raise ValidationFailed(f"Validation failed after repair: {_mask_pii(str(e))}; original: {_mask_pii(str(original_err))}")
 
-    def score(self, resume: Dict[str, Any], job: Dict[str, Any], weights: Dict[str, float]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    def score(self, resume: Dict[str, Any], job: Dict[str, Any], weights: Dict[str, float], context_chunks: list[Dict[str, Any]] | None = None) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         payload = {
             "provider": self.cfg.provider,
             "model": self.cfg.model,
             "resume": {"name": resume.get("name", "")},  # PII-safe subset for cache key hashing
             "job": {"title": job.get("title", "")},
             "weights": weights,
+            "chunks_hash": len(context_chunks or []),  # keep cache key simple; avoid PII
         }
         key = _cache_key(payload)
         start = time.time()
@@ -168,7 +194,7 @@ class LLMClient:
             logger.info("[scoring] cache_hit=true provider={} model={} duration_ms={}", obs["provider"], obs["model"], obs["duration_ms"])  # no PII
             return result, obs
 
-        messages = build_messages(resume, job, weights)
+        messages = build_messages(resume, job, weights, context_chunks=context_chunks)
         raw = self._invoke(messages)
         data = self._validate_or_repair(raw)
         _cache[key] = data

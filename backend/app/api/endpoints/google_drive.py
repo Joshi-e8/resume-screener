@@ -465,11 +465,11 @@ async def bulk_upload_resumes_from_google_drive(
     logger.info(f"📊 ENDPOINT: file_ids: {file_ids[:3]}...")  # Show first 3 IDs
 
     try:
-        # Determine processing strategy based on batch size
+        # Always use async Celery processing for consistency and scoring
         batch_size = len(file_ids)
-        use_async = async_processing or batch_size > 10
+        use_async = True  # Force Celery path for all batches
 
-        logger.info(f"📊 ENDPOINT: batch_size: {batch_size}, use_async: {use_async}")
+        logger.info(f"📊 ENDPOINT: batch_size: {batch_size}, use_async: {use_async} (forced async)")
 
         drive_service = GoogleDriveService()
 

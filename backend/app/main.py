@@ -68,6 +68,10 @@ app.include_router(api_router, prefix="/api/v1")
 from app.api.routes import scoring as scoring
 app.include_router(scoring.router)
 
+# Health routes (LLM diagnostics)
+from app.api.routes import health as health
+app.include_router(health.router)
+
 
 @app.get("/")
 async def root():

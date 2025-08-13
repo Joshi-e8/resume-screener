@@ -83,6 +83,7 @@ python-jose==3.5.0
 python-multipart==0.0.20
 pytz==2025.2
 PyYAML==6.0.2
+qdrant-client==1.11.3
 redis==6.3.0
 reportlab==4.4.3
 requests==2.32.4

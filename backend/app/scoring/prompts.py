@@ -15,9 +15,10 @@ def _pp(data: Any) -> str:
     return json.dumps(data, ensure_ascii=False, indent=2)
 
 
-def build_messages(resume: Dict[str, Any], job: Dict[str, Any], weights: Dict[str, float]) -> List[Dict[str, str]]:
+def build_messages(resume: Dict[str, Any], job: Dict[str, Any], weights: Dict[str, float], context_chunks: List[Dict[str, Any]] | None = None) -> List[Dict[str, str]]:
     rules = {
         "rules": [
+            "Use only the provided context_chunks (if any) and resume fields; do not invent details.",
             "Skill mapping: exact, synonyms, adjacent stacks (e.g., Flask~Django~FastAPI).",
             "Experience relevance: domain, responsibilities, scale, recency, impact.",
             "Seniority alignment: role level (IC/Lead), ownership scope, mentoring.",
@@ -29,10 +30,27 @@ def build_messages(resume: Dict[str, Any], job: Dict[str, Any], weights: Dict[st
             "Output: STRICT JSON per schema, no extra text.",
         ]
     }
+    payload_context = []
+    if context_chunks:
+        # Keep only minimal fields and limit total chars to reduce tokens
+        total = 0
+        for ch in context_chunks[:8]:
+            txt = (ch.get("text") or "")
+            if not txt:
+                continue
+            payload_context.append({
+                "section": ch.get("section"),
+                "chunk_index": ch.get("chunk_index"),
+                "text": txt[:1500],
+            })
+            total += len(txt)
+            if len(payload_context) >= 8:
+                break
     user_payload = {
         "job": job,
         "resume": resume,
         "weights": weights,
+        "context_chunks": payload_context,
         **rules,
     }
     return [

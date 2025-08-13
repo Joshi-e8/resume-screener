@@ -23,6 +23,24 @@ from datetime import datetime, timezone
 import re
 
 
+# Robust truthy parsing for env/config values like 'True', '1', 'false', etc.
+def is_truthy(value) -> bool:
+    if isinstance(value, bool):
+        return value
+    try:
+        if isinstance(value, (int, float)):
+            return value != 0
+        if isinstance(value, str):
+            v = value.strip().lower()
+            if v in ("1", "true", "yes", "y", "on"):  # truthy strings
+                return True
+            if v in ("0", "false", "no", "n", "off", ""):
+                return False
+    except Exception:
+        pass
+    return bool(value)
+
+
 @celery_app.task
 def test_task():
     """Simple test task"""
@@ -91,7 +109,7 @@ def process_resume_task(self, file_id: str, access_token: str, credentials_dict:
             ai_scoring = None
             ai_overall = None
             try:
-                if bool(int(str(getattr(settings, "ENABLE_SCORING", 1)) or "1")) and job_id:
+                if is_truthy(getattr(settings, "ENABLE_SCORING", 1)) and job_id:
                     # Ensure DB available for Job fetch
                     try:
                         loop.run_until_complete(init_database())
@@ -139,10 +157,20 @@ def process_resume_task(self, file_id: str, access_token: str, credentials_dict:
                     }
 
                 # Create details
+                # Slim stored data: drop raw_text and trim parsed_data to essentials
+                slim = {
+                    "summary": parsed_data.get("summary"),
+                    "skills": parsed_data.get("skills"),
+                    "experience": parsed_data.get("experience"),
+                    "education": parsed_data.get("education"),
+                    "contact_info": parsed_data.get("contact_info"),
+                    "title": parsed_data.get("title"),
+                    "total_experience_years": parsed_data.get("total_experience_years"),
+                }
                 details = ResumeDetails(
                     resume_id=str(saved_meta.id),
-                    raw_text=parsed_data.get("raw_text"),
-                    parsed_data=parsed_data,
+                    raw_text=None,
+                    parsed_data=slim,
                     analysis_results=analysis_results,
                 )
                 loop.run_until_complete(details.insert())
@@ -180,7 +208,7 @@ def process_resume_task(self, file_id: str, access_token: str, credentials_dict:
         }
 
 
-@celery_app.task(bind=True)
+@celery_app.task(bind=True, soft_time_limit=3300, time_limit=3600)
 def process_bulk_resumes_task(self, file_ids: List[str], access_token: str, credentials_dict: Dict[str, Any],
                              user_id: str = None, job_id: str = None):
     """
@@ -234,6 +262,14 @@ def process_bulk_resumes_task(self, file_ids: List[str], access_token: str, cred
                     'status': f'Processing chunk {chunk_index + 1}/{len(chunks)}...'
                 }
             )
+
+
+            # Reset LLM failure gate at the start of each chunk to avoid carry-over between chunks
+            try:
+                from app.scoring.llm_client import reset_llm_gate
+                reset_llm_gate()
+            except Exception:
+                pass
 
             # Process chunk
             chunk_results = process_chunk_sync(chunk, credentials_dict, drive_service, parser, job_id=job_id, user_id=user_id)
@@ -510,7 +546,43 @@ def process_chunk_sync(file_ids: List[str], credentials_dict: Dict[str, Any],
             tasks = [process_single_file_ultra_fast(file_id) for file_id in file_ids]
             return await asyncio.gather(*tasks, return_exceptions=True)
 
+        # Parse all files (ultra fast path)
         chunk_results = loop.run_until_complete(process_files_ultra_fast())
+
+        # Upsert vector chunks BEFORE scoring so retrieval works in same run
+        try:
+            from app.vector.store import upsert_resume_chunks, Chunk, get_mode
+            logger.info("[vector] Pre-score upsert starting for parsed results…")
+            for result in chunk_results:
+                if isinstance(result, Exception):
+                    continue
+                if result.get('success'):
+                    pd = result.get('parsed_data') or {}
+                    summary = (pd.get('summary') or '')
+                    skills_text = ', '.join(pd.get('skills') or [])
+                    raw_text = pd.get('raw_text') or ''
+                    chunks: list[Chunk] = []
+                    def _chunkify(text: str, section: str, size: int = 1200, overlap: int = 200):
+                        if not text:
+                            return
+                        n = len(text)
+                        pos = 0
+                        while pos < n:
+                            end = min(n, pos + size)
+                            chunks.append(Chunk(text=text[pos:end], section=section, chunk_index=len(chunks)))
+                            if end == n:
+                                break
+                            pos = end - overlap
+                    _chunkify(summary, 'summary')
+                    _chunkify(skills_text, 'skills')
+                    _chunkify(raw_text, 'raw_text')
+                    try:
+                        inserted = upsert_resume_chunks(str(result.get('file_id')), chunks, user_id=str(user_id or 'unknown'))
+                        logger.info(f"[vector] Upserted {inserted} chunks for {result.get('filename')} ({get_mode()})")
+                    except Exception as vex:
+                        logger.warning(f"[vector] Upsert (pre-score) failed for {result.get('filename')}: {vex}")
+        except Exception as vex_all:
+            logger.warning(f"[vector] Pre-scoring vector setup failed: {vex_all}")
 
         # Convert exceptions to error results
         db_inited = False
@@ -526,7 +598,7 @@ def process_chunk_sync(file_ids: List[str], credentials_dict: Dict[str, Any],
             else:
                 # Additive: auto-score if possible
                 try:
-                    if result.get('success') and bool(int(str(getattr(settings, "ENABLE_SCORING", 1)) or "1")):
+                    if result.get('success') and is_truthy(getattr(settings, "ENABLE_SCORING", 1)):
                         # Ensure DB is initialized and fetch job list once outside the loop if needed
                         # Build job list to score against
                         jobs_cache = getattr(process_chunk_sync, "_jobs_cache", None)
@@ -571,7 +643,18 @@ def process_chunk_sync(file_ids: List[str], credentials_dict: Dict[str, Any],
                                 except Exception:
                                     jobs_cache = []
 
-                        matching_scores = {}
+                        # Debug preview of jobs being considered
+                        try:
+                            preview = []
+                            for jd in (jobs_cache or [])[:5]:
+                                preview.append(f"{getattr(jd, 'id', '?')}|{getattr(jd, 'title', '')}")
+                            logger.info(f"🧭 TASK: Jobs considered: {len(jobs_cache or [])} -> {', '.join(preview)}")
+                        except Exception:
+                            pass
+
+                        logger.info(f"🔎 TASK: Scoring {result.get('filename')} across {len(jobs_cache or [])} job(s)")
+                        matching_scores: dict[str, float] = {}
+                        per_job_scoring: dict[str, dict] = {}
                         best_job = None
                         best_scoring = None
                         best_overall = None
@@ -579,23 +662,35 @@ def process_chunk_sync(file_ids: List[str], credentials_dict: Dict[str, Any],
                         for jd in (jobs_cache or []):
                             try:
                                 scoring = score_resume_against_job(result['parsed_data'], jd.model_dump())
+                                # Prefer explicit overall; fallback to server_check_overall
                                 overall = scoring.get('overall_score')
-                                matching_scores[str(jd.id)] = float(overall) if overall is not None else 0.0
-                                if best_overall is None or (overall or 0) > (best_overall or 0):
-                                    best_overall = overall
+                                if overall is None:
+                                    overall = scoring.get('derived', {}).get('server_check_overall')
+                                try:
+                                    overall_f = float(overall) if overall is not None else 0.0
+                                except Exception:
+                                    overall_f = 0.0
+                                matching_scores[str(jd.id)] = overall_f
+                                per_job_scoring[str(jd.id)] = scoring
+                                if best_overall is None or overall_f > (best_overall or 0):
+                                    best_overall = overall_f
                                     best_scoring = scoring
                                     best_job = jd
                             except Exception as e:
-                                logger.warning(f"Scoring failed for job {getattr(jd, 'id', '?')}: {e}")
+                                logger.warning(f"⚠️ TASK: Scoring failed for job {getattr(jd, 'id', '?')}: {e}")
 
                         if best_scoring is not None:
+                            logger.info(f"🏁 TASK: Selected job {getattr(best_job, 'id', '?')} with score {best_overall} for {result.get('filename')}")
                             result['ai_scoring'] = best_scoring
                             result['ai_overall_score'] = best_overall
                             result['matching_scores'] = matching_scores
+                            result['per_job_scoring'] = per_job_scoring
                             try:
                                 result['job_id'] = str(best_job.id) if best_job else result.get('job_id')
                             except Exception:
                                 pass
+                        else:
+                            logger.info(f"ℹ️ TASK: No scoring produced for {result.get('filename')} (no jobs or scorer returned None)")
                 except Exception as e:
                     logger.warning(f"AI scoring skipped for {result.get('filename')}: {e}")
 
@@ -677,10 +772,20 @@ def process_chunk_sync(file_ids: List[str], credentials_dict: Dict[str, Any],
                         if result.get('ai_overall_score') is not None:
                             analysis_results["ai_overall_score"] = result.get('ai_overall_score')
 
+                        # Slim stored data: drop raw_text and trim parsed_data to essentials
+                        slim = {
+                            "summary": parsed_data.get("summary"),
+                            "skills": parsed_data.get("skills"),
+                            "experience": parsed_data.get("experience"),
+                            "education": parsed_data.get("education"),
+                            "contact_info": parsed_data.get("contact_info"),
+                            "title": parsed_data.get("title"),
+                            "total_experience_years": parsed_data.get("total_experience_years"),
+                        }
                         details = ResumeDetails(
                             resume_id=str(saved_meta.id),
-                            raw_text=parsed_data.get("raw_text"),
-                            parsed_data=parsed_data,
+                            raw_text=None,
+                            parsed_data=slim,
                             analysis_results=analysis_results,
                         )
                         loop.run_until_complete(details.insert())
