@@ -52,6 +52,14 @@ class Settings(BaseSettings):
     SCORING_MAX_TOKENS: int = 1200
     CACHE_TTL_SECONDS: int = 300
 
+
+    # Vector DB (Qdrant) Configuration
+    QDRANT_URL: Optional[str] = None
+    QDRANT_API_KEY: Optional[str] = None
+    QDRANT_PATH: str = "qdrant_db"
+    QDRANT_COLLECTION: str = "resume_chunks"
+    EMBEDDING_DIM: int = 1536
+
     # LinkedIn Integration
     LINKEDIN_CLIENT_ID: Optional[str] = None
     LINKEDIN_CLIENT_SECRET: Optional[str] = None
