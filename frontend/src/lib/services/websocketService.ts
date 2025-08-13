@@ -1,110 +1,115 @@
 /**
- * WebSocket service for real-time progress updates
+ * WebSocket Service for Real-time Progress Updates
+ * Clean, reliable WebSocket implementation
  */
 
-import { ProgressUpdate } from './googleDriveServices';
-
-export interface WebSocketMessage {
-  type: string;
-  data?: any;
+export interface ProgressUpdate {
+  completed: number;
+  total: number;
+  status: 'processing' | 'completed' | 'failed';
   message?: string;
-  task_id?: string;
+  successful_files?: number;
+  failed_files?: number;
+  results?: any[];
 }
 
-export type ProgressCallback = (progress: ProgressUpdate) => void;
-export type ErrorCallback = (error: string) => void;
-export type ConnectionCallback = (connected: boolean) => void;
+export interface WebSocketMessage {
+  type: 'progress' | 'connected' | 'error' | 'keepalive' | 'subscribed';
+  data?: ProgressUpdate;
+  message?: string;
+  user_id?: string;
+  timestamp?: number;
+}
+
+type ProgressCallback = (progress: ProgressUpdate) => void;
+type ConnectionCallback = (connected: boolean) => void;
+type ErrorCallback = (error: string) => void;
 
 class WebSocketService {
   private ws: WebSocket | null = null;
-  private baseURL: string;
   private userId: string | null = null;
   private reconnectAttempts = 0;
-  private maxReconnectAttempts = 50; // Much higher for tab switching scenarios
+  private maxReconnectAttempts = 5;
   private reconnectDelay = 1000; // Start with 1 second
+  private reconnectTimeout: NodeJS.Timeout | null = null;
   private isConnecting = false;
-  private pingInterval: NodeJS.Timeout | null = null;
-  private connectionCheckInterval: NodeJS.Timeout | null = null;
-  private lastPongTime = Date.now();
-  private heartbeatInterval: NodeJS.Timeout | null = null;
+  private shouldReconnect = true;
 
   // Callbacks
   private progressCallbacks: ProgressCallback[] = [];
-  private errorCallbacks: ErrorCallback[] = [];
   private connectionCallbacks: ConnectionCallback[] = [];
-
-  constructor() {
-    this.baseURL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-    // Convert HTTP URL to WebSocket URL
-    this.baseURL = this.baseURL.replace('http://', 'ws://').replace('https://', 'wss://');
-  }
+  private errorCallbacks: ErrorCallback[] = [];
 
   /**
    * Connect to WebSocket server
    */
-  connect(userId: string): Promise<void> {
+  async connect(userId: string): Promise<void> {
+    if (this.isConnecting) {
+      console.log('🔄 WebSocket connection already in progress');
+      return;
+    }
+
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      console.log('✅ WebSocket already connected');
+      return;
+    }
+
+    this.userId = userId;
+    this.isConnecting = true;
+    this.shouldReconnect = true;
+
     return new Promise((resolve, reject) => {
-      if (this.isConnecting) {
-        reject(new Error('Already connecting'));
-        return;
-      }
-
-      if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-        resolve();
-        return;
-      }
-
-      this.userId = userId;
-      this.isConnecting = true;
-
       try {
-        const wsUrl = `${this.baseURL}/api/v1/websocket/ws/progress/${userId}`;
-        console.log('Connecting to WebSocket:', wsUrl);
-        
+        const wsUrl = `ws://localhost:8000/api/v1/websocket/ws/progress/${userId}`;
+        console.log('🔗 Connecting to WebSocket:', wsUrl);
+
         this.ws = new WebSocket(wsUrl);
 
         this.ws.onopen = () => {
-          console.log('WebSocket connected');
+          console.log('✅ WebSocket connected');
           this.isConnecting = false;
           this.reconnectAttempts = 0;
           this.reconnectDelay = 1000;
-          this.startKeepAlive();
-          this.notifyConnectionCallbacks(true);
+
+          // Send initial subscribe message to keep connection alive
+          try {
+            this.ws?.send(JSON.stringify({
+              type: "subscribe",
+              user_id: userId
+            }));
+            console.log('📡 Sent initial subscribe message');
+          } catch (error) {
+            console.error('❌ Failed to send initial message:', error);
+          }
+
+          this.notifyConnectionChange(true);
           resolve();
         };
 
         this.ws.onmessage = (event) => {
-          try {
-            // Update heartbeat on any message received
-            this.lastPongTime = Date.now();
-
-            console.log('📨 Raw WebSocket message received:', event.data);
-            const message: WebSocketMessage = JSON.parse(event.data);
-            console.log('📋 Parsed WebSocket message:', message);
-            this.handleMessage(message);
-          } catch (error) {
-            console.error('Failed to parse WebSocket message:', error);
-            console.error('Raw message data:', event.data);
-          }
+          this.handleMessage(event.data);
         };
 
         this.ws.onclose = (event) => {
-          console.log('WebSocket disconnected:', event.code, event.reason);
+          console.log('🔌 WebSocket disconnected:', event.code, event.reason);
+          console.log('🔍 WebSocket close details:', {
+            code: event.code,
+            reason: event.reason,
+            wasClean: event.wasClean,
+            timestamp: new Date().toISOString()
+          });
           this.isConnecting = false;
-          this.stopKeepAlive();
-          this.notifyConnectionCallbacks(false);
+          this.notifyConnectionChange(false);
 
-          // Attempt to reconnect if not a normal closure
-          if (event.code !== 1000 && this.reconnectAttempts < this.maxReconnectAttempts) {
-            console.log(`🔄 Scheduling reconnect attempt ${this.reconnectAttempts + 1}/${this.maxReconnectAttempts}`);
+          if (this.shouldReconnect && this.reconnectAttempts < this.maxReconnectAttempts) {
             this.scheduleReconnect();
           }
         };
 
         this.ws.onerror = (error) => {
-          console.error('WebSocket error:', error);
+          console.error('❌ WebSocket error:', error);
           this.isConnecting = false;
-          this.notifyErrorCallbacks('WebSocket connection error');
+          this.notifyError('WebSocket connection error');
           reject(error);
         };
 
@@ -114,282 +119,191 @@ class WebSocketService {
             this.isConnecting = false;
             reject(new Error('WebSocket connection timeout'));
           }
-        }, 10000);
+        }, 10000); // 10 second timeout
 
       } catch (error) {
         this.isConnecting = false;
+        console.error('❌ Failed to create WebSocket:', error);
         reject(error);
       }
     });
   }
-
   /**
-   * Disconnect from WebSocket server
+   * Disconnect WebSocket
    */
-  disconnect() {
-    this.stopKeepAlive();
+  disconnect(): void {
+    console.log('🔌 Disconnecting WebSocket...');
+    this.shouldReconnect = false;
+
+    if (this.reconnectTimeout) {
+      clearTimeout(this.reconnectTimeout);
+      this.reconnectTimeout = null;
+    }
+
     if (this.ws) {
-      this.ws.close(1000, 'Client disconnect');
+      this.ws.close();
       this.ws = null;
     }
-    this.userId = null;
-    this.reconnectAttempts = 0;
-  }
 
-  /**
-   * Start keep-alive ping mechanism with enhanced heartbeat
-   */
-  private startKeepAlive() {
-    this.stopKeepAlive(); // Clear any existing interval
-    this.lastPongTime = Date.now();
-
-    // Send ping every 20 seconds (more frequent for tab switching)
-    this.pingInterval = setInterval(() => {
-      if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-        console.log('📡 Sending keep-alive ping');
-        this.ping();
-      }
-    }, 20000);
-
-    // Check connection health every 3 seconds (more aggressive)
-    this.connectionCheckInterval = setInterval(() => {
-      if (this.ws && this.ws.readyState !== WebSocket.OPEN) {
-        console.log('🔍 WebSocket connection unhealthy, attempting reconnect...');
-        if (this.userId && this.reconnectAttempts < this.maxReconnectAttempts) {
-          this.scheduleReconnect();
-        }
-      }
-    }, 3000);
-
-    // Heartbeat monitor - check if we've received pong recently
-    this.heartbeatInterval = setInterval(() => {
-      const timeSinceLastPong = Date.now() - this.lastPongTime;
-
-      // If no pong for 60 seconds, consider connection stale
-      if (timeSinceLastPong > 60000) {
-        console.log('💔 Heartbeat timeout - no pong received, reconnecting...');
-        if (this.userId && this.reconnectAttempts < this.maxReconnectAttempts) {
-          this.scheduleReconnect();
-        }
-      }
-    }, 10000); // Check every 10 seconds
-  }
-
-  /**
-   * Stop keep-alive ping mechanism
-   */
-  private stopKeepAlive() {
-    if (this.pingInterval) {
-      clearInterval(this.pingInterval);
-      this.pingInterval = null;
-    }
-    if (this.connectionCheckInterval) {
-      clearInterval(this.connectionCheckInterval);
-      this.connectionCheckInterval = null;
-    }
-    if (this.heartbeatInterval) {
-      clearInterval(this.heartbeatInterval);
-      this.heartbeatInterval = null;
-    }
-  }
-
-  /**
-   * Send a message to the server
-   */
-  send(message: any) {
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify(message));
-    } else {
-      console.warn('WebSocket not connected, cannot send message');
-    }
-  }
-
-  /**
-   * Send ping to keep connection alive
-   */
-  ping() {
-    this.send({ type: 'ping' });
-  }
-
-  /**
-   * Subscribe to progress updates
-   */
-  onProgress(callback: ProgressCallback) {
-    this.progressCallbacks.push(callback);
-  }
-
-  /**
-   * Subscribe to error messages
-   */
-  onError(callback: ErrorCallback) {
-    this.errorCallbacks.push(callback);
-  }
-
-  /**
-   * Subscribe to connection status changes
-   */
-  onConnectionChange(callback: ConnectionCallback) {
-    this.connectionCallbacks.push(callback);
-  }
-
-  /**
-   * Unsubscribe from connection status changes
-   */
-  offConnection(callback: ConnectionCallback) {
-    const index = this.connectionCallbacks.indexOf(callback);
-    if (index > -1) {
-      this.connectionCallbacks.splice(index, 1);
-    }
-  }
-
-  /**
-   * Remove progress callback
-   */
-  offProgress(callback: ProgressCallback) {
-    const index = this.progressCallbacks.indexOf(callback);
-    if (index > -1) {
-      this.progressCallbacks.splice(index, 1);
-    }
-  }
-
-  /**
-   * Remove error callback
-   */
-  offError(callback: ErrorCallback) {
-    const index = this.errorCallbacks.indexOf(callback);
-    if (index > -1) {
-      this.errorCallbacks.splice(index, 1);
-    }
-  }
-
-  /**
-   * Remove connection callback
-   */
-  offConnectionChange(callback: ConnectionCallback) {
-    const index = this.connectionCallbacks.indexOf(callback);
-    if (index > -1) {
-      this.connectionCallbacks.splice(index, 1);
-    }
-  }
-
-  /**
-   * Get connection status
-   */
-  isConnected(): boolean {
-    return this.ws !== null && this.ws.readyState === WebSocket.OPEN;
+    this.notifyConnectionChange(false);
   }
 
   /**
    * Handle incoming WebSocket messages
    */
-  private handleMessage(message: WebSocketMessage) {
-    console.log('🔄 Handling WebSocket message type:', message.type);
+  private handleMessage(data: string): void {
+    try {
+      console.log('📨 WebSocket message received:', data);
+      const message: WebSocketMessage = JSON.parse(data);
+      console.log('📋 Parsed WebSocket message:', message);
 
-    switch (message.type) {
-      case 'progress_update':
-        console.log('📊 Processing progress_update message:', message.data);
-        if (message.data) {
-          console.log('📢 Notifying progress callbacks...');
-          this.notifyProgressCallbacks(message.data);
-          console.log('✅ Progress callbacks notified');
-        } else {
-          console.warn('⚠️ progress_update message has no data');
-        }
-        break;
-      
-      case 'task_complete':
-        if (message.data) {
-          // Mark progress as complete
-          this.notifyProgressCallbacks({
-            ...message.data,
-            status: 'completed'
-          });
-        }
-        break;
-      
-      case 'error':
-        if (message.message) {
-          this.notifyErrorCallbacks(message.message);
-        }
-        break;
-      
-      case 'connection_established':
-        console.log('WebSocket connection established:', message.message);
-        break;
-      
-      case 'pong':
-        // Handle ping response
-        break;
-      
-      default:
-        console.log('Unknown WebSocket message type:', message.type);
+      switch (message.type) {
+        case 'connected':
+          console.log('🎉 WebSocket connection confirmed:', message.message);
+          break;
+
+        case 'progress':
+          if (message.data) {
+            console.log('📊 Progress update received:', message.data);
+            this.notifyProgress(message.data);
+          }
+          break;
+
+        case 'keepalive':
+          console.log('💓 WebSocket keepalive received');
+          break;
+
+        case 'subscribed':
+          console.log('✅ WebSocket subscription confirmed:', message.message);
+          break;
+
+        case 'error':
+          console.error('❌ WebSocket error message:', message.message);
+          this.notifyError(message.message || 'Unknown error');
+          break;
+
+        default:
+          console.warn('⚠️ Unknown WebSocket message type:', message.type);
+      }
+    } catch (error) {
+      console.error('❌ Failed to parse WebSocket message:', error);
+      this.notifyError('Failed to parse message');
     }
   }
 
   /**
    * Schedule reconnection attempt
    */
-  private scheduleReconnect() {
+  private scheduleReconnect(): void {
+    if (this.reconnectTimeout) {
+      clearTimeout(this.reconnectTimeout);
+    }
+
     this.reconnectAttempts++;
-    console.log(`Scheduling reconnect attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts} in ${this.reconnectDelay}ms`);
-    
-    setTimeout(() => {
-      if (this.userId && this.reconnectAttempts <= this.maxReconnectAttempts) {
-        this.connect(this.userId).catch((error) => {
-          console.error('Reconnect failed:', error);
-          // Exponential backoff
-          this.reconnectDelay = Math.min(this.reconnectDelay * 2, 30000);
-        });
+    const delay = Math.min(this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1), 30000);
+
+    console.log(`🔄 Scheduling WebSocket reconnect attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts} in ${delay}ms`);
+
+    this.reconnectTimeout = setTimeout(async () => {
+      if (this.shouldReconnect && this.userId) {
+        try {
+          await this.connect(this.userId);
+        } catch (error) {
+          console.error('❌ WebSocket reconnection failed:', error);
+        }
       }
-    }, this.reconnectDelay);
+    }, delay);
   }
 
   /**
-   * Notify progress callbacks
+   * Get connection state
    */
-  private notifyProgressCallbacks(progress: ProgressUpdate) {
-    console.log(`📢 Notifying ${this.progressCallbacks.length} progress callbacks with:`, progress);
+  getConnectionState(): 'connected' | 'connecting' | 'disconnected' {
+    if (this.isConnecting) return 'connecting';
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) return 'connected';
+    return 'disconnected';
+  }
 
-    this.progressCallbacks.forEach((callback, index) => {
+  /**
+   * Check if connected
+   */
+  isConnected(): boolean {
+    return this.ws !== null && this.ws.readyState === WebSocket.OPEN;
+  }
+
+  // Callback management
+  onProgress(callback: ProgressCallback): void {
+    this.progressCallbacks.push(callback);
+  }
+
+  offProgress(callback: ProgressCallback): void {
+    const index = this.progressCallbacks.indexOf(callback);
+    if (index > -1) {
+      this.progressCallbacks.splice(index, 1);
+    }
+  }
+
+  onConnectionChange(callback: ConnectionCallback): void {
+    this.connectionCallbacks.push(callback);
+  }
+
+  offConnectionChange(callback: ConnectionCallback): void {
+    const index = this.connectionCallbacks.indexOf(callback);
+    if (index > -1) {
+      this.connectionCallbacks.splice(index, 1);
+    }
+  }
+
+  onError(callback: ErrorCallback): void {
+    this.errorCallbacks.push(callback);
+  }
+
+  offError(callback: ErrorCallback): void {
+    const index = this.errorCallbacks.indexOf(callback);
+    if (index > -1) {
+      this.errorCallbacks.splice(index, 1);
+    }
+  }
+
+  clearAllCallbacks(): void {
+    console.log('🧹 Clearing all WebSocket callbacks');
+    this.progressCallbacks = [];
+    this.connectionCallbacks = [];
+    this.errorCallbacks = [];
+  }
+
+  // Notification methods
+  private notifyProgress(progress: ProgressUpdate): void {
+    this.progressCallbacks.forEach(callback => {
       try {
-        console.log(`📞 Calling progress callback ${index + 1}...`);
         callback(progress);
-        console.log(`✅ Progress callback ${index + 1} completed successfully`);
       } catch (error) {
-        console.error(`❌ Error in progress callback ${index + 1}:`, error);
-      }
-    });
-
-    console.log('🎯 All progress callbacks completed');
-  }
-
-  /**
-   * Notify error callbacks
-   */
-  private notifyErrorCallbacks(error: string) {
-    this.errorCallbacks.forEach(callback => {
-      try {
-        callback(error);
-      } catch (error) {
-        console.error('Error in error callback:', error);
+        console.error('❌ Error in progress callback:', error);
       }
     });
   }
 
-  /**
-   * Notify connection callbacks
-   */
-  private notifyConnectionCallbacks(connected: boolean) {
+  private notifyConnectionChange(connected: boolean): void {
     this.connectionCallbacks.forEach(callback => {
       try {
         callback(connected);
       } catch (error) {
-        console.error('Error in connection callback:', error);
+        console.error('❌ Error in connection callback:', error);
       }
     });
   }
+
+  private notifyError(error: string): void {
+    this.errorCallbacks.forEach(callback => {
+      try {
+        callback(error);
+      } catch (error) {
+        console.error('❌ Error in error callback:', error);
+      }
+    });
+  }
+
 }
 
 // Export singleton instance
 export const websocketService = new WebSocketService();
-export default websocketService;

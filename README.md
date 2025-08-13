@@ -11,6 +11,67 @@ An industrial-grade AI-powered resume screening application for HR teams and hir
 - **Data Management**: Store and manage all results in MongoDB
 - **Export Capabilities**: Export results to PDF/CSV formats
 
+## 🧠 AI Scoring (New)
+
+A new additive scoring module provides deterministic 0–100 JSON scoring with explanations, without modifying existing parsing or routes.
+
+- Routes: POST `/v1/scoring/resume-vs-job`
+- Providers: `openai` (default via OpenAI-compatible gateway) or `groq`
+- Strict JSON validated via jsonschema with one-shot repair pass
+- Retries, TTL cache, and observable metrics (provider/model, cache hits, duration)
+
+### Environment variables
+
+Add to your `.env` (backend):
+
+```
+PROVIDER=openai
+OPENAI_API_KEY=changeme
+OPENAI_BASE_URL=https://ai.nuox.io/v1
+OPENAI_MODEL=gpt-4
+GROQ_API_KEY=changeme
+GROQ_MODEL=llama-3.1-70b-versatile
+ENABLE_SCORING=1
+SCORING_TEMPERATURE=0.2
+SCORING_MAX_TOKENS=1200
+CACHE_TTL_SECONDS=300
+```
+
+### Run locally
+
+```
+cd backend
+uvicorn app.main:app --reload
+```
+
+### Example curl
+
+```
+curl -X POST http://localhost:8000/v1/scoring/resume-vs-job \
+-H "Content-Type: application/json" \
+-d '{
+  "parsed_resume": {
+    "name": "Jane Doe",
+    "skills": ["Python","FastAPI","PostgreSQL","AWS","Docker"],
+    "experience": [
+      {"title":"Backend Engineer","years":3.5,"domain":"SaaS","tech":["Python","FastAPI","AWS"],"from":"2022-01","to":"2025-07"}
+    ],
+    "education": [{"degree":"B.Tech CS","year":2021}],
+    "certifications": ["AWS Developer Associate"]
+  },
+  "job": {
+    "title":"Senior Backend Engineer",
+    "must_have_skills":["Python","Django","AWS"],
+    "nice_to_have":["FastAPI","Redis","Docker"],
+    "min_years":4,
+    "domain":"SaaS",
+    "education_requirements":["B.Tech CS or equivalent"],
+    "certifications_pref":["AWS Developer Associate"]
+  },
+  "weights": {"skills_match":0.45,"experience_relevance":0.30,"seniority_alignment":0.10,"education_fit":0.05,"domain_expertise":0.05,"certifications":0.05}
+}'
+```
+
 ## 🧰 Tech Stack
 
 - **Frontend**: Next.js with Tailwind CSS

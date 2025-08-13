@@ -47,7 +47,7 @@ interface ResumeUploadProps {
   onFilesUploaded: (files: File[]) => void;
 }
 
-export function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
+function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
   const dispatch = useAppDispatch();
 
   // Get all state from Redux store
@@ -91,7 +91,7 @@ export function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
           console.log('🔄 WebSocket disconnected, attempting immediate reconnection...');
           console.log(`🔧 Using stored userId: ${userId}`);
           websocketService.connect(userId).then(() => {
-            setWsConnected(true);
+            dispatch(setWsConnected(true));
             console.log('✅ WebSocket reconnected after page became visible');
           }).catch((error) => {
             console.error('❌ Failed to reconnect WebSocket after page became visible:', error);
@@ -106,7 +106,7 @@ export function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
             console.log('🔄 Delayed reconnection attempt after page was hidden...');
             console.log(`🔧 Using stored userId: ${userId}`);
             websocketService.connect(userId).then(() => {
-              setWsConnected(true);
+              dispatch(setWsConnected(true));
               console.log('✅ WebSocket reconnected via delayed attempt');
             }).catch((error) => {
               console.error('❌ Failed delayed WebSocket reconnection:', error);
@@ -122,7 +122,7 @@ export function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
         console.log('🔄 Window focused, attempting WebSocket reconnection...');
         console.log(`🔧 Using stored userId: ${userId}`);
         websocketService.connect(userId).then(() => {
-          setWsConnected(true);
+          dispatch(setWsConnected(true));
           console.log('✅ WebSocket reconnected after window focus');
         }).catch((error) => {
           console.error('❌ Failed to reconnect WebSocket after window focus:', error);
@@ -147,7 +147,7 @@ export function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
         if (!wsConnected) {
           console.log(`🔧 Using stored userId: ${userId}`);
           websocketService.connect(userId).then(() => {
-            setWsConnected(true);
+            dispatch(setWsConnected(true));
             console.log('✅ WebSocket reconnected after system wake');
           }).catch((error) => {
             console.error('❌ Failed to reconnect WebSocket after system wake:', error);
@@ -174,7 +174,7 @@ export function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
       window.removeEventListener('focus', handleWindowFocus);
       window.removeEventListener('blur', handleWindowBlur);
     };
-  }, [isAsyncProcessing, wsConnected]);
+  }, [isAsyncProcessing, wsConnected, userId, dispatch]);
 
   const allowedTypes = useMemo(
     () => [
@@ -197,9 +197,9 @@ export function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
     if (accessToken) {
       GoogleDriveService.storeAccessToken(accessToken);
       googleDriveService.setAccessToken(accessToken);
-      setUploadMode("google-drive");
+      dispatch(setUploadMode("google-drive"));
     }
-  }, []);
+  }, [dispatch]);
 
   const validateFile = useCallback(
     (file: File): string | null => {
@@ -243,7 +243,6 @@ export function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
   );
 
   // Function to simulate ZIP file extraction (in real app, this would use a ZIP library)
-
   const processZipFile = async (_zipFile: File): Promise<File[]> => {
     // Mock ZIP processing - in real implementation, use JSZip or similar
     const mockFiles: File[] = [];
@@ -292,7 +291,7 @@ export function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
         ) {
           try {
             const extractedFiles = await processZipFile(file);
-            setZipContents(extractedFiles);
+            dispatch(setZipContents(extractedFiles));
             validFiles.push(...extractedFiles);
           } catch {
             newErrors.push(`${file.name}: Failed to extract ZIP file`);
@@ -302,7 +301,7 @@ export function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
         }
       }
 
-      setErrors(newErrors);
+      dispatch(setErrors(newErrors));
       if (validFiles.length > 0) {
         if (uploadMode === "single") {
           dispatch(setSelectedFiles([validFiles[0]])); // Only keep the first file in single mode
@@ -311,7 +310,7 @@ export function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
         }
       }
     },
-    [uploadMode, allowedZipTypes, validateFile]
+    [uploadMode, allowedZipTypes, validateFile, selectedFiles, dispatch]
   );
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -365,9 +364,9 @@ export function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
   const handleUpload = async () => {
     if (selectedFiles.length === 0) return;
 
-    setIsUploading(true);
-    setUploadSuccess(false);
-    setErrors([]);
+    dispatch(setIsUploading(true));
+    dispatch(setUploadSuccess(false));
+    dispatch(setErrors([]));
 
     try {
       // Simulate upload process
@@ -379,19 +378,19 @@ export function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
       onFilesUploaded(selectedFiles);
 
       // Show success state
-      setUploadSuccess(true);
+      dispatch(setUploadSuccess(true));
 
       // Clear selected files after a delay
       setTimeout(() => {
-        setSelectedFiles([]);
-        setUploadProgress({});
-        setUploadSuccess(false);
-        setZipContents([]);
+        dispatch(setSelectedFiles([]));
+        dispatch(setUploadProgress({}));
+        dispatch(setUploadSuccess(false));
+        dispatch(setZipContents([]));
       }, 2000);
     } catch {
-      setErrors(["Upload failed. Please try again."]);
+      dispatch(setErrors(["Upload failed. Please try again."]));
     } finally {
-      setIsUploading(false);
+      dispatch(setIsUploading(false));
     }
   };
 
@@ -427,7 +426,7 @@ export function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
         // Setup WebSocket connection for progress tracking
         try {
           await websocketService.connect(currentUserId);
-          setWsConnected(true);
+          dispatch(setWsConnected(true));
 
           // Setup progress callback
           const progressCallback = (progress: ProgressUpdate) => {
@@ -441,7 +440,7 @@ export function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
             }
 
             console.log('🔄 Updating progress state...');
-            setProcessingProgress(progress);
+            dispatch(setProcessingProgress(progress));
             console.log('✅ Progress state updated');
 
             if (progress.status === 'completed') {
@@ -453,7 +452,7 @@ export function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
           // Setup connection status callback
           const connectionCallback = (connected: boolean) => {
             console.log('🔗 WebSocket connection status changed:', connected);
-            setWsConnected(connected);
+            dispatch(setWsConnected(connected));
           };
 
           websocketService.onProgress(progressCallback);
@@ -464,7 +463,7 @@ export function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
             websocketService.offProgress(progressCallback);
             websocketService.offConnectionChange(connectionCallback);
             websocketService.disconnect();
-            setWsConnected(false);
+            dispatch(setWsConnected(false));
           };
 
           // Store cleanup function for later use
@@ -485,7 +484,7 @@ export function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
 
       if (response.async_processing) {
         // Async processing started - update batch ID
-        setBatchId(response.batch_id || null);
+        dispatch(setBatchId(response.batch_id || null));
 
         // Ensure WebSocket stays connected during processing
         if (response.batch_id) {
@@ -497,11 +496,11 @@ export function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
       }
 
     } catch (error) {
-      setErrors([
+      dispatch(setErrors([
         "Failed to upload files from Google Drive. Please try again.",
-      ]);
-      setGoogleDriveUploading(false);
-      setIsAsyncProcessing(false);
+      ]));
+      dispatch(setGoogleDriveUploading(false));
+      dispatch(setIsAsyncProcessing(false));
     }
   };
 
@@ -510,15 +509,26 @@ export function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
     // Check for errors
     const failedUploads = response.results.filter((r) => !r.success);
     if (failedUploads.length > 0) {
-      setErrors(failedUploads.map((f) => `${f.filename}: ${f.error_message}`));
+      dispatch(setErrors(failedUploads.map((f) => `${f.filename}: ${f.error_message}`)));
     }
 
     // Get successful uploads
     const successfulUploads = response.results.filter((r) => r.success);
     if (successfulUploads.length > 0) {
-      setUploadSuccess(true);
+      dispatch(setUploadSuccess(true));
 
-      // Convert Google Drive files to File objects for callback
+      // Publish a completion progress payload so ResumeGrid can render real results
+      const progressPayload: ProgressUpdate = {
+        completed: response.total_files,
+        total: response.total_files,
+        results: response.results as any,
+        status: 'completed',
+        successful_files: response.successful_files,
+        failed_files: response.failed_files,
+      } as any;
+      dispatch(setProcessingProgress(progressPayload));
+
+      // Convert Google Drive files to File objects for callback (existing behavior)
       const mockFiles = successfulUploads.map((result) => {
         const file = selectedGoogleDriveFiles.find(
           (f) => f.id === result.file_id
@@ -531,16 +541,21 @@ export function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
         } as File;
       });
 
+      // Persist results locally so ResumeGrid can render after navigation/refresh
+      try {
+        localStorage.setItem('latestResumeResults', JSON.stringify(response.results || []));
+      } catch {}
+
       onFilesUploaded(mockFiles);
 
-      // Clear selection after delay
+      // Clear selection after delay (do not clear processingProgress)
       setTimeout(() => {
-        setSelectedGoogleDriveFiles([]);
-        setUploadSuccess(false);
+        dispatch(setSelectedGoogleDriveFiles([]));
+        dispatch(setUploadSuccess(false));
       }, 2000);
     }
 
-    setGoogleDriveUploading(false);
+    dispatch(setGoogleDriveUploading(false));
   };
 
   // Ensure WebSocket connection stays active during processing
@@ -553,11 +568,11 @@ export function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
       websocketService.disconnect();
       await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second
       await websocketService.connect(userId);
-      setWsConnected(true);
+      dispatch(setWsConnected(true));
       console.log('✅ WebSocket connected successfully for processing');
     } catch (error) {
       console.error('❌ Failed to connect WebSocket:', error);
-      setWsConnected(false);
+      dispatch(setWsConnected(false));
     }
 
     // Set up aggressive connection monitoring during processing
@@ -568,11 +583,11 @@ export function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
         console.log('🔄 WebSocket disconnected during processing, attempting reconnect...');
         try {
           await websocketService.connect(userId);
-          setWsConnected(true);
+          dispatch(setWsConnected(true));
           console.log('✅ WebSocket reconnected during processing');
         } catch (error) {
           console.error('❌ Failed to reconnect WebSocket during processing:', error);
-          setWsConnected(false);
+          dispatch(setWsConnected(false));
         }
       } else {
         console.log('✅ WebSocket connection is active');
@@ -596,7 +611,7 @@ export function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
 
     // Update progress state with completion data
     console.log('📊 Updating progress state with completion data...');
-    setProcessingProgress(progress);
+    dispatch(setProcessingProgress(progress));
 
     // Stop any ongoing connection monitoring
     if ((window as any).connectionMonitor) {
@@ -610,11 +625,11 @@ export function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
       const failedUploads = progress.results.filter((r) => !r.success);
 
       if (failedUploads.length > 0) {
-        setErrors(failedUploads.map((f) => `${f.filename}: ${f.error_message}`));
+        dispatch(setErrors(failedUploads.map((f) => `${f.filename}: ${f.error_message}`)));
       }
 
       if (successfulUploads.length > 0) {
-        setUploadSuccess(true);
+        dispatch(setUploadSuccess(true));
 
         const mockFiles = successfulUploads.map((result) => {
           const file = selectedGoogleDriveFiles.find(
@@ -633,16 +648,16 @@ export function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
     }
 
     // Cleanup - but keep processing state visible for a moment
-    setGoogleDriveUploading(false);
+    dispatch(setGoogleDriveUploading(false));
 
     // Delay cleanup to show completion state
     setTimeout(() => {
       console.log('🧹 Cleaning up async processing state...');
-      setIsAsyncProcessing(false);
-      setBatchId(null);
-      setSelectedGoogleDriveFiles([]);
-      setUploadSuccess(false);
-      setProcessingProgress(null);
+      dispatch(setIsAsyncProcessing(false));
+      dispatch(setBatchId(null));
+      dispatch(setSelectedGoogleDriveFiles([]));
+      dispatch(setUploadSuccess(false));
+      dispatch(setProcessingProgress(null));
     }, 5000); // Increased to 5 seconds to show completion
 
     // Cleanup WebSocket
@@ -931,8 +946,6 @@ export function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
           </div>
         </div>
       )}
-
-
 
       {/* Google Drive Picker */}
       {uploadMode === "google-drive" && (
@@ -1239,12 +1252,6 @@ export function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
               ))}
           </div>
 
-
-
-
-
-
-
           {/* Upload Button - Show when files are selected and not processing */}
           {!isAsyncProcessing && (selectedFiles.length > 0 || selectedGoogleDriveFiles.length > 0) && (
             <div className="mt-6 flex justify-end">
@@ -1327,3 +1334,5 @@ export function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
     </div>
   );
 }
+
+export default ResumeUpload;

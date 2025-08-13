@@ -42,6 +42,24 @@ class Settings(BaseSettings):
     GROQ_API_KEY: Optional[str] = None
     OPENAI_API_KEY: Optional[str] = None
 
+    # AI Scoring / LLM Provider Configuration (additive)
+    PROVIDER: str = "openai"  # openai | groq
+    OPENAI_BASE_URL: Optional[str] = None
+    OPENAI_MODEL: str = "gpt-4"
+    GROQ_MODEL: str = "llama-3.1-70b-versatile"
+    ENABLE_SCORING: bool = True
+    SCORING_TEMPERATURE: float = 0.2
+    SCORING_MAX_TOKENS: int = 1200
+    CACHE_TTL_SECONDS: int = 300
+
+
+    # Vector DB (Qdrant) Configuration
+    QDRANT_URL: Optional[str] = None
+    QDRANT_API_KEY: Optional[str] = None
+    QDRANT_PATH: str = "qdrant_db"
+    QDRANT_COLLECTION: str = "resume_chunks"
+    EMBEDDING_DIM: int = 1536
+
     # LinkedIn Integration
     LINKEDIN_CLIENT_ID: Optional[str] = None
     LINKEDIN_CLIENT_SECRET: Optional[str] = None

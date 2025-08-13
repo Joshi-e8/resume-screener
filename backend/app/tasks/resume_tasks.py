@@ -5,15 +5,40 @@ Celery tasks for resume processing
 import asyncio
 import time
 from typing import Dict, List, Any
-from celery import current_task
+
 from app.core.celery_app import celery_app
 from app.services.google_drive_service import GoogleDriveService
 from app.services.resume_parser import ResumeParser
-from app.core.websocket_manager import websocket_manager
-from app.models.resume_processing import BatchProcessingJob, ProcessingStatus
+# WebSocket manager no longer needed - using SSE instead
+# from app.core.websocket_manager import websocket_manager
+from app.models.resume_processing import BatchProcessingJob, ProcessingStatus, ResumeMetadata, ResumeDetails, ProcessingMode
+from app.models.job import Job
+from app.scoring.service import score_resume_against_job
+from app.core.database import init_database
+from app.core.config import settings
 import os
 from loguru import logger
-from datetime import datetime
+from datetime import datetime, timezone
+
+import re
+
+
+# Robust truthy parsing for env/config values like 'True', '1', 'false', etc.
+def is_truthy(value) -> bool:
+    if isinstance(value, bool):
+        return value
+    try:
+        if isinstance(value, (int, float)):
+            return value != 0
+        if isinstance(value, str):
+            v = value.strip().lower()
+            if v in ("1", "true", "yes", "y", "on"):  # truthy strings
+                return True
+            if v in ("0", "false", "no", "n", "off", ""):
+                return False
+    except Exception:
+        pass
+    return bool(value)
 
 
 @celery_app.task
@@ -33,62 +58,146 @@ def process_resume_task(self, file_id: str, access_token: str, credentials_dict:
             state='PROGRESS',
             meta={'current': 0, 'total': 1, 'status': 'Starting...'}
         )
-        
+
         # Initialize services
         drive_service = GoogleDriveService()
         parser = ResumeParser()
-        
+
         # Get file metadata
         self.update_state(
             state='PROGRESS',
             meta={'current': 0, 'total': 1, 'status': 'Fetching metadata...'}
         )
-        
+
         # Run async operations in sync context
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-        
+
         try:
             file_metadata = loop.run_until_complete(
                 drive_service.get_file_metadata(credentials_dict, file_id)
             )
-            filename = file_metadata["name"]
-            
+            filename = file_metadata.get("name") or file_id
+            mime_type = file_metadata.get("mimeType")
+            size_val = file_metadata.get("size")
+            try:
+                file_size = int(size_val) if size_val is not None else None
+            except Exception:
+                file_size = None
+
             # Download file
             self.update_state(
                 state='PROGRESS',
                 meta={'current': 0, 'total': 1, 'status': f'Downloading {filename}...'}
             )
-            
+
             tmp_file_path = loop.run_until_complete(
                 drive_service.save_file_temporarily(credentials_dict, file_id)
             )
-            
+
             # Parse resume
             self.update_state(
                 state='PROGRESS',
                 meta={'current': 0, 'total': 1, 'status': f'Parsing {filename}...'}
             )
-            
+
             parsed_data = loop.run_until_complete(
                 parser.parse_resume(tmp_file_path)
             )
-            
+
+            # Optional: auto-scoring when enabled and job context provided
+            ai_scoring = None
+            ai_overall = None
+            try:
+                if is_truthy(getattr(settings, "ENABLE_SCORING", 1)) and job_id:
+                    # Ensure DB available for Job fetch
+                    try:
+                        loop.run_until_complete(init_database())
+                    except Exception:
+                        pass
+                    job_doc = loop.run_until_complete(Job.get(job_id)) if job_id else None
+                    job_payload = job_doc.model_dump() if job_doc else {"title": ""}
+                    scoring = score_resume_against_job(parsed_data, job_payload)
+                    ai_scoring = scoring
+                    ai_overall = scoring.get("overall_score")
+            except Exception as score_err:
+                logger.warning(f"AI scoring skipped for {filename}: {score_err}")
+
+            # Persist to DB: ResumeMetadata + ResumeDetails
+            try:
+                loop.run_until_complete(init_database())
+            except Exception:
+                pass
+            try:
+                # Create metadata
+                meta = ResumeMetadata(
+                    file_id=file_id,
+                    filename=filename,
+                    user_id=str(user_id or "unknown"),
+                    status=ProcessingStatus.COMPLETED,
+                    processing_mode=ProcessingMode.FAST if parsed_data.get("processing_mode") in ("fast", "fast_bulk") else ProcessingMode.STANDARD,
+                    processing_completed_at=datetime.now(timezone.utc),
+                    processing_time_ms=None,
+                    job_id=job_id or None,
+                    candidate_name=(parsed_data.get("contact_info") or {}).get("name"),
+                    candidate_email=(parsed_data.get("contact_info") or {}).get("email"),
+                    key_skills=(parsed_data.get("skills") or []),
+                    file_size=file_size,
+                    mime_type=mime_type,
+                )
+                # Save metadata
+                saved_meta = loop.run_until_complete(meta.insert())
+
+                # Prepare analysis results to include AI scoring if available
+                analysis_results = {}
+                if ai_scoring is not None:
+                    analysis_results = {
+                        "ai_scoring": ai_scoring,
+                        "ai_overall_score": ai_overall,
+                    }
+
+                # Create details
+                # Slim stored data: drop raw_text and trim parsed_data to essentials
+                slim = {
+                    "summary": parsed_data.get("summary"),
+                    "skills": parsed_data.get("skills"),
+                    "experience": parsed_data.get("experience"),
+                    "education": parsed_data.get("education"),
+                    "contact_info": parsed_data.get("contact_info"),
+                    "title": parsed_data.get("title"),
+                    "total_experience_years": parsed_data.get("total_experience_years"),
+                }
+                details = ResumeDetails(
+                    resume_id=str(saved_meta.id),
+                    raw_text=None,
+                    parsed_data=slim,
+                    analysis_results=analysis_results,
+                )
+                loop.run_until_complete(details.insert())
+            except Exception as persist_err:
+                logger.warning(f"⚠️ Failed to persist resume data for {filename}: {persist_err}")
+
             # Clean up
             if os.path.exists(tmp_file_path):
                 os.unlink(tmp_file_path)
-            
-            return {
+
+            result = {
                 'file_id': file_id,
                 'filename': filename,
                 'success': True,
                 'parsed_data': parsed_data,
-                'status': 'completed'
+                'status': 'completed',
+                'job_id': job_id,
             }
-            
+            if ai_scoring is not None:
+                result['ai_scoring'] = ai_scoring
+            if ai_overall is not None:
+                result['ai_overall_score'] = ai_overall
+            return result
+
         finally:
             loop.close()
-            
+
     except Exception as e:
         return {
             'file_id': file_id,
@@ -99,29 +208,33 @@ def process_resume_task(self, file_id: str, access_token: str, credentials_dict:
         }
 
 
-@celery_app.task(bind=True)
-def process_bulk_resumes_task(self, file_ids: List[str], access_token: str, credentials_dict: Dict[str, Any], 
+@celery_app.task(bind=True, soft_time_limit=3300, time_limit=3600)
+def process_bulk_resumes_task(self, file_ids: List[str], access_token: str, credentials_dict: Dict[str, Any],
                              user_id: str = None, job_id: str = None):
     """
     Process multiple resume files with progress tracking
     """
     total_files = len(file_ids)
     results = []
-    
+
     try:
         # Initialize services
         drive_service = GoogleDriveService()
         parser = ResumeParser()
-        
-        # Process files in chunks of 5 for better performance
-        chunk_size = 5
+
+        # Process files in much larger chunks for maximum performance
+        chunk_size = 20
         chunks = [file_ids[i:i+chunk_size] for i in range(0, len(file_ids), chunk_size)]
-        
+
         processed_count = 0
 
-        # Send initial progress update
+        # Send initial progress update via WebSocket
         if user_id:
             try:
+                from app.core.websocket_manager import websocket_manager
+                logger.info(f"🚀 TASK: Starting bulk processing for user_id: {user_id}")
+                logger.info(f"📊 TASK: Processing {total_files} files")
+
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
                 loop.run_until_complete(websocket_manager.send_progress_update(
@@ -133,8 +246,11 @@ def process_bulk_resumes_task(self, file_ids: List[str], access_token: str, cred
                     }
                 ))
                 loop.close()
+                logger.info(f"✅ TASK: Sent initial WebSocket progress update for user {user_id}")
             except Exception as e:
-                logger.warning(f"Failed to send initial progress update: {e}")
+                logger.error(f"❌ TASK: Failed to send initial WebSocket progress update: {e}")
+                import traceback
+                logger.error(f"❌ TASK: Traceback: {traceback.format_exc()}")
 
         for chunk_index, chunk in enumerate(chunks):
             # Update progress
@@ -146,15 +262,26 @@ def process_bulk_resumes_task(self, file_ids: List[str], access_token: str, cred
                     'status': f'Processing chunk {chunk_index + 1}/{len(chunks)}...'
                 }
             )
-            
+
+
+            # Reset LLM failure gate at the start of each chunk to avoid carry-over between chunks
+            try:
+                from app.scoring.llm_client import reset_llm_gate
+                reset_llm_gate()
+            except Exception:
+                pass
+
             # Process chunk
-            chunk_results = process_chunk_sync(chunk, credentials_dict, drive_service, parser)
+            chunk_results = process_chunk_sync(chunk, credentials_dict, drive_service, parser, job_id=job_id, user_id=user_id)
             results.extend(chunk_results)
             processed_count += len(chunk)
-            
-            # Send WebSocket update if user_id provided
-            if user_id:
+
+            # Send WebSocket progress update if user_id provided (only every 2 chunks to reduce overhead)
+            if user_id and (chunk_index % 2 == 0 or chunk_index == len(chunks) - 1):
                 try:
+                    from app.core.websocket_manager import websocket_manager
+                    logger.info(f"📊 TASK: Sending progress update {processed_count}/{total_files} for user {user_id}")
+
                     loop = asyncio.new_event_loop()
                     asyncio.set_event_loop(loop)
                     loop.run_until_complete(websocket_manager.send_progress_update(
@@ -166,13 +293,16 @@ def process_bulk_resumes_task(self, file_ids: List[str], access_token: str, cred
                         }
                     ))
                     loop.close()
+                    logger.info(f"✅ TASK: Sent WebSocket progress update {processed_count}/{total_files}")
                 except Exception as e:
-                    logger.warning(f"Failed to send progress update: {e}")
-        
+                    logger.error(f"❌ TASK: Failed to send WebSocket progress update: {e}")
+                    import traceback
+                    logger.error(f"❌ TASK: Traceback: {traceback.format_exc()}")
+
         # Final update
         successful_files = sum(1 for r in results if r['success'])
         failed_files = total_files - successful_files
-        
+
         self.update_state(
             state='SUCCESS',
             meta={
@@ -184,7 +314,7 @@ def process_bulk_resumes_task(self, file_ids: List[str], access_token: str, cred
                 'results': results
             }
         )
-        
+
         # Update batch job status in database
         try:
             # Find and update the batch job by celery task ID
@@ -230,7 +360,7 @@ def process_bulk_resumes_task(self, file_ids: List[str], access_token: str, cred
                         batch_job.successful_files = successful_files
                         batch_job.failed_files = failed_files
                         batch_job.status = ProcessingStatus.COMPLETED
-                        batch_job.completed_at = datetime.utcnow()
+                        batch_job.completed_at = datetime.now(timezone.utc)
                         batch_job.progress_percentage = 100.0
                         batch_job.current_status_message = f"Completed: {successful_files}/{total_files} files processed successfully"
 
@@ -245,7 +375,7 @@ def process_bulk_resumes_task(self, file_ids: List[str], access_token: str, cred
                             'total_files': total_files,
                             'successful_files': successful_files,
                             'failed_files': failed_files,
-                            'completion_time': datetime.utcnow().isoformat(),
+                            'completion_time': datetime.now(timezone.utc).isoformat(),
                             'task_id': task_id
                         }
 
@@ -285,8 +415,11 @@ def process_bulk_resumes_task(self, file_ids: List[str], access_token: str, cred
         # Send final WebSocket update
         if user_id:
             try:
-                logger.info(f"📡 Preparing to send WebSocket update to user_id: {user_id}")
-                logger.info(f"🔄 Creating fresh event loop for WebSocket update")
+                logger.info(f"📡 TASK: Preparing to send final WebSocket update to user_id: {user_id}")
+                logger.info(f"🔄 TASK: Creating fresh event loop for WebSocket update")
+                logger.info(f"🎉 TASK: Final results - successful: {successful_files}, failed: {failed_files}")
+
+                from app.core.websocket_manager import websocket_manager
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
 
@@ -302,9 +435,12 @@ def process_bulk_resumes_task(self, file_ids: List[str], access_token: str, cred
                 ))
 
                 loop.close()
+                logger.info(f"✅ TASK: Successfully sent final WebSocket update for user {user_id}")
             except Exception as e:
-                logger.warning(f"Failed to send WebSocket update: {e}")
-        
+                logger.error(f"❌ TASK: Failed to send final WebSocket update: {e}")
+                import traceback
+                logger.error(f"❌ TASK: Traceback: {traceback.format_exc()}")
+
         return {
             'total_files': total_files,
             'successful_files': successful_files,
@@ -312,7 +448,7 @@ def process_bulk_resumes_task(self, file_ids: List[str], access_token: str, cred
             'results': results,
             'status': 'completed'
         }
-        
+
     except Exception as e:
         # Update batch job status to failed
         try:
@@ -327,13 +463,13 @@ def process_bulk_resumes_task(self, file_ids: List[str], access_token: str, cred
                 batch_job = await BatchProcessingJob.find_one({"celery_task_id": task_id})
                 if batch_job:
                     batch_job.status = ProcessingStatus.FAILED
-                    batch_job.completed_at = datetime.utcnow()
+                    batch_job.completed_at = datetime.now(timezone.utc)
                     batch_job.current_status_message = f"Failed: {str(e)}"
                     batch_job.processing_summary = {
                         'error': str(e),
                         'status': ProcessingStatus.FAILED.value,
                         'task_id': task_id,
-                        'failure_time': datetime.utcnow().isoformat()
+                        'failure_time': datetime.now(timezone.utc).isoformat()
                     }
                     await batch_job.save()
                     logger.info(f"Updated batch job {batch_job.batch_id} status to failed")
@@ -351,62 +487,377 @@ def process_bulk_resumes_task(self, file_ids: List[str], access_token: str, cred
         raise
 
 
-def process_chunk_sync(file_ids: List[str], credentials_dict: Dict[str, Any], 
-                      drive_service: GoogleDriveService, parser: ResumeParser) -> List[Dict[str, Any]]:
+def process_chunk_sync(file_ids: List[str], credentials_dict: Dict[str, Any],
+                      drive_service: GoogleDriveService, parser: ResumeParser,
+                      job_id: str | None = None, user_id: str | None = None) -> List[Dict[str, Any]]:
     """
-    Process a chunk of files synchronously
+    Process a chunk of files with ultra-high performance
     """
     results = []
-    
+
     # Create new event loop for this chunk
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
-    
+
     try:
-        # Process files concurrently within the chunk
-        async def process_files():
-            semaphore = asyncio.Semaphore(3)  # Limit concurrent processing
-            
-            async def process_single_file(file_id: str):
+        # Process files with maximum concurrency
+        async def process_files_ultra_fast():
+            # Use much higher concurrency for maximum speed
+            semaphore = asyncio.Semaphore(20)  # Ultra-high concurrency
+
+            async def process_single_file_ultra_fast(file_id: str):
                 async with semaphore:
-                    return await process_file_async(file_id, credentials_dict, drive_service, parser)
-            
-            tasks = [process_single_file(file_id) for file_id in file_ids]
+                    start_time = time.time()
+                    try:
+                        # Download file directly to memory and parse
+                        file_content, filename, file_extension = await drive_service.download_file_to_memory(credentials_dict, file_id)
+
+                        parsed_data = await asyncio.wait_for(
+                            parser.parse_resume_from_memory(file_content, filename, file_extension),
+                            timeout=3.0
+                        )
+
+                        return {
+                            'file_id': file_id,
+                            'filename': filename,
+                            'success': True,
+                            'parsed_data': parsed_data,
+                            'processing_time_ms': int((time.time() - start_time) * 1000)
+                        }
+
+                    except asyncio.TimeoutError:
+                        return {
+                            'file_id': file_id,
+                            'filename': f'timeout_{file_id}',
+                            'success': False,
+                            'error_message': "Processing timeout",
+                            'processing_time_ms': int((time.time() - start_time) * 1000)
+                        }
+                    except Exception as e:
+                        return {
+                            'file_id': file_id,
+                            'filename': f'error_{file_id}',
+                            'success': False,
+                            'error_message': str(e),
+                            'processing_time_ms': int((time.time() - start_time) * 1000)
+                        }
+
+            # Process all files simultaneously
+            tasks = [process_single_file_ultra_fast(file_id) for file_id in file_ids]
             return await asyncio.gather(*tasks, return_exceptions=True)
-        
-        chunk_results = loop.run_until_complete(process_files())
-        
+
+        # Parse all files (ultra fast path)
+        chunk_results = loop.run_until_complete(process_files_ultra_fast())
+
+        # Upsert vector chunks BEFORE scoring so retrieval works in same run
+        try:
+            from app.vector.store import upsert_resume_chunks, Chunk, get_mode
+            logger.info("[vector] Pre-score upsert starting for parsed results…")
+            for result in chunk_results:
+                if isinstance(result, Exception):
+                    continue
+                if result.get('success'):
+                    pd = result.get('parsed_data') or {}
+                    summary = (pd.get('summary') or '')
+                    skills_text = ', '.join(pd.get('skills') or [])
+                    raw_text = pd.get('raw_text') or ''
+                    chunks: list[Chunk] = []
+                    def _chunkify(text: str, section: str, size: int = 1200, overlap: int = 200):
+                        if not text:
+                            return
+                        n = len(text)
+                        pos = 0
+                        while pos < n:
+                            end = min(n, pos + size)
+                            chunks.append(Chunk(text=text[pos:end], section=section, chunk_index=len(chunks)))
+                            if end == n:
+                                break
+                            pos = end - overlap
+                    _chunkify(summary, 'summary')
+                    _chunkify(skills_text, 'skills')
+                    _chunkify(raw_text, 'raw_text')
+                    try:
+                        inserted = upsert_resume_chunks(str(result.get('file_id')), chunks, user_id=str(user_id or 'unknown'))
+                        logger.info(f"[vector] Upserted {inserted} chunks for {result.get('filename')} ({get_mode()})")
+                    except Exception as vex:
+                        logger.warning(f"[vector] Upsert (pre-score) failed for {result.get('filename')}: {vex}")
+        except Exception as vex_all:
+            logger.warning(f"[vector] Pre-scoring vector setup failed: {vex_all}")
+
         # Convert exceptions to error results
+        db_inited = False
         for i, result in enumerate(chunk_results):
             if isinstance(result, Exception):
                 results.append({
                     'file_id': file_ids[i],
-                    'filename': f'unknown_{file_ids[i]}',
+                    'filename': f'exception_{file_ids[i]}',
                     'success': False,
                     'error_message': str(result),
                     'processing_time_ms': 0
                 })
             else:
+                # Additive: auto-score if possible
+                try:
+                    if result.get('success') and is_truthy(getattr(settings, "ENABLE_SCORING", 1)):
+                        # Ensure DB is initialized and fetch job list once outside the loop if needed
+                        # Build job list to score against
+                        jobs_cache = getattr(process_chunk_sync, "_jobs_cache", None)
+                        if jobs_cache is None:
+                            try:
+                                loop.run_until_complete(init_database())
+                                db_inited = True
+                            except Exception:
+                                pass
+                            jobs: list = []
+                            if job_id:
+                                try:
+                                    jd = loop.run_until_complete(Job.get(job_id))
+                                    if jd:
+                                        jobs = [jd]
+                                except Exception:
+                                    jobs = []
+                            else:
+                                if user_id:
+                                    # All ACTIVE jobs for this user; fallback to all user jobs
+                                    try:
+                                        jobs = loop.run_until_complete(Job.find({"user_id": str(user_id), "status": "active"}).sort("-created_at").to_list())
+                                    except Exception:
+                                        jobs = []
+                                    if not jobs:
+                                        try:
+                                            jobs = loop.run_until_complete(Job.find({"user_id": str(user_id)}).sort("-created_at").to_list())
+                                        except Exception:
+                                            jobs = []
+                            setattr(process_chunk_sync, "_jobs_cache", jobs)
+                            jobs_cache = jobs
+
+                        # If no user/job-scoped jobs found, fall back to all active jobs, then all jobs
+                        if not jobs_cache:
+                            try:
+                                jobs_cache = loop.run_until_complete(Job.find({"status": "active"}).sort("-created_at").to_list())
+                            except Exception:
+                                jobs_cache = []
+                            if not jobs_cache:
+                                try:
+                                    jobs_cache = loop.run_until_complete(Job.find({}).sort("-created_at").to_list())
+                                except Exception:
+                                    jobs_cache = []
+
+                        # Debug preview of jobs being considered
+                        try:
+                            preview = []
+                            for jd in (jobs_cache or [])[:5]:
+                                preview.append(f"{getattr(jd, 'id', '?')}|{getattr(jd, 'title', '')}")
+                            logger.info(f"🧭 TASK: Jobs considered: {len(jobs_cache or [])} -> {', '.join(preview)}")
+                        except Exception:
+                            pass
+
+                        logger.info(f"🔎 TASK: Scoring {result.get('filename')} across {len(jobs_cache or [])} job(s)")
+                        matching_scores: dict[str, float] = {}
+                        per_job_scoring: dict[str, dict] = {}
+                        best_job = None
+                        best_scoring = None
+                        best_overall = None
+
+                        for jd in (jobs_cache or []):
+                            try:
+                                scoring = score_resume_against_job(result['parsed_data'], jd.model_dump())
+                                # Prefer explicit overall; fallback to server_check_overall
+                                overall = scoring.get('overall_score')
+                                if overall is None:
+                                    overall = scoring.get('derived', {}).get('server_check_overall')
+                                try:
+                                    overall_f = float(overall) if overall is not None else 0.0
+                                except Exception:
+                                    overall_f = 0.0
+                                matching_scores[str(jd.id)] = overall_f
+                                per_job_scoring[str(jd.id)] = scoring
+                                if best_overall is None or overall_f > (best_overall or 0):
+                                    best_overall = overall_f
+                                    best_scoring = scoring
+                                    best_job = jd
+                            except Exception as e:
+                                logger.warning(f"⚠️ TASK: Scoring failed for job {getattr(jd, 'id', '?')}: {e}")
+
+                        if best_scoring is not None:
+                            logger.info(f"🏁 TASK: Selected job {getattr(best_job, 'id', '?')} with score {best_overall} for {result.get('filename')}")
+                            result['ai_scoring'] = best_scoring
+                            result['ai_overall_score'] = best_overall
+                            result['matching_scores'] = matching_scores
+                            result['per_job_scoring'] = per_job_scoring
+                            try:
+                                result['job_id'] = str(best_job.id) if best_job else result.get('job_id')
+                            except Exception:
+                                pass
+                        else:
+                            logger.info(f"ℹ️ TASK: No scoring produced for {result.get('filename')} (no jobs or scorer returned None)")
+                except Exception as e:
+                    logger.warning(f"AI scoring skipped for {result.get('filename')}: {e}")
+
+                # Persist successful results to DB
+                if result.get('success'):
+                    # Initialize DB once if not already
+                    if not db_inited:
+                        try:
+                            loop.run_until_complete(init_database())
+                        except Exception:
+                            pass
+                        db_inited = True
+                    try:
+                        parsed_data = result.get('parsed_data') or {}
+
+                        # Fetch file metadata for size and mime_type
+                        file_size = None
+                        mime_type = None
+                        try:
+                            meta_info = loop.run_until_complete(drive_service.get_file_metadata(credentials_dict, result.get('file_id')))
+                            size_val = meta_info.get('size')
+                            mime_type = meta_info.get('mimeType')
+                            try:
+                                file_size = int(size_val) if size_val is not None else None
+                            except Exception:
+                                file_size = None
+                        except Exception:
+                            pass
+
+                        # Fallback name derivation from email or filename
+                        contact = (parsed_data.get('contact_info') or {})
+                        candidate_email = contact.get('email') or parsed_data.get('email')
+                        candidate_name = contact.get('name') or parsed_data.get('name')
+                        if not candidate_name:
+                            # derive from email local part
+                            if candidate_email and isinstance(candidate_email, str):
+                                local = candidate_email.split('@')[0]
+                                parts = [p for p in re.split(r"[._-]+", local) if p]
+                                if parts:
+                                    candidate_name = ' '.join([p[:1].upper() + p[1:] for p in parts])
+                        if not candidate_name:
+                            # derive from filename
+                            fname = result.get('filename') or ''
+                            base = re.sub(r"\.[^./]+$", "", fname)
+                            parts = [p for p in re.split(r"[._-]+", base) if p]
+                            if parts:
+                                candidate_name = ' '.join([p[:1].upper() + p[1:] for p in parts[:3]])
+
+                        # Effective job id: use provided job_id or auto-selected nonlocal_job_doc
+                        effective_job_id = job_id
+                        try:
+                            nonlocal_job_doc = getattr(process_chunk_sync, "_job_doc", None)
+                            if not effective_job_id and nonlocal_job_doc is not None and getattr(nonlocal_job_doc, 'id', None):
+                                effective_job_id = str(nonlocal_job_doc.id)
+                        except Exception:
+                            pass
+
+                        # Create metadata
+                        meta = ResumeMetadata(
+                            file_id=result.get('file_id'),
+                            filename=result.get('filename'),
+                            user_id=str(user_id or "unknown"),
+                            status=ProcessingStatus.COMPLETED,
+                            processing_mode=ProcessingMode.FAST if (parsed_data.get("processing_mode") in ("fast", "fast_bulk")) else ProcessingMode.STANDARD,
+                            processing_completed_at=datetime.now(timezone.utc),
+                            processing_time_ms=result.get('processing_time_ms'),
+                            job_id=effective_job_id or None,
+                            candidate_name=candidate_name,
+                            candidate_email=candidate_email,
+                            key_skills=(parsed_data.get("skills") or []),
+                            file_size=file_size,
+                            mime_type=mime_type,
+                        )
+                        saved_meta = loop.run_until_complete(meta.insert())
+
+                        analysis_results = {}
+                        if result.get('ai_scoring') is not None:
+                            analysis_results["ai_scoring"] = result.get('ai_scoring')
+                        if result.get('ai_overall_score') is not None:
+                            analysis_results["ai_overall_score"] = result.get('ai_overall_score')
+
+                        # Slim stored data: drop raw_text and trim parsed_data to essentials
+                        slim = {
+                            "summary": parsed_data.get("summary"),
+                            "skills": parsed_data.get("skills"),
+                            "experience": parsed_data.get("experience"),
+                            "education": parsed_data.get("education"),
+                            "contact_info": parsed_data.get("contact_info"),
+                            "title": parsed_data.get("title"),
+                            "total_experience_years": parsed_data.get("total_experience_years"),
+                        }
+                        details = ResumeDetails(
+                            resume_id=str(saved_meta.id),
+                            raw_text=None,
+                            parsed_data=slim,
+                            analysis_results=analysis_results,
+                        )
+                        loop.run_until_complete(details.insert())
+                    except Exception as persist_err:
+                        logger.warning(f"⚠️ Failed to persist resume data for {result.get('filename')}: {persist_err}")
+
+                # Include job_id in the per-file result for frontend hydration
+                if job_id:
+                    result['job_id'] = job_id
+
                 results.append(result)
-                
+
     finally:
         loop.close()
-    
+
     return results
 
 
-async def process_file_async(file_id: str, credentials_dict: Dict[str, Any], 
+async def process_file_async_fast(file_id: str, credentials_dict: Dict[str, Any],
+                                 drive_service: GoogleDriveService, parser: ResumeParser) -> Dict[str, Any]:
+    """
+    Process a single file asynchronously with high-performance in-memory processing
+    """
+    start_time = time.time()
+
+    try:
+        # Download file directly to memory (much faster than temp files)
+        file_content, filename, file_extension = await drive_service.download_file_to_memory(credentials_dict, file_id)
+
+        # Parse resume directly from memory with aggressive timeout
+        parsed_data = await asyncio.wait_for(
+            parser.parse_resume_from_memory(file_content, filename, file_extension),
+            timeout=5.0  # Much more aggressive timeout
+        )
+
+        return {
+            'file_id': file_id,
+            'filename': filename,
+            'success': True,
+            'parsed_data': parsed_data,
+            'processing_time_ms': int((time.time() - start_time) * 1000)
+        }
+
+    except asyncio.TimeoutError:
+        return {
+            'file_id': file_id,
+            'filename': f'timeout_{file_id}',
+            'success': False,
+            'error_message': "File processing timed out (5 seconds)",
+            'processing_time_ms': int((time.time() - start_time) * 1000)
+        }
+    except Exception as e:
+        return {
+            'file_id': file_id,
+            'filename': f'error_{file_id}',
+            'success': False,
+            'error_message': str(e),
+            'processing_time_ms': int((time.time() - start_time) * 1000)
+        }
+
+async def process_file_async(file_id: str, credentials_dict: Dict[str, Any],
                            drive_service: GoogleDriveService, parser: ResumeParser) -> Dict[str, Any]:
     """
     Process a single file asynchronously
     """
     start_time = time.time()
-    
+
     try:
         # Get file metadata
         file_metadata = await drive_service.get_file_metadata(credentials_dict, file_id)
         filename = file_metadata["name"]
-        
+
         # Validate file type
         allowed_mime_types = drive_service.get_resume_mime_types()
         if file_metadata["mimeType"] not in allowed_mime_types:
@@ -417,17 +868,17 @@ async def process_file_async(file_id: str, credentials_dict: Dict[str, Any],
                 'error_message': f"Unsupported file type: {file_metadata['mimeType']}",
                 'processing_time_ms': int((time.time() - start_time) * 1000)
             }
-        
+
         # Download and process file
         tmp_file_path = await drive_service.save_file_temporarily(credentials_dict, file_id)
-        
+
         try:
-            # Parse resume with timeout
+            # Parse resume with reduced timeout for faster processing
             parsed_data = await asyncio.wait_for(
                 parser.parse_resume(tmp_file_path),
-                timeout=30.0
+                timeout=15.0
             )
-            
+
             return {
                 'file_id': file_id,
                 'filename': filename,
@@ -435,20 +886,20 @@ async def process_file_async(file_id: str, credentials_dict: Dict[str, Any],
                 'parsed_data': parsed_data,
                 'processing_time_ms': int((time.time() - start_time) * 1000)
             }
-            
+
         except asyncio.TimeoutError:
             return {
                 'file_id': file_id,
                 'filename': filename,
                 'success': False,
-                'error_message': "File processing timed out (30 seconds)",
+                'error_message': "File processing timed out (15 seconds)",
                 'processing_time_ms': int((time.time() - start_time) * 1000)
             }
         finally:
             # Clean up temporary file
             if os.path.exists(tmp_file_path):
                 os.unlink(tmp_file_path)
-                
+
     except Exception as e:
         return {
             'file_id': file_id,

@@ -56,6 +56,16 @@ const useResumeServices = () => {
     }
   };
 
+  // Get all resumes (across jobs)
+  const getAllResumes = async () => {
+    try {
+      const response = await axios.get(CONSTANTS.RESUMES.LISTING);
+      return response?.data;
+    } catch (error) {
+      return errorHandler(error);
+    }
+  };
+
   // Get all resumes for a job
   const getResumesByJob = async (jobId) => {
     try {
@@ -122,6 +132,7 @@ const useResumeServices = () => {
     uploadSingleResume,
     uploadMultipleResumes,
     uploadZipResumes,
+    getAllResumes,
     getResumesByJob,
     getResumeById,
     deleteResume,

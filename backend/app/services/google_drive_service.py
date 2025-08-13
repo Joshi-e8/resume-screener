@@ -211,23 +211,31 @@ class GoogleDriveService:
             raise ValueError(f"Failed to list files: {str(e)}")
 
     async def get_file_metadata(
-        self, 
-        credentials_dict: Dict[str, Any], 
+        self,
+        credentials_dict: Dict[str, Any],
         file_id: str
     ) -> Dict[str, Any]:
         """
-        Get file metadata from Google Drive
+        Get file metadata from Google Drive (async)
         """
         try:
-            service = self.build_service(credentials_dict)
-            
-            file_metadata = service.files().get(
-                fileId=file_id,
-                fields="id, name, mimeType, size, modifiedTime, parents, webViewLink, description"
-            ).execute()
-            
+            import asyncio
+            import concurrent.futures
+
+            def _get_metadata():
+                service = self.build_service(credentials_dict)
+                return service.files().get(
+                    fileId=file_id,
+                    fields="id, name, mimeType, size, modifiedTime, parents, webViewLink, description"
+                ).execute()
+
+            # Run in thread pool to avoid blocking
+            loop = asyncio.get_event_loop()
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                file_metadata = await loop.run_in_executor(executor, _get_metadata)
+
             return file_metadata
-            
+
         except HttpError as e:
             raise ValueError(f"Google Drive API error: {str(e)}")
         except Exception as e:
@@ -267,8 +275,8 @@ class GoogleDriveService:
             raise ValueError(f"Failed to download file: {str(e)}")
 
     async def save_file_temporarily(
-        self, 
-        credentials_dict: Dict[str, Any], 
+        self,
+        credentials_dict: Dict[str, Any],
         file_id: str
     ) -> str:
         """
@@ -277,21 +285,119 @@ class GoogleDriveService:
         """
         try:
             file_content, filename = await self.download_file(credentials_dict, file_id)
-            
+
             # Determine file extension
             file_extension = ""
             if '.' in filename:
                 file_extension = '.' + filename.split('.')[-1].lower()
-            
+
             # Create temporary file
             with tempfile.NamedTemporaryFile(delete=False, suffix=file_extension) as tmp_file:
                 tmp_file.write(file_content)
                 tmp_file_path = tmp_file.name
-            
+
             return tmp_file_path
-            
+
         except Exception as e:
             raise ValueError(f"Failed to save file temporarily: {str(e)}")
+
+    async def download_file_to_memory(
+        self,
+        credentials_dict: Dict[str, Any],
+        file_id: str
+    ) -> Tuple[bytes, str, str]:
+        """
+        Download file from Google Drive directly to memory (fully async)
+        Returns: (file_content, filename, file_extension)
+        """
+        try:
+            import asyncio
+            import concurrent.futures
+
+            def _download_file():
+                service = self.build_service(credentials_dict)
+
+                # Get file metadata
+                file_metadata = service.files().get(
+                    fileId=file_id,
+                    fields="id, name, mimeType, size"
+                ).execute()
+                filename = file_metadata.get('name', f'file_{file_id}')
+
+                # Determine file extension
+                file_extension = ""
+                if '.' in filename:
+                    file_extension = '.' + filename.split('.')[-1].lower()
+
+                # Download file content
+                request = service.files().get_media(fileId=file_id)
+                file_io = io.BytesIO()
+                downloader = MediaIoBaseDownload(file_io, request)
+
+                done = False
+                while done is False:
+                    status, done = downloader.next_chunk()
+
+                file_content = file_io.getvalue()
+                return file_content, filename, file_extension
+
+            # Run in thread pool to avoid blocking the event loop
+            loop = asyncio.get_event_loop()
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                result = await loop.run_in_executor(executor, _download_file)
+
+            return result
+
+        except Exception as e:
+            raise ValueError(f"Failed to download file to memory: {str(e)}")
+
+    async def batch_get_metadata(
+        self,
+        credentials_dict: Dict[str, Any],
+        file_ids: List[str]
+    ) -> Dict[str, Dict[str, Any]]:
+        """
+        Get metadata for multiple files in a single batch request (much faster)
+        Returns: dict mapping file_id to metadata
+        """
+        try:
+            service = self.build_service(credentials_dict)
+            metadata_dict = {}
+
+            # Process in batches of 100 (Google API limit)
+            batch_size = 100
+            for i in range(0, len(file_ids), batch_size):
+                batch_ids = file_ids[i:i+batch_size]
+
+                # Create batch request
+                batch = service.new_batch_http_request()
+
+                def create_callback(file_id):
+                    def callback(request_id, response, exception):
+                        if exception is None:
+                            metadata_dict[file_id] = response
+                        else:
+                            print(f"Error getting metadata for {file_id}: {exception}")
+                            metadata_dict[file_id] = None
+                    return callback
+
+                # Add requests to batch
+                for file_id in batch_ids:
+                    batch.add(
+                        service.files().get(
+                            fileId=file_id,
+                            fields="id, name, mimeType, size, modifiedTime"
+                        ),
+                        callback=create_callback(file_id)
+                    )
+
+                # Execute batch
+                batch.execute()
+
+            return metadata_dict
+
+        except Exception as e:
+            raise ValueError(f"Failed to batch get metadata: {str(e)}")
 
     async def search_files(
         self, 

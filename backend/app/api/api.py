@@ -15,6 +15,7 @@ from app.api.endpoints import (
     linkedin,
     platforms,
     resumes,
+    sse,
     users,
     websocket,
 )
@@ -33,4 +34,5 @@ api_router.include_router(analytics.router, prefix="/analytics", tags=["analytic
 api_router.include_router(platforms.router, prefix="/platforms", tags=["platforms"])
 api_router.include_router(linkedin.router, prefix="/linkedin", tags=["linkedin"])
 api_router.include_router(google_drive.router, prefix="/google-drive", tags=["google-drive"])
+api_router.include_router(sse.router, prefix="/sse", tags=["sse"])
 api_router.include_router(websocket.router, prefix="/websocket", tags=["websocket"])

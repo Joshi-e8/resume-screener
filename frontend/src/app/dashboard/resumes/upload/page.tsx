@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { ArrowLeft, Upload, FileText, AlertCircle, Cloud } from "lucide-react";
 import Link from "next/link";
-import { ResumeUpload } from "@/components/resumes/ResumeUpload";
+import ResumeUpload from "@/components/resumes/ResumeUpload";
 import { useToast } from "@/components/ui/Toast";
 import { LinearProgress } from "@/components/ui/ProgressIndicator";
 import { useShortcut } from "@/components/ui/KeyboardShortcuts";

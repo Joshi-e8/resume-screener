@@ -453,13 +453,23 @@ async def bulk_upload_resumes_from_google_drive(
     import uuid
     from app.tasks.resume_tasks import process_bulk_resumes_task
     from app.models.resume_processing import BatchProcessingJob, ProcessingStatus
+    from loguru import logger
 
     start_time = time.time()
 
+    # Debug logging
+    logger.info(f"🚀 ENDPOINT: Bulk upload request received")
+    logger.info(f"📊 ENDPOINT: file_ids count: {len(file_ids)}")
+    logger.info(f"📊 ENDPOINT: user_id: {user_id}")
+    logger.info(f"📊 ENDPOINT: async_processing: {async_processing}")
+    logger.info(f"📊 ENDPOINT: file_ids: {file_ids[:3]}...")  # Show first 3 IDs
+
     try:
-        # Determine processing strategy based on batch size
+        # Always use async Celery processing for consistency and scoring
         batch_size = len(file_ids)
-        use_async = async_processing or batch_size > 10
+        use_async = True  # Force Celery path for all batches
+
+        logger.info(f"📊 ENDPOINT: batch_size: {batch_size}, use_async: {use_async} (forced async)")
 
         drive_service = GoogleDriveService()
 
@@ -474,6 +484,7 @@ async def bulk_upload_resumes_from_google_drive(
         if use_async:
             # Use async processing for large batches
             batch_id = str(uuid.uuid4())
+            logger.info(f"🔄 ENDPOINT: Starting async processing with batch_id: {batch_id}")
 
             # Create batch job record
             batch_job = BatchProcessingJob(
@@ -484,8 +495,10 @@ async def bulk_upload_resumes_from_google_drive(
                 status=ProcessingStatus.PENDING
             )
             await batch_job.insert()
+            logger.info(f"✅ ENDPOINT: Created batch job record")
 
             # Queue the task
+            logger.info(f"📤 ENDPOINT: Queuing Celery task for user_id: {user_id}")
             task = process_bulk_resumes_task.delay(
                 file_ids,
                 access_token,
@@ -493,11 +506,13 @@ async def bulk_upload_resumes_from_google_drive(
                 user_id,
                 job_id
             )
+            logger.info(f"✅ ENDPOINT: Task queued with ID: {task.id}")
 
             # Update batch job with task ID
             batch_job.celery_task_id = task.id
             batch_job.status = ProcessingStatus.PROCESSING
             await batch_job.save()
+            logger.info(f"✅ ENDPOINT: Updated batch job with task ID")
 
             return GoogleDriveBulkUploadResponse(
                 message=f"Batch processing started for {batch_size} files. Use batch_id {batch_id} to track progress.",
@@ -545,11 +560,11 @@ async def bulk_upload_resumes_from_google_drive(
                 print(f"Download for {filename}: {int((time.time() - download_start) * 1000)}ms")
 
                 try:
-                    # Parse resume with timeout (30 seconds max per file)
+                    # Parse resume with reduced timeout for faster processing
                     parse_start = time.time()
                     parsed_data = await asyncio.wait_for(
                         parser.parse_resume(tmp_file_path),
-                        timeout=30.0
+                        timeout=15.0
                     )
                     print(f"Parse for {filename}: {int((time.time() - parse_start) * 1000)}ms")
 
@@ -584,8 +599,8 @@ async def bulk_upload_resumes_from_google_drive(
                     processing_time_ms=int((time.time() - file_start_time) * 1000)
                 )
 
-        # Process files with controlled concurrency (max 10 at a time for better performance)
-        semaphore = asyncio.Semaphore(10)
+        # Process files with higher concurrency for better performance
+        semaphore = asyncio.Semaphore(15)
 
         async def process_with_semaphore(file_id: str):
             async with semaphore:
