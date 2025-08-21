@@ -13,6 +13,7 @@ import PyPDF2
 from docx import Document
 
 
+
 class ResumeParser:
     """Service for parsing resumes from various file formats"""
 
@@ -238,7 +239,32 @@ class ResumeParser:
         if file_extension not in self.supported_formats:
             raise ValueError(f"Unsupported file format: {file_extension}")
 
-        # Extract text based on file type
+        # Try new orchestrator behind feature flag; gracefully fall back to legacy
+        use_orch = True
+        try:
+            from app.core.config import settings
+            use_orch = bool(int(str(getattr(settings, "PARSER_USE_ORCHESTRATOR", 1) or "1")))
+        except Exception:
+            use_orch = True
+        if use_orch:
+            try:
+                from app.services.parser_orchestrator import ParserOrchestrator
+                import os as _os
+                orch = ParserOrchestrator()
+                size = 0
+                try:
+                    size = _os.path.getsize(file_path)
+                except Exception:
+                    pass
+                obj = await orch.parse(file_path, filename=_os.path.basename(file_path), size=size)
+                mapped = self._map_orchestrator_to_legacy(obj, file_extension)
+                mapped["parsed_at"] = datetime.now(timezone.utc).isoformat()
+                mapped["processing_mode"] = "orchestrator"
+                return mapped
+            except Exception as e:
+                print(f"Orchestrator failed, falling back to legacy: {e}")
+
+        # Legacy extraction path
         if file_extension == ".pdf":
             text = await self._extract_pdf_text(file_path)
         elif file_extension in [".docx", ".doc"]:
@@ -506,6 +532,45 @@ class ResumeParser:
             print(f"Projects extraction: {int((time.time() - start_time) * 1000)}ms")
 
         return parsed_data
+
+    def _map_orchestrator_to_legacy(self, obj: Dict[str, Any], file_extension: str) -> Dict[str, Any]:
+        """Map orchestrator output to legacy parsed schema expected by current consumers."""
+        # Contact info
+        cand = obj.get("candidate") or {}
+        contact = {
+            "name": cand.get("name"),
+            "email": (cand.get("emails") or [None])[0],
+            "phone": (cand.get("phones") or [None])[0],
+            "linkedin": (cand.get("links") or {}).get("linkedin"),
+            "github": (cand.get("links") or {}).get("github"),
+            "location": (cand.get("location") or {}).get("raw") or None,
+        }
+        # Skills (legacy expects simple list)
+        skills_struct = obj.get("skills") or []
+        skills = [s.get("name") for s in skills_struct if isinstance(s, dict) and s.get("name")]
+        # Education simple list of objects
+        education = obj.get("education") or []
+        # Experience minimal mapping to legacy list
+        experience = obj.get("experience") or []
+        # Summary
+        summary = obj.get("summary") or ""
+        # Languages/certs/projects
+        languages = [l.get("name") for l in (obj.get("languages") or []) if isinstance(l, dict) and l.get("name")]
+        certs = obj.get("certifications") or []
+        projects = obj.get("projects") or []
+        return {
+            "raw_text": "",
+            "file_type": file_extension,
+            "contact_info": contact,
+            "skills": skills,
+            "education": education,
+            "experience": experience,
+            "summary": summary,
+            "certifications": certs,
+            "languages": languages,
+            "projects": projects,
+        }
+
 
     def _clean_text(self, text: str) -> str:
         """Clean and normalize text while preserving newlines for section parsing."""
