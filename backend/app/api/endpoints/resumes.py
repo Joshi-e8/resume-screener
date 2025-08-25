@@ -244,15 +244,15 @@ async def list_resumes(current_user: User = Depends(get_current_user)) -> Any:
                 if isinstance(derived, dict):
                     ai_calculated = derived.get("total_experience_years")
                     if ai_calculated and isinstance(ai_calculated, (int, float)) and ai_calculated > 0:
-                        # Use the exact AI-calculated value (with decimal precision)
-                        experience_years = round(ai_calculated, 1)  # Keep 1 decimal place for accuracy
+                        # Use the exact AI-calculated value
+                        experience_years = ai_calculated
 
         # Fallback: simple estimation if AI hasn't calculated it yet
         if experience_years == 0 and details and isinstance(details.parsed_data, dict):
             exp_array = details.parsed_data.get("experience", [])
             if isinstance(exp_array, list) and exp_array:
-                # Simple fallback: estimate based on number of positions (max 5 years)
-                experience_years = min(len(exp_array), 5)
+                # Simple fallback: estimate based on number of positions
+                experience_years = min(len(exp_array) * 1.5, 10)
 
         # Format education properly
         formatted_education = []

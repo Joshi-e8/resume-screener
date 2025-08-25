@@ -217,6 +217,78 @@ export function ResumeDetailModal({
                   <p className="text-gray-700 leading-relaxed text-sm sm:text-base">{resume.summary}</p>
                 </div>
 
+                {/* AI Hiring Recommendation */}
+                {(resume as any).ai_scoring?.explanations && (
+                  <div className="bg-gradient-to-r from-purple-50 to-pink-50 p-4 sm:p-6 rounded-xl border border-purple-100">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                      <Star className="w-5 h-5 text-purple-500" />
+                      AI Hiring Recommendation
+                    </h3>
+
+                    {/* Recommendation Badge */}
+                    {(resume as any).ai_scoring.explanations.hiring_recommendation && (
+                      <div className="mb-4">
+                        <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
+                          (resume as any).ai_scoring.explanations.hiring_recommendation === 'STRONG_HIRE'
+                            ? 'bg-green-100 text-green-800 border border-green-200'
+                            : (resume as any).ai_scoring.explanations.hiring_recommendation === 'HIRE'
+                            ? 'bg-blue-100 text-blue-800 border border-blue-200'
+                            : (resume as any).ai_scoring.explanations.hiring_recommendation === 'MAYBE'
+                            ? 'bg-yellow-100 text-yellow-800 border border-yellow-200'
+                            : (resume as any).ai_scoring.explanations.hiring_recommendation === 'NO_HIRE'
+                            ? 'bg-red-100 text-red-800 border border-red-200'
+                            : 'bg-red-200 text-red-900 border border-red-300'
+                        }`}>
+                          {(resume as any).ai_scoring.explanations.hiring_recommendation.replace('_', ' ')}
+                        </span>
+                      </div>
+                    )}
+
+                    {/* Recommendation Reason */}
+                    {(resume as any).ai_scoring.explanations.recommendation_reason && (
+                      <div className="mb-4">
+                        <p className="text-gray-700 leading-relaxed text-sm sm:text-base">
+                          {(resume as any).ai_scoring.explanations.recommendation_reason}
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Key Strengths */}
+                    {(resume as any).ai_scoring.explanations.key_strengths &&
+                     Array.isArray((resume as any).ai_scoring.explanations.key_strengths) &&
+                     (resume as any).ai_scoring.explanations.key_strengths.length > 0 && (
+                      <div className="mb-4">
+                        <h4 className="font-semibold text-gray-900 mb-2 text-sm">Key Strengths:</h4>
+                        <ul className="space-y-1">
+                          {(resume as any).ai_scoring.explanations.key_strengths.map((strength: string, index: number) => (
+                            <li key={index} className="flex items-start gap-2 text-sm text-gray-700">
+                              <span className="text-green-500 mt-1">✓</span>
+                              <span>{strength}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {/* Potential Concerns */}
+                    {(resume as any).ai_scoring.explanations.potential_concerns &&
+                     Array.isArray((resume as any).ai_scoring.explanations.potential_concerns) &&
+                     (resume as any).ai_scoring.explanations.potential_concerns.length > 0 && (
+                      <div>
+                        <h4 className="font-semibold text-gray-900 mb-2 text-sm">Areas for Consideration:</h4>
+                        <ul className="space-y-1">
+                          {(resume as any).ai_scoring.explanations.potential_concerns.map((concern: string, index: number) => (
+                            <li key={index} className="flex items-start gap-2 text-sm text-gray-700">
+                              <span className="text-yellow-500 mt-1">⚠</span>
+                              <span>{concern}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {/* Enhanced File Information */}
                 <div className="bg-gradient-to-r from-green-50 to-emerald-50 p-4 sm:p-6 rounded-xl border border-green-100">
                   <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
