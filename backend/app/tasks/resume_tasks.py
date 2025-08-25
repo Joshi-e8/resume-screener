@@ -67,6 +67,22 @@ def process_direct_resume_file(self, resume_id: str, tmp_file_path: str, filenam
 
         parser = ResumeParser()
 
+        # Capture detailed AI interaction data
+        ai_interaction_data = {
+            "resume_id": resume_id,
+            "filename": filename,
+            "user_id": user_id,
+            "job_id": job_id,
+            "source": source,
+            "processing_timestamp": datetime.utcnow().isoformat(),
+            "extracted_content": None,
+            "ai_prompt": None,
+            "ai_response": None,
+            "parsing_result": None,
+            "processing_mode": None,
+            "error": None
+        }
+
         # Parse resume with timeout for robustness
         self.update_state(state='PROGRESS', meta={'current': 0, 'total': 1, 'status': 'Parsing resume...'})
         try:

@@ -50,15 +50,19 @@ class Settings(BaseSettings):
     ENABLE_SCORING: bool = True
 
     # Parser Configuration
-    PARSER_USE_ORCHESTRATOR: bool = True
-    PARSER_USE_UNIVERSAL_LLM: bool = False
+    PARSER_USE_ORCHESTRATOR: bool = False  # Deprecated: Use rule-based orchestrator
+    PARSER_USE_NLP_FIRST: bool = True  # Use enhanced NLP-first approach for better accuracy
+    PARSER_USE_UNIVERSAL_LLM: bool = False  # Legacy LLM parser
     PARSER_FORCE_LLM: bool = False
     PARSER_ENABLE_OCR: bool = True
     PARSER_ENABLE_NER: bool = True
     PARSER_MAX_OCR_PAGES: int = 2
     PARSER_LOW_TEXT_THRESHOLD: float = 0.02
     PARSER_MIN_SKILL_CONF: float = 0.6
-    PARSER_LLM_FAST_MODE: bool = True  # Use fast mode for better performance
+    PARSER_LLM_FAST_MODE: bool = False  # Use comprehensive mode for better accuracy
+    PARSER_ENHANCED_PROMPTS: bool = True  # Use enhanced NLP prompts for better extraction
+    PARSER_TEXT_LIMIT: int = 6000  # Maximum text length to send to AI (configurable)
+    PARSER_MAX_SKILLS: int = 25  # Maximum number of skills to extract (configurable)
     LOG_AI_RESPONSES: bool = True  # Log AI responses to terminal for debugging
     SCORING_TEMPERATURE: float = 0.2
     SCORING_MAX_TOKENS: int = 1200

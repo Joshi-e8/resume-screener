@@ -287,34 +287,44 @@ class ResumeParser:
                 import traceback
                 traceback.print_exc()
 
-        # Try new orchestrator behind feature flag; gracefully fall back to legacy
-        use_orch = True
+        # Use NLP-first approach instead of rule-based orchestrator
+        use_nlp_first = True
         try:
             from app.core.config import settings
-            setting_value = getattr(settings, "PARSER_USE_ORCHESTRATOR", True)
+            setting_value = getattr(settings, "PARSER_USE_NLP_FIRST", True)
             if isinstance(setting_value, bool):
-                use_orch = setting_value
+                use_nlp_first = setting_value
             else:
-                use_orch = bool(int(str(setting_value or "1")))
+                use_nlp_first = bool(int(str(setting_value or "1")))
         except Exception:
-            use_orch = True
-        if use_orch:
+            use_nlp_first = True
+
+        if use_nlp_first:
             try:
-                from app.services.parser_orchestrator import ParserOrchestrator
+                from app.services.llm_resume_parser import LLMResumeParser
                 import os as _os
-                orch = ParserOrchestrator()
+                llm_parser = LLMResumeParser()
+
+                # Get file size for metadata
                 size = 0
                 try:
                     size = _os.path.getsize(file_path)
                 except Exception:
                     pass
-                obj = await orch.parse(file_path, filename=_os.path.basename(file_path), size=size)
-                mapped = self._map_orchestrator_to_legacy(obj, file_extension)
-                mapped["parsed_at"] = datetime.now(timezone.utc).isoformat()
-                mapped["processing_mode"] = "orchestrator"
-                return mapped
+
+                # Use LLM parser for accurate extraction
+                result = await llm_parser.parse_resume(file_path)
+
+                # Ensure compatibility with existing format
+                if result and isinstance(result, dict):
+                    result["parsed_at"] = datetime.now(timezone.utc).isoformat()
+                    result["processing_mode"] = "nlp_first"
+                    return result
+                else:
+                    print(f"Warning: NLP parser returned invalid result for {file_path}, falling back to legacy parser")
+
             except Exception as e:
-                print(f"Orchestrator failed, falling back to legacy: {e}")
+                print(f"NLP parser failed, falling back to legacy: {e}")
 
         # Legacy extraction path
         if file_extension == ".pdf":
