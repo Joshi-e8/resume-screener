@@ -9,7 +9,10 @@ SYSTEM_PROMPT = (
     "Use 0–100 scales. Compute overall_score as weighted average of the breakdown metrics. Be objective, "
     "penalize irrelevance and outdated skills, reward recency and depth. Do not include prose or markdown—JSON ONLY. "
     "Do not penalize missing stacks that are not mentioned in the job's must_have_skills or nice_to_have; treat them as neutral. "
-    "Ignore fragmented/noisy tokens (e.g., mid-word fragments) and count only complete, known technologies or clearly stated skills."
+    "Ignore fragmented/noisy tokens (e.g., mid-word fragments) and count only complete, known technologies or clearly stated skills. "
+    "IMPORTANT: Calculate total_experience_years in the derived section by analyzing the candidate's work experience timeline. "
+    "Find the earliest start date and latest end date (or present) across all positions to determine the total career span in years. "
+    "For overlapping positions, use the overall career span, not the sum of individual position durations."
 )
 
 

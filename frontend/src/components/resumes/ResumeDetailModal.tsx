@@ -247,19 +247,47 @@ export function ResumeDetailModal({
               <div>
                 <h3 className="text-lg font-semibold text-gray-900 mb-4">Work Experience</h3>
                 <div className="space-y-4">
-                  <div className="border border-gray-200 rounded-lg p-4">
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <h4 className="font-semibold text-gray-900">{resume.title}</h4>
-                        <p className="text-gray-600">Current Position</p>
-                        <p className="text-sm text-gray-500 mt-1">{resume.experience} years of experience</p>
+                  {/* Check if resume has experience array data */}
+                  {(resume as any).experience_array && Array.isArray((resume as any).experience_array) && (resume as any).experience_array.length > 0 ? (
+                    (resume as any).experience_array.map((exp: any, index: number) => (
+                      <div key={index} className="border border-gray-200 rounded-lg p-4">
+                        <div className="flex items-start justify-between">
+                          <div>
+                            <h4 className="font-semibold text-gray-900">{exp.title || 'Position'}</h4>
+                            <p className="text-gray-600">{exp.company || 'Company'}</p>
+                            <p className="text-sm text-gray-500 mt-1">{exp.duration || 'Duration not specified'}</p>
+                            {exp.technologies && Array.isArray(exp.technologies) && exp.technologies.length > 0 && (
+                              <div className="flex flex-wrap gap-1 mt-2">
+                                {exp.technologies.map((tech: string, techIndex: number) => (
+                                  <span key={techIndex} className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full">
+                                    {tech}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        {exp.description && (
+                          <p className="text-gray-700 mt-3 text-sm leading-relaxed">{exp.description}</p>
+                        )}
                       </div>
-                      <div className="text-right">
-                        <p className="text-sm text-gray-500">Present</p>
+                    ))
+                  ) : (
+                    /* Fallback to old format if no experience array */
+                    <div className="border border-gray-200 rounded-lg p-4">
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <h4 className="font-semibold text-gray-900">{resume.title}</h4>
+                          <p className="text-gray-600">Current Position</p>
+                          <p className="text-sm text-gray-500 mt-1">{resume.experience} years of experience</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-sm text-gray-500">Present</p>
+                        </div>
                       </div>
+                      <p className="text-gray-700 mt-3">{resume.summary}</p>
                     </div>
-                    <p className="text-gray-700 mt-3">{resume.summary}</p>
-                  </div>
+                  )}
                 </div>
               </div>
             )}

@@ -1,0 +1,377 @@
+{
+  "result": "success",
+  "message": "Resumes retrieved successfully",
+  "records": [
+    {
+      "id": "68ac2f1aa143c1b936341b0d",
+      "file_id": "44732fc3738a4324b595b056b70cb52c",
+      "filename": "Sandra_suresh_Resume1.pdf",
+      "candidate_name": "Sandra Suresh",
+      "candidate_email": "sandrasuresh1399@gmail.com",
+      "key_skills": [
+        "Flask",
+        "Java",
+        "NoSQL",
+        "Pandas",
+        "HTML",
+        "Django",
+        "C",
+        "CSS",
+        "REST APIs",
+        "Object-Oriented Programming (OOPS)",
+        "Git",
+        "SQL",
+        "Python",
+        "AWS",
+        "NumPy",
+        "Microsoft Office"
+      ],
+      "created_at": "2025-08-25T09:38:34.017000",
+      "ai_overall_score": 85,
+      "ai_scoring": {
+        "overall_score": 85,
+        "breakdown": {
+          "skills_match": 90,
+          "experience_relevance": 80,
+          "seniority_alignment": 70,
+          "education_fit": 100,
+          "domain_expertise": 85,
+          "certifications": 100
+        },
+        "explanations": {
+          "top_matches": [
+            "Python",
+            "REST APIs",
+            "Git",
+            "AWS"
+          ],
+          "gaps": [
+            "FastAPI",
+            "PostgreSQL",
+            "MongoDB"
+          ],
+          "risk_flags": [
+            "missing core skill: FastAPI",
+            "missing core skill: PostgreSQL",
+            "missing core skill: MongoDB"
+          ],
+          "suggested_improvements": [
+            "Learn FastAPI to align with job requirements",
+            "Gain proficiency in PostgreSQL and MongoDB for database expertise",
+            "Consider additional certifications in cloud services (AWS) for deeper knowledge"
+          ]
+        },
+        "derived": {
+          "computed_weights": {
+            "skills_match": 0.4,
+            "experience_relevance": 0.3,
+            "seniority_alignment": 0.1,
+            "education_fit": 0.05,
+            "domain_expertise": 0.1,
+            "certifications": 0.05
+          },
+          "server_check_overall": 85.5
+        }
+      },
+      "job_id": "6891f8f2dde7c36022d5f0db",
+      "location": "Aluva, Ernakulam, Kerala",
+      "phone": "+91 9074378410",
+      "title": "SOFTWARE DEVELOPER",
+      "summary": "Detail-oriented and highly motivated Software Developer with extensive experience in Python programming, data analysis, and software design. Adept at optimizing performance, enhancing operational productivity, and ensuring seamless data integration. Seeking a challenging role in a dynamic organization where I can leverage my technical expertise, strong problem-solving skills, and collaborative approach to contribute to innovative projects and drive business success.",
+      "education": [
+        {
+          "degree": "BTECH in Computer Science",
+          "school": "Carmel College of Engineering and Technology, Punnapra Alappuzha",
+          "year": "2021"
+        },
+        {
+          "degree": "10th Standard",
+          "school": "MGM GHSS Nayathode, Angamaly",
+          "year": "2017"
+        }
+      ],
+      "experience": [
+        {
+          "title": "SOFTWARE DEVELOPER",
+          "company": "Quatrro Mortgage Solutions",
+          "duration": "April 2022 – present",
+          "description": "Developed robust Python scripts utilizing Pandas and NumPy for data analysis and manipulation, optimizing performance in handling large datasets. Spearheaded efforts to optimize efficiency in extracting data from diverse bank statements, enhancing overall operational productivity. Integrated the system with existing data infrastructure, facilitating seamless data transfer and maintaining high accuracy levels throughout the extraction process. Utilized Python programming language to develop scripts for efficient file operations, enhancing data management processes. Leveraged AWS services such as S3 for efficient storage and retrieval of large datasets, optimizing data accessibility and scalability.",
+          "technologies": [
+            "Python",
+            "Pandas",
+            "NumPy",
+            "AWS",
+            "S3"
+          ]
+        },
+        {
+          "title": "JR SOFTWARE DEVELOPER",
+          "company": "IIOTX Technologies",
+          "duration": "AUG 2021 – MAR 2022",
+          "description": "Working in a Hospital management project for automated shifter allocation. Developed and maintained RESTful APIs using Java, ensuring high performance and scalability. Collaborated closely with cross-functional teams, including front-end developers and product managers, to gather requirements and deliver integrated solutions. Set up scripts, test cases, and automation protocols. Collaborated in a team-based, Agile environment to accomplish objectives by deadlines. Resolved critical bug issues and Tested available software products.",
+          "technologies": [
+            "Java",
+            "RESTful APIs",
+            "Agile",
+            "Git"
+          ]
+        }
+      ],
+      "projects": [],
+      "file_size": 136370,
+      "mime_type": "application/pdf",
+      "total_experience_years": 4,
+      "source": "upload"
+    },
+    {
+      "id": "68ac2e73a143c1b936341b0c",
+      "file_id": "05b15512efdf4862b648e46cd6fec849",
+      "filename": "Karthik.P__Django developer.pdf",
+      "candidate_name": "Karthik P Nair",
+      "candidate_email": "karthikpnair333@g mail.com",
+      "key_skills": [
+        "DBMS",
+        "Flask",
+        "Communication Skills",
+        "Interpersonal Skills",
+        "Computer Science",
+        "Verbal Communication",
+        "HTML",
+        "Django",
+        "Problem Solving",
+        "Corejava",
+        "Technical Process",
+        "Photoshop",
+        "Python",
+        "C++",
+        "Troubleshooting Skills",
+        "MySQL"
+      ],
+      "created_at": "2025-08-25T09:35:47.321000",
+      "ai_overall_score": 0,
+      "ai_scoring": {
+        "overall_score": 0,
+        "breakdown": {
+          "skills_match": 0,
+          "experience_relevance": 0,
+          "seniority_alignment": 0,
+          "education_fit": 0,
+          "domain_expertise": 0,
+          "certifications": 0
+        },
+        "explanations": {
+          "top_matches": [],
+          "gaps": [],
+          "risk_flags": [],
+          "suggested_improvements": []
+        },
+        "derived": {
+          "computed_weights": {
+            "skills_match": 0.4,
+            "experience_relevance": 0.3,
+            "seniority_alignment": 0.1,
+            "education_fit": 0.05,
+            "domain_expertise": 0.1,
+            "certifications": 0.05
+          },
+          "server_check_overall": 0.0
+        }
+      },
+      "job_id": "6891f8f2dde7c36022d5f0db",
+      "location": "ALAPPUZHA",
+      "phone": "7736318587",
+      "title": "Django Developer",
+      "summary": "BCA Graduate with 3 Years of Professional Expertise: Technical Support Specialist(1year) and Web Developer(2years) Core Competencies Profile Summary Python Flask Smart- working,Intelligent,Creative,Dedicated,Enthusiastic and Django Good in managing the time efficiently. Photoshop HTML Education C++ DBMS Database Management System BCA, 2019 C Kristu Jayanti College, Bangalore MySQL Communication Skills 12th, 2015 Non Voice Process Kerala, English Technical Process Troubleshooting Skills 10th, 2013 Problem Solving Kerala, English Interpersonal Skills Verbal Communication Computer Science Work Experience Technical Skills Aug 2022 - Nov 2022 Technical Skills Django Developer Inmakes infotech pvt ltd As a Django Developer Trainee at Inmakes Infotech, I am Photoshop excited to leverage my training and hands-on experience to contribute to innovative web development projects. I am HTML passionate about continuous learning and committed to C++ delivering high-quality solutions in a collaborative team environment. Corejava Django Web Framework Apr 2020 - Jun 2022 Junior Python Developer Comtech India Marketing Solutions Personal Information After receiving comprehensive training from this company, I have assumed responsibility for designing, developing, and maintaining web applications using the Django framework Date of birth 18-Oct-1997 Oct 2019 - Mar 2020 Gender Male Technical Support Executive Address Flexiapps ERP Sol Naduvileparambil(H) Mithrakary To provide support to the company's various clients P.O Alappuzha City ALAPPUZHA Projects Country INDIA 153 Days Integrated Hospital Management System It was my 2nd year academic project done using asp(front- end) and Java(Back-end). Courses & Certifications Junior Graphic designer,Phography Junior Python Developer",
+      "education": [
+        {
+          "degree": "BCA",
+          "school": "Kristu Jayanti College, Bangalore",
+          "year": "2019"
+        },
+        {
+          "degree": "12th",
+          "school": "Non Voice Process Kerala",
+          "year": "2015"
+        },
+        {
+          "degree": "10th",
+          "school": "Kerala",
+          "year": "2013"
+        }
+      ],
+      "experience": [
+        {
+          "title": "Django Developer",
+          "company": "Inmakes Infotech Pvt Ltd",
+          "duration": "Aug 2022 - Nov 2022",
+          "description": "As a Django Developer Trainee at Inmakes Infotech, I am excited to leverage my training and hands-on experience to contribute to innovative web development projects. I am passionate about continuous learning and committed to delivering high-quality solutions in a collaborative team environment.",
+          "technologies": [
+            "Django",
+            "Photoshop",
+            "HTML",
+            "C++"
+          ]
+        },
+        {
+          "title": "Junior Python Developer",
+          "company": "Comtech India Marketing Solutions",
+          "duration": "Apr 2020 - Jun 2022",
+          "description": "After receiving comprehensive training from this company, I have assumed responsibility for designing, developing, and maintaining web applications using the Django framework.",
+          "technologies": [
+            "Python",
+            "Django",
+            "Corejava"
+          ]
+        }
+      ],
+      "projects": [],
+      "file_size": 60584,
+      "mime_type": "application/pdf",
+      "total_experience_years": 2,
+      "source": "upload"
+    },
+    {
+      "id": "68ac2deda143c1b936341b0b",
+      "file_id": "db12f4d89a734d2a976ea4455844403f",
+      "filename": "Joshi_kv_resume.pdf",
+      "candidate_name": "Joshi K V",
+      "candidate_email": "joshikv3705@gmail.com",
+      "key_skills": [
+        "HTML",
+        "CSS",
+        "Tailwind CSS",
+        "Stripe Integration",
+        "Github Actions",
+        "Zustand",
+        "Agile",
+        "CI/CD",
+        "Docker",
+        "Django",
+        "REST API",
+        "NumPy",
+        "S3",
+        "PostgreSQL",
+        "Redux",
+        "EC2",
+        "Python",
+        "AWS",
+        "Pandas",
+        "Next.js",
+        "Git",
+        "React.js"
+      ],
+      "created_at": "2025-08-25T09:33:33.307000",
+      "ai_overall_score": 82,
+      "ai_scoring": {
+        "overall_score": 82,
+        "breakdown": {
+          "skills_match": 90,
+          "experience_relevance": 75,
+          "seniority_alignment": 60,
+          "education_fit": 50,
+          "domain_expertise": 70,
+          "certifications": 40
+        },
+        "explanations": {
+          "top_matches": [
+            "Python",
+            "Django",
+            "PostgreSQL",
+            "Docker",
+            "AWS",
+            "Git",
+            "REST API"
+          ],
+          "gaps": [
+            "FastAPI"
+          ],
+          "risk_flags": [
+            "Short stints in roles",
+            "Irrelevant frontend skills (React.js, Next.js, Redux, Zustand, Tailwind CSS, HTML, CSS)"
+          ],
+          "suggested_improvements": [
+            "Focus on backend-specific frameworks (FastAPI) and microservices architecture",
+            "Deepen knowledge of RESTful API design and cloud deployment best practices",
+            "Enhance understanding of testing frameworks and CI/CD pipelines",
+            "Consider additional certifications in cloud computing or backend development"
+          ]
+        },
+        "derived": {
+          "computed_weights": {
+            "skills_match": 0.4,
+            "experience_relevance": 0.3,
+            "seniority_alignment": 0.1,
+            "education_fit": 0.05,
+            "domain_expertise": 0.1,
+            "certifications": 0.05
+          },
+          "server_check_overall": 76.0
+        }
+      },
+      "job_id": "6891f8f2dde7c36022d5f0db",
+      "location": "Wayanad, Kerala, India",
+      "phone": "+919207429501",
+      "title": "Junior Python Developer",
+      "summary": "Passionate Python Developer with 2+ years of experience in building scalable RESTful APIs and full-stack web applications. Proficient in Django, Next.js, React.js, and modern state management tools such as Zustand and Redux, with strong expertise in PostgreSQL. Skilled in implementing CI/CD pipelines, containerizing applications with Docker, and deploying to AWS for reliable cloud-based workflows.",
+      "education": [
+        {
+          "degree": "Bachelor of Commerce (B.Com)",
+          "school": "ELDO MOR BASELIOS COLLEGE, CALICUT UNIVERSITY",
+          "year": "2021"
+        }
+      ],
+      "experience": [
+        {
+          "title": "Junior Python Developer",
+          "company": "NUOX TECHNOLOGIES",
+          "duration": "09/2023 - Present",
+          "description": "Develop RESTful APIs with Django and Python, and build interactive UIs using React.js and Next.js. Implement state management with Zustand and Context API, and manage PostgreSQL database design and queries. Collaborate in Agile sprints, conduct code reviews, and work alongside the DevOps team, gaining hands-on exposure to CI/CD, Docker, and AWS deployment processes.",
+          "technologies": [
+            "Python",
+            "Django",
+            "React.js",
+            "Next.js",
+            "Zustand",
+            "Context API",
+            "PostgreSQL",
+            "Agile",
+            "CI/CD",
+            "Docker",
+            "AWS",
+            "EC2",
+            "S3"
+          ]
+        },
+        {
+          "title": "Python Developer Trainee",
+          "company": "NUOX TECHNOLOGIES",
+          "duration": "06/2023 - 09/2023",
+          "description": "Participated in a structured training program aimed at evaluating technical and team collaboration skills. Gained practical exposure to full-stack development by supporting bug fixes and UI tasks.",
+          "technologies": [
+            "Python",
+            "Django",
+            "React.js",
+            "Next.js",
+            "PostgreSQL"
+          ]
+        },
+        {
+          "title": "Python Developer Intern",
+          "company": "INMAKES LEARNING HUB",
+          "duration": "11/2022 - 06/2023",
+          "description": "Worked on practice projects to strengthen Python, OOP, and basic web development skills.",
+          "technologies": [
+            "Python",
+            "OOP"
+          ]
+        }
+      ],
+      "projects": [],
+      "file_size": 1622377,
+      "mime_type": "application/pdf",
+      "total_experience_years": 3,
+      "source": "upload"
+    }
+  ],
+  "total": 3
+}

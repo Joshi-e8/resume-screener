@@ -1,0 +1,274 @@
+{
+  "result": "success",
+  "message": "Resumes retrieved successfully",
+  "records": [
+    {
+      "id": "68ac2f1aa143c1b936341b0d",
+      "file_id": "44732fc3738a4324b595b056b70cb52c",
+      "filename": "Sandra_suresh_Resume1.pdf",
+      "candidate_name": "Sandra Suresh",
+      "candidate_email": "sandrasuresh1399@gmail.com",
+      "key_skills": [
+        "Python",
+        "Java",
+        "Pandas",
+        "NumPy",
+        "Flask",
+        "Django",
+        "NoSQL",
+        "REST APIs",
+        "HTML",
+        "Object-Oriented Programming (OOPS)",
+        "Microsoft Office"
+      ],
+      "created_at": "2025-08-25T09:38:34.017000",
+      "ai_overall_score": 65,
+      "ai_scoring": {
+        "overall_score": 65,
+        "breakdown": {
+          "skills_match": 60,
+          "experience_relevance": 50,
+          "seniority_alignment": 50,
+          "education_fit": 50,
+          "domain_expertise": 50,
+          "certifications": 50
+        },
+        "explanations": {
+          "top_matches": [
+            "Python",
+            "Django",
+            "REST APIs"
+          ],
+          "gaps": [
+            "AWS"
+          ],
+          "risk_flags": [
+            "missing core skill AWS"
+          ],
+          "suggested_improvements": [
+            "Consider learning AWS services to align with job requirements",
+            "Enhance experience with PostgreSQL as it's a nice-to-have skill"
+          ]
+        },
+        "derived": {
+          "computed_weights": {
+            "skills_match": 0.4,
+            "experience_relevance": 0.3,
+            "seniority_alignment": 0.1,
+            "education_fit": 0.05,
+            "domain_expertise": 0.1,
+            "certifications": 0.05
+          },
+          "server_check_overall": 54.0,
+          "total_experience_years": 0.0
+        }
+      },
+      "job_id": "6891f8f2dde7c36022d5f0db",
+      "location": "Aluva, Ernakulam, Kerala",
+      "phone": "+91 9074378410",
+      "title": "SOFTWARE DEVELOPER",
+      "summary": "Detail-oriented and highly motivated Software Developer with extensive experience in Python programming, data analysis, and software design. Adept at optimizing performance, enhancing operational productivity, and ensuring seamless data integration. Seeking a challenging role in a dynamic organization where I can leverage my technical expertise, strong problem-solving skills, and collaborative approach to contribute to innovative projects and drive business success.",
+      "education": [
+        {
+          "degree": "BTECH in Computer Science",
+          "institution": "Carmel College of Engineering and Technology, Punnapra Alappuzha",
+          "year": "2021",
+          "details": "7.5 – CGPA"
+        },
+        {
+          "degree": "10th Standard",
+          "institution": "MGM GHSS Nayathode, Angamaly",
+          "year": "2017",
+          "details": "83 %"
+        }
+      ],
+      "file_size": 136370,
+      "mime_type": "application/pdf",
+      "total_experience_years": 2,
+      "source": "upload"
+    },
+    {
+      "id": "68ac2e73a143c1b936341b0c",
+      "file_id": "05b15512efdf4862b648e46cd6fec849",
+      "filename": "Karthik.P__Django developer.pdf",
+      "candidate_name": "Karthik P Nair",
+      "candidate_email": "karthikpnair333@g mail.com",
+      "key_skills": [
+        "Python",
+        "Flask",
+        "Django",
+        "Photoshop",
+        "HTML",
+        "DBMS",
+        "Corejava",
+        "MySQL",
+        "Communication Skills",
+        "Technical Process",
+        "Troubleshooting Skills",
+        "Problem Solving",
+        "Interpersonal Skills",
+        "Verbal Communication",
+        "Computer Science"
+      ],
+      "created_at": "2025-08-25T09:35:47.321000",
+      "ai_overall_score": 60,
+      "ai_scoring": {
+        "overall_score": 60,
+        "breakdown": {
+          "skills_match": 60,
+          "experience_relevance": 40,
+          "seniority_alignment": 20,
+          "education_fit": 0,
+          "domain_expertise": 0,
+          "certifications": 0
+        },
+        "explanations": {
+          "top_matches": [
+            "Django",
+            "Python",
+            "HTML"
+          ],
+          "gaps": [
+            "AWS",
+            "PostgreSQL"
+          ],
+          "risk_flags": [
+            "missing core skill: AWS",
+            "missing core skill: PostgreSQL"
+          ],
+          "suggested_improvements": [
+            "Learn AWS services",
+            "Practice PostgreSQL queries"
+          ]
+        },
+        "derived": {
+          "computed_weights": {
+            "skills_match": 0.4,
+            "experience_relevance": 0.3,
+            "seniority_alignment": 0.1,
+            "education_fit": 0.05,
+            "domain_expertise": 0.1,
+            "certifications": 0.05
+          },
+          "server_check_overall": 38.0,
+          "total_experience_years": 3
+        }
+      },
+      "job_id": "6891f8f2dde7c36022d5f0db",
+      "location": "ALAPPUZHA",
+      "phone": "7736318587",
+      "title": "Django Developer",
+      "summary": "BCA Graduate with 3 Years of Professional Expertise: Technical Support Specialist(1year) and Web Developer(2years) Core Competencies Profile Summary Python Flask Smart- working,Intelligent,Creative,Dedicated,Enthusiastic and Django Good in managing the time efficiently. Photoshop HTML Education C++ DBMS Database Management System BCA, 2019 C Kristu Jayanti College, Bangalore MySQL Communication Skills 12th, 2015 Non Voice Process Kerala, English Technical Process Troubleshooting Skills 10th, 2013 Problem Solving Kerala, English Interpersonal Skills Verbal Communication Computer Science Work Experience Technical Skills Aug 2022 - Nov 2022 Technical Skills Django Developer Inmakes infotech pvt ltd As a Django Developer Trainee at Inmakes Infotech, I am Photoshop excited to leverage my training and hands-on experience to contribute to innovative web development projects. I am HTML passionate about continuous learning and committed to C++ delivering high-quality solutions in a collaborative team environment. Corejava Django Web Framework Apr 2020 - Jun 2022 Junior Python Developer Comtech India Marketing Solutions Personal Information After receiving comprehensive training from this company, I have assumed responsibility for designing, developing, and maintaining web applications using the Django framework Date of birth 18-Oct-1997 Oct 2019 - Mar 2020 Gender Male Technical Support Executive Address Flexiapps ERP Sol Naduvileparambil(H) Mithrakary To provide support to the company's various clients P.O Alappuzha City ALAPPUZHA Projects Country INDIA 153 Days Integrated Hospital Management System It was my 2nd year academic project done using asp(front- end) and Java(Back-end). Courses & Certifications Junior Graphic designer,Phography Junior Python Developer",
+      "education": [
+        {
+          "degree": "BCA",
+          "institution": "Kristu Jayanti College, Bangalore",
+          "year": "2019",
+          "details": "C++ DBMS Database Management System"
+        },
+        {
+          "degree": "12th",
+          "institution": "Non Voice Process Kerala",
+          "year": "2015",
+          "details": "English"
+        },
+        {
+          "degree": "10th",
+          "institution": "Kerala",
+          "year": "2013",
+          "details": "English"
+        }
+      ],
+      "file_size": 60584,
+      "mime_type": "application/pdf",
+      "total_experience_years": 3,
+      "source": "upload"
+    },
+    {
+      "id": "68ac2deda143c1b936341b0b",
+      "file_id": "db12f4d89a734d2a976ea4455844403f",
+      "filename": "Joshi_kv_resume.pdf",
+      "candidate_name": "Joshi K V",
+      "candidate_email": "joshikv3705@gmail.com",
+      "key_skills": [
+        "Python",
+        "Django",
+        "React.js",
+        "Next.js",
+        "PostgreSQL",
+        "Zustand",
+        "Redux",
+        "Tailwind CSS",
+        "HTML",
+        "REST API",
+        "Pandas",
+        "NumPy",
+        "Agile",
+        "Stripe Integration",
+        "CI/CD",
+        "Github Actions",
+        "Docker"
+      ],
+      "created_at": "2025-08-25T09:33:33.307000",
+      "ai_overall_score": 65,
+      "ai_scoring": {
+        "overall_score": 65,
+        "breakdown": {
+          "skills_match": 60,
+          "experience_relevance": 55,
+          "seniority_alignment": 50,
+          "education_fit": 20,
+          "domain_expertise": 40,
+          "certifications": 0
+        },
+        "explanations": {
+          "top_matches": [
+            "Python",
+            "Django",
+            "PostgreSQL",
+            "AWS"
+          ],
+          "gaps": [
+            "AWS"
+          ],
+          "risk_flags": [
+            "missing core skill: AWS"
+          ],
+          "suggested_improvements": [
+            "Deepen AWS expertise through certification (e.g., AWS Certified Solutions Architect) to align with job requirements"
+          ]
+        },
+        "derived": {
+          "computed_weights": {
+            "skills_match": 0.4,
+            "experience_relevance": 0.3,
+            "seniority_alignment": 0.1,
+            "education_fit": 0.05,
+            "domain_expertise": 0.1,
+            "certifications": 0.05
+          },
+          "server_check_overall": 50.5,
+          "total_experience_years": 2.75
+        }
+      },
+      "job_id": "6891f8f2dde7c36022d5f0db",
+      "location": "Wayanad, Kerala, India",
+      "phone": "+919207429501",
+      "title": "Junior Python Developer",
+      "summary": "Passionate Python Developer with 2+ years of experience in building scalable RESTful APIs and full-stack web applications. Proficient in Django, Next.js, React.js, and modern state management tools such as Zustand and Redux, with strong expertise in PostgreSQL. Skilled in implementing CI/CD pipelines, containerizing applications with Docker, and deploying to AWS for reliable cloud-based workflows.",
+      "education": [
+        {
+          "degree": "Bachelor of Commerce (B.Com)",
+          "institution": "ELDO MOR BASELIOS COLLEGE, CALICUT UNIVERSITY",
+          "year": "2021",
+          "details": ""
+        }
+      ],
+      "file_size": 1622377,
+      "mime_type": "application/pdf",
+      "total_experience_years": 2,
+      "source": "upload"
+    }
+  ],
+  "total": 3
+}

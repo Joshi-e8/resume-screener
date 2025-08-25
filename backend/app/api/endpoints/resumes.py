@@ -171,36 +171,13 @@ async def list_resumes_by_job(job_id: str, current_user: User = Depends(get_curr
                     first = exp[0] or {}
                     title = first.get("title")
 
-        # Get comprehensive skills from parsed data
-        comprehensive_skills = m.key_skills or []
-        if details and isinstance(details.parsed_data, dict):
-            parsed_skills = details.parsed_data.get("skills", [])
-            if isinstance(parsed_skills, list):
-                # Combine and deduplicate skills
-                all_skills = list(set(comprehensive_skills + parsed_skills))
-                comprehensive_skills = all_skills
-
-        # Get experience data
-        experience_data = []
-        if details and isinstance(details.parsed_data, dict):
-            exp_data = details.parsed_data.get("experience", [])
-            if isinstance(exp_data, list):
-                experience_data = exp_data
-
-        # Get projects data
-        projects_data = []
-        if details and isinstance(details.parsed_data, dict):
-            proj_data = details.parsed_data.get("projects", [])
-            if isinstance(proj_data, list):
-                projects_data = proj_data
-
         results.append({
             "id": str(m.id),
             "file_id": m.file_id,
             "filename": m.filename,
             "candidate_name": m.candidate_name,
             "candidate_email": m.candidate_email,
-            "key_skills": comprehensive_skills,
+            "key_skills": m.key_skills,
             "created_at": m.created_at.isoformat(),
             "ai_overall_score": ai_overall,
             "ai_scoring": ai_scoring,
@@ -209,8 +186,6 @@ async def list_resumes_by_job(job_id: str, current_user: User = Depends(get_curr
             "title": title,
             "summary": summary,
             "education": education,
-            "experience": experience_data,
-            "projects": projects_data,
             "file_size": file_size,
             "mime_type": mime_type,
             "source": "Google Drive",
@@ -260,21 +235,24 @@ async def list_resumes(current_user: User = Depends(get_current_user)) -> Any:
                     first = exp[0] or {}
                     title = first.get("title")
 
-        # Calculate experience years from experience array
+        # Get experience years from AI scoring (calculated by AI based on experience timeline)
         experience_years = 0
-        if details and isinstance(details.parsed_data, dict):
+        if details and details.analysis_results:
+            ai_scoring = details.analysis_results.get("ai_scoring", {})
+            if isinstance(ai_scoring, dict):
+                derived = ai_scoring.get("derived", {})
+                if isinstance(derived, dict):
+                    ai_calculated = derived.get("total_experience_years")
+                    if ai_calculated and isinstance(ai_calculated, (int, float)) and ai_calculated > 0:
+                        # Use the exact AI-calculated value (with decimal precision)
+                        experience_years = round(ai_calculated, 1)  # Keep 1 decimal place for accuracy
+
+        # Fallback: simple estimation if AI hasn't calculated it yet
+        if experience_years == 0 and details and isinstance(details.parsed_data, dict):
             exp_array = details.parsed_data.get("experience", [])
             if isinstance(exp_array, list) and exp_array:
-                # Try to extract years from experience entries
-                for exp in exp_array:
-                    if isinstance(exp, dict):
-                        duration = exp.get("duration", "")
-                        if isinstance(duration, str) and "year" in duration.lower():
-                            # Extract number from duration like "2 years", "3+ years"
-                            import re
-                            years_match = re.search(r'(\d+)', duration)
-                            if years_match:
-                                experience_years = max(experience_years, int(years_match.group(1)))
+                # Simple fallback: estimate based on number of positions (max 5 years)
+                experience_years = min(len(exp_array), 5)
 
         # Format education properly
         formatted_education = []
@@ -300,12 +278,6 @@ async def list_resumes(current_user: User = Depends(get_current_user)) -> Any:
             elif m.filename.lower().endswith('.doc'):
                 file_type = "doc"
 
-        # Generate tags from skills
-        tags = []
-        if m.key_skills:
-            # Take first 3 skills as tags
-            tags = m.key_skills[:3]
-
         # Get comprehensive skills from parsed data
         comprehensive_skills = m.key_skills or []
         if details and isinstance(details.parsed_data, dict):
@@ -328,6 +300,12 @@ async def list_resumes(current_user: User = Depends(get_current_user)) -> Any:
             proj_data = details.parsed_data.get("projects", [])
             if isinstance(proj_data, list):
                 projects_data = proj_data
+
+        # Generate tags from skills
+        tags = []
+        if comprehensive_skills:
+            # Take first 3 skills as tags
+            tags = comprehensive_skills[:3]
 
         # Keep the original backend format that frontend maps from
         resume = {
