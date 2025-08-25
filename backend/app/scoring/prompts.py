@@ -6,8 +6,19 @@ from typing import Any, Dict, List
 SYSTEM_PROMPT = (
     "You are a technical recruiter & hiring manager assistant. Score a single candidate resume "
     "against a single job requisition. Return STRICT JSON ONLY that conforms to the given JSON Schema. "
-    "Use 0–100 scales. Compute overall_score as weighted average of the breakdown metrics. Be objective, "
-    "penalize irrelevance and outdated skills, reward recency and depth. Do not include prose or markdown—JSON ONLY."
+    "Use 0–100 scales. Compute overall_score as weighted average of the breakdown metrics. Be fair and balanced, "
+    "recognize equivalent technologies and transferable skills. Do not include prose or markdown—JSON ONLY. "
+    "Consider that technologies within the same category often serve similar purposes and have transferable concepts. "
+    "Evaluate the candidate's experience level and growth potential. Avoid giving 0 scores unless truly unqualified. "
+    "IMPORTANT: Calculate total_experience_years in the derived section by analyzing the candidate's work experience timeline. "
+    "Find the earliest start date and latest end date (or present) across all positions to determine the total career span in years. "
+    "For overlapping positions, use the overall career span, not the sum of individual position durations. "
+    "HIRING RECOMMENDATIONS: Be constructive and realistic in your assessments: "
+    "- hiring_recommendation: 'STRONG_HIRE', 'HIRE', 'MAYBE', 'NO_HIRE', or 'STRONG_NO_HIRE' "
+    "- recommendation_reason: 2-3 sentence explanation focusing on overall fit and potential "
+    "- key_strengths: 3-5 specific strengths that make this candidate valuable "
+    "- potential_concerns: 2-4 areas of concern or improvement needed (can be empty array if none) "
+    "Be fair - if someone has relevant experience and skills, don't give NO_HIRE unless they're truly unqualified."
 )
 
 
@@ -19,7 +30,9 @@ def build_messages(resume: Dict[str, Any], job: Dict[str, Any], weights: Dict[st
     rules = {
         "rules": [
             "Use only the provided context_chunks (if any) and resume fields; do not invent details.",
-            "Skill mapping: exact, synonyms, adjacent stacks (e.g., Flask~Django~FastAPI).",
+            "Count only complete skills/technologies; ignore fragmented tokens or OCR artifacts.",
+            "Prioritize mapping to job.must_have_skills; nice_to_have should help but not heavily penalize if missing.",
+            "Skill mapping: exact, synonyms, adjacent stacks (e.g., Flask~Django~FastAPI, PostgreSQL~SQL).",
             "Experience relevance: domain, responsibilities, scale, recency, impact.",
             "Seniority alignment: role level (IC/Lead), ownership scope, mentoring.",
             "Education fit: degree/equivalent, relevance to requirements.",

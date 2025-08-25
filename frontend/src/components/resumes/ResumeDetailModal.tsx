@@ -217,6 +217,78 @@ export function ResumeDetailModal({
                   <p className="text-gray-700 leading-relaxed text-sm sm:text-base">{resume.summary}</p>
                 </div>
 
+                {/* AI Hiring Recommendation */}
+                {(resume as any).ai_scoring?.explanations && (
+                  <div className="bg-gradient-to-r from-purple-50 to-pink-50 p-4 sm:p-6 rounded-xl border border-purple-100">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                      <Star className="w-5 h-5 text-purple-500" />
+                      AI Hiring Recommendation
+                    </h3>
+
+                    {/* Recommendation Badge */}
+                    {(resume as any).ai_scoring.explanations.hiring_recommendation && (
+                      <div className="mb-4">
+                        <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
+                          (resume as any).ai_scoring.explanations.hiring_recommendation === 'STRONG_HIRE'
+                            ? 'bg-green-100 text-green-800 border border-green-200'
+                            : (resume as any).ai_scoring.explanations.hiring_recommendation === 'HIRE'
+                            ? 'bg-blue-100 text-blue-800 border border-blue-200'
+                            : (resume as any).ai_scoring.explanations.hiring_recommendation === 'MAYBE'
+                            ? 'bg-yellow-100 text-yellow-800 border border-yellow-200'
+                            : (resume as any).ai_scoring.explanations.hiring_recommendation === 'NO_HIRE'
+                            ? 'bg-red-100 text-red-800 border border-red-200'
+                            : 'bg-red-200 text-red-900 border border-red-300'
+                        }`}>
+                          {(resume as any).ai_scoring.explanations.hiring_recommendation.replace('_', ' ')}
+                        </span>
+                      </div>
+                    )}
+
+                    {/* Recommendation Reason */}
+                    {(resume as any).ai_scoring.explanations.recommendation_reason && (
+                      <div className="mb-4">
+                        <p className="text-gray-700 leading-relaxed text-sm sm:text-base">
+                          {(resume as any).ai_scoring.explanations.recommendation_reason}
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Key Strengths */}
+                    {(resume as any).ai_scoring.explanations.key_strengths &&
+                     Array.isArray((resume as any).ai_scoring.explanations.key_strengths) &&
+                     (resume as any).ai_scoring.explanations.key_strengths.length > 0 && (
+                      <div className="mb-4">
+                        <h4 className="font-semibold text-gray-900 mb-2 text-sm">Key Strengths:</h4>
+                        <ul className="space-y-1">
+                          {(resume as any).ai_scoring.explanations.key_strengths.map((strength: string, index: number) => (
+                            <li key={index} className="flex items-start gap-2 text-sm text-gray-700">
+                              <span className="text-green-500 mt-1">✓</span>
+                              <span>{strength}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {/* Potential Concerns */}
+                    {(resume as any).ai_scoring.explanations.potential_concerns &&
+                     Array.isArray((resume as any).ai_scoring.explanations.potential_concerns) &&
+                     (resume as any).ai_scoring.explanations.potential_concerns.length > 0 && (
+                      <div>
+                        <h4 className="font-semibold text-gray-900 mb-2 text-sm">Areas for Consideration:</h4>
+                        <ul className="space-y-1">
+                          {(resume as any).ai_scoring.explanations.potential_concerns.map((concern: string, index: number) => (
+                            <li key={index} className="flex items-start gap-2 text-sm text-gray-700">
+                              <span className="text-yellow-500 mt-1">⚠</span>
+                              <span>{concern}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {/* Enhanced File Information */}
                 <div className="bg-gradient-to-r from-green-50 to-emerald-50 p-4 sm:p-6 rounded-xl border border-green-100">
                   <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
@@ -247,19 +319,47 @@ export function ResumeDetailModal({
               <div>
                 <h3 className="text-lg font-semibold text-gray-900 mb-4">Work Experience</h3>
                 <div className="space-y-4">
-                  <div className="border border-gray-200 rounded-lg p-4">
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <h4 className="font-semibold text-gray-900">{resume.title}</h4>
-                        <p className="text-gray-600">Current Position</p>
-                        <p className="text-sm text-gray-500 mt-1">{resume.experience} years of experience</p>
+                  {/* Check if resume has experience array data */}
+                  {(resume as any).experience_array && Array.isArray((resume as any).experience_array) && (resume as any).experience_array.length > 0 ? (
+                    (resume as any).experience_array.map((exp: any, index: number) => (
+                      <div key={index} className="border border-gray-200 rounded-lg p-4">
+                        <div className="flex items-start justify-between">
+                          <div>
+                            <h4 className="font-semibold text-gray-900">{exp.title || 'Position'}</h4>
+                            <p className="text-gray-600">{exp.company || 'Company'}</p>
+                            <p className="text-sm text-gray-500 mt-1">{exp.duration || 'Duration not specified'}</p>
+                            {exp.technologies && Array.isArray(exp.technologies) && exp.technologies.length > 0 && (
+                              <div className="flex flex-wrap gap-1 mt-2">
+                                {exp.technologies.map((tech: string, techIndex: number) => (
+                                  <span key={techIndex} className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full">
+                                    {tech}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        {exp.description && (
+                          <p className="text-gray-700 mt-3 text-sm leading-relaxed">{exp.description}</p>
+                        )}
                       </div>
-                      <div className="text-right">
-                        <p className="text-sm text-gray-500">Present</p>
+                    ))
+                  ) : (
+                    /* Fallback to old format if no experience array */
+                    <div className="border border-gray-200 rounded-lg p-4">
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <h4 className="font-semibold text-gray-900">{resume.title}</h4>
+                          <p className="text-gray-600">Current Position</p>
+                          <p className="text-sm text-gray-500 mt-1">{resume.experience} years of experience</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-sm text-gray-500">Present</p>
+                        </div>
                       </div>
+                      <p className="text-gray-700 mt-3">{resume.summary}</p>
                     </div>
-                    <p className="text-gray-700 mt-3">{resume.summary}</p>
-                  </div>
+                  )}
                 </div>
               </div>
             )}

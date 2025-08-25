@@ -31,8 +31,8 @@ export OPENAI_BASE_URL=${OPENAI_BASE_URL:-https://ai.nuox.io/v1}
 # OPENAI_API_KEY must be set in your shell or .env; we don't echo it for security
 # export OPENAI_API_KEY=sk-...
 # Optional: remote Qdrant
-# export QDRANT_URL=...
-# export QDRANT_API_KEY=...
+export QDRANT_URL=${QDRANT_URL:-https://6fb03a96-6548-421b-907d-cf985125ef1c.eu-central-1-0.aws.cloud.qdrant.io:6333}
+export QDRANT_API_KEY=${QDRANT_API_KEY:-eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhY2Nlc3MiOiJtIn0.u4ZrNEPf_Bi_nbo2h4wmfGwt4CuJWRxlsxhlXH3Mog4}
 
 echo "[startup] PROVIDER=$PROVIDER"
 echo "[startup] OPENAI_BASE_URL=$OPENAI_BASE_URL"

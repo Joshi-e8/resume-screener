@@ -2,6 +2,32 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
+
+def _fallback_context_from_resume(resume: Dict[str, Any]) -> list[Dict[str, Any]]:
+    """Build small, local context chunks from the parsed resume when vector retrieval is unavailable.
+    This avoids needing embeddings and still gives the LLM helpful snippets.
+    """
+    chunks: list[Dict[str, Any]] = []
+    try:
+        summary = (resume.get("summary") or "").strip()
+        skills_list = resume.get("skills") or []
+        skills_text = ", ".join([s for s in skills_list if isinstance(s, str)])
+        raw = (resume.get("raw_text") or "").strip()
+
+        def add(text: str, section: str):
+            if text and isinstance(text, str):
+                t = text.strip()
+                if t:
+                    chunks.append({"text": t[:1500], "section": section, "chunk_index": len(chunks)})
+
+        add(summary, "summary")
+        add(skills_text, "skills")
+        if not summary and raw:
+            add(raw, "raw_text")
+    except Exception:
+        pass
+    return chunks[:6]
+
 from app.scoring.adapter import normalize_job, normalize_resume
 from app.scoring.llm_client import LLMClient
 
@@ -31,7 +57,15 @@ def _clamp(x: float, lo: float, hi: float) -> float:
 def _offline_fallback_score(norm_resume: Dict[str, Any], norm_job: Dict[str, Any], weights: Dict[str, float]) -> Dict[str, Any]:
     # Very lightweight, deterministic fallback scoring when LLM is unavailable
     r_skills = set([s.lower() for s in norm_resume.get("skills", []) if isinstance(s, str)])
-    j_skills = set([s.lower() for s in norm_job.get("required_skills", []) if isinstance(s, str)])
+    # Use union of must_have and nice_to_have; fall back to any available fields
+    j_skills = set()
+    for fld in ("required_skills", "must_have_skills", "nice_to_have"):
+        vals = norm_job.get(fld) or []
+        if isinstance(vals, str):
+            vals = [vals]
+        for v in vals if isinstance(vals, list) else []:
+            if isinstance(v, str):
+                j_skills.add(v.lower())
     overlap = r_skills & j_skills
     skills_match = 0.0
     if j_skills:
@@ -121,6 +155,10 @@ def score_resume_against_job(parsed_resume: Dict[str, Any], job: Dict[str, Any],
         _lg.warning(f"[vector] Retrieval failed: {vex}")
         context_chunks = []
 
+    # Fallback: if we have no vector context (embeddings unavailable or empty), derive small local context
+    if not context_chunks:
+        context_chunks = _fallback_context_from_resume(parsed_resume)
+
     client = LLMClient()
     try:
         result, obs = client.score(norm_resume, norm_job, computed_weights, context_chunks=context_chunks)
@@ -130,13 +168,32 @@ def score_resume_against_job(parsed_resume: Dict[str, Any], job: Dict[str, Any],
         result = _offline_fallback_score(norm_resume, norm_job, computed_weights)
 
     # 4) Compute server check overall
-    breakdown = result.get("breakdown", {})
+    breakdown = result.get("breakdown", {}) if isinstance(result, dict) else {}
     overall = 0.0
     for k, w in computed_weights.items():
-        overall += float(breakdown.get(k, 0.0)) * w
+        overall += float((breakdown or {}).get(k, 0.0)) * w
     server_check_overall = round(_clamp(overall, 0.0, 100.0), 2)
 
+    # Degenerate guard: if LLM returned all zeros and empty explanations, fallback to deterministic scorer
+    try:
+        zeros = all(float((breakdown or {}).get(k, 0.0)) == 0.0 for k in DEFAULT_WEIGHTS.keys())
+        expl = (result.get("explanations") or {}) if isinstance(result, dict) else {}
+        empty_expl = not any((expl.get("top_matches") or [])) and not any((expl.get("gaps") or []))
+        if zeros and empty_expl:
+            from loguru import logger
+            logger.info("[scoring] Degenerate zero result detected; applying offline fallback scorer")
+            result = _offline_fallback_score(norm_resume, norm_job, computed_weights)
+            breakdown = result.get("breakdown", {})
+            overall = 0.0
+            for k, w in computed_weights.items():
+                overall += float((breakdown or {}).get(k, 0.0)) * w
+            server_check_overall = round(_clamp(overall, 0.0, 100.0), 2)
+    except Exception:
+        pass
+
     # Attach derived fields
+    if not isinstance(result, dict):
+        result = {"overall_score": server_check_overall, "breakdown": breakdown, "derived": {}}
     if "derived" not in result or not isinstance(result["derived"], dict):
         result["derived"] = {}
     result["derived"]["computed_weights"] = computed_weights

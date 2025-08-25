@@ -3,9 +3,9 @@ Optimized database models for resume processing
 """
 
 from datetime import datetime
-from typing import Optional, Dict, List, Any
+from typing import Optional, Dict, List, Any, Union
 from beanie import Document, Indexed
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from enum import Enum
 
 
@@ -63,6 +63,30 @@ class ResumeMetadata(Document):
     candidate_name: Optional[str] = Field(None, description="Candidate name for quick search")
     candidate_email: Optional[str] = Field(None, description="Candidate email for quick search")
     key_skills: List[str] = Field(default_factory=list, description="Top skills for quick filtering")
+
+    @field_validator('candidate_email', mode='before')
+    @classmethod
+    def validate_candidate_email(cls, v):
+        """Handle both string and list formats for candidate_email"""
+        if v is None:
+            return None
+        if isinstance(v, list):
+            # If it's a list, take the first email or return None if empty
+            return v[0] if v else None
+        return str(v) if v else None
+
+    @field_validator('key_skills', mode='before')
+    @classmethod
+    def validate_key_skills(cls, v):
+        """Ensure key_skills is always a list"""
+        if v is None:
+            return []
+        if isinstance(v, str):
+            # If it's a string, split by common delimiters
+            return [skill.strip() for skill in v.replace(',', '|').replace(';', '|').split('|') if skill.strip()]
+        if isinstance(v, list):
+            return [str(skill).strip() for skill in v if skill]
+        return []
     
     class Settings:
         name = "resume_metadata"

@@ -48,9 +48,34 @@ class Settings(BaseSettings):
     OPENAI_MODEL: str = "gpt-4"
     GROQ_MODEL: str = "llama-3.1-70b-versatile"
     ENABLE_SCORING: bool = True
+
+    # Parser Configuration
+    PARSER_USE_ORCHESTRATOR: bool = False  # Deprecated: Use rule-based orchestrator
+    PARSER_USE_NLP_FIRST: bool = True  # Use enhanced NLP-first approach for better accuracy
+    PARSER_USE_UNIVERSAL_LLM: bool = False  # Legacy LLM parser
+    PARSER_FORCE_LLM: bool = False
+    PARSER_ENABLE_OCR: bool = True
+    PARSER_ENABLE_NER: bool = True
+    PARSER_MAX_OCR_PAGES: int = 2
+    PARSER_LOW_TEXT_THRESHOLD: float = 0.02
+    PARSER_MIN_SKILL_CONF: float = 0.6
+    PARSER_LLM_FAST_MODE: bool = False  # Use comprehensive mode for better accuracy
+    PARSER_ENHANCED_PROMPTS: bool = True  # Use enhanced NLP prompts for better extraction
+    PARSER_TEXT_LIMIT: int = 6000  # Maximum text length to send to AI (configurable)
+    PARSER_MAX_SKILLS: int = 25  # Maximum number of skills to extract (configurable)
+    LOG_AI_RESPONSES: bool = True  # Log AI responses to terminal for debugging
     SCORING_TEMPERATURE: float = 0.2
     SCORING_MAX_TOKENS: int = 1200
     CACHE_TTL_SECONDS: int = 300
+
+    # Scoring Prompt/Response Logging
+    LOG_SCORING_PROMPTS: bool = True  # Enable for JSON logging
+    LOG_SCORING_RESPONSES: bool = True  # Enable for JSON logging
+    LOG_SCORING_TRUNCATE_CHARS: int = 2000
+
+    # JSON Logging Configuration
+    ENABLE_JSON_LOGGING: bool = True
+    JSON_LOG_LEVEL: str = "INFO"
 
 
     # Vector DB (Qdrant) Configuration
@@ -143,7 +168,9 @@ class Settings(BaseSettings):
         return f"{self.MONGODB_URL}/{self.MONGODB_DB_NAME}"
 
     class Config:
-        env_file = ".env"
+        # Ensure we always read backend/.env regardless of current working directory
+        import os as _os
+        env_file = _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.dirname(__file__))), ".env")
         env_file_encoding = "utf-8"
         case_sensitive = True
         extra = "ignore"

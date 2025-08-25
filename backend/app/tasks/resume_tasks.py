@@ -44,6 +44,318 @@ def is_truthy(value) -> bool:
 @celery_app.task
 def test_task():
     """Simple test task"""
+
+
+@celery_app.task(bind=True)
+def process_direct_resume_file(self, resume_id: str, tmp_file_path: str, filename: str, user_id: str, job_id: str | None = None, source: str = "direct") -> dict:
+    """
+    Process a single directly uploaded resume file (tmp path) in background.
+    Updates ResumeMetadata and creates ResumeDetails. Also performs scoring and vector indexing.
+    """
+    try:
+        self.update_state(state='PROGRESS', meta={'current': 0, 'total': 1, 'status': 'Starting...'})
+
+        # Initialize async context
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+        # Init DB once
+        try:
+            loop.run_until_complete(init_database())
+        except Exception:
+            pass
+
+        parser = ResumeParser()
+
+        # Capture detailed AI interaction data
+        ai_interaction_data = {
+            "resume_id": resume_id,
+            "filename": filename,
+            "user_id": user_id,
+            "job_id": job_id,
+            "source": source,
+            "processing_timestamp": datetime.utcnow().isoformat(),
+            "extracted_content": None,
+            "ai_prompt": None,
+            "ai_response": None,
+            "parsing_result": None,
+            "processing_mode": None,
+            "error": None
+        }
+
+        # Parse resume with timeout for robustness
+        self.update_state(state='PROGRESS', meta={'current': 0, 'total': 1, 'status': 'Parsing resume...'})
+        try:
+            parsed_data = loop.run_until_complete(asyncio.wait_for(parser.parse_resume(tmp_file_path), timeout=25.0))
+        except Exception as pe:
+            logger.warning(f"[celery] Direct parse failed for {filename}: {pe}")
+            parsed_data = {
+                "raw_text": "",
+                "contact_info": {},
+                "skills": [],
+                "education": [],
+                "experience": [],
+                "summary": "",
+            }
+
+        # Optional scoring
+        analysis_results = None
+        if job_id:
+            try:
+                job = loop.run_until_complete(Job.get(job_id))
+                if job:
+                    job_dict = job.model_dump()
+                    analysis_results = score_resume_against_job(parsed_data, job_dict, None)
+            except Exception as s_e:
+                logger.warning(f"[celery] Scoring failed: {s_e}")
+
+        # Update metadata and persist details
+        try:
+            meta = loop.run_until_complete(ResumeMetadata.get(resume_id))
+        except Exception:
+            meta = None
+
+        # Safely read contact info (may be None)
+        _pd = parsed_data or {}
+        contact = _pd.get("contact_info")
+        if not isinstance(contact, dict):
+            contact = {}
+        candidate_email = contact.get("email") or _pd.get("email")
+        candidate_name = _pd.get("candidate_name") or _pd.get("name") or contact.get("name")
+        key_skills = _pd.get("skills") or []
+        # sanitize noisy/fragmented skills and drop location/generic non-skill phrases
+        if isinstance(key_skills, list):
+            cleaned = []
+            drop_terms = {
+                "experience", "applications", "tools", "concepts", "frontend", "backend",
+                "languages", "frameworks", "databases", "projects", "summary",
+                "skills languages frameworks python", "next.js databases", "postgresql frontend tools zustand",
+            }
+            for s in key_skills:
+                if not isinstance(s, str):
+                    continue
+                t = s.strip()
+                if not t:
+                    continue
+                # drop obvious location-only or comma-separated location blobs
+                tl = t.lower()
+                if any(x in tl for x in ["kerala", "india", "calicut", "kochi", "wayanad"]):
+                    # if the token looks solely like a location phrase, skip
+                    if sum(ch.isalpha() for ch in tl) >= len(tl) - 2 and any(x in tl for x in ["kerala", "india", "calicut", "kochi", "wayanad"]):
+                        continue
+                if len(t) <= 3:
+                    continue
+                # remove extremely short tokens unless part of common tech patterns
+                if any(len(tok) <= 2 for tok in t.split()):
+                    if tl not in {"ci", "cd"} and not any(c in t for c in [".", "-", "/"]):
+                        continue
+                if tl in drop_terms:
+                    continue
+                cleaned.append(t)
+            key_skills = list(dict.fromkeys(cleaned))
+        # job-aware enrichment: add job must/nice terms found in raw text
+        try:
+            if job_id and ((parsed_data or {}).get("raw_text")):
+                if 'job_dict' not in locals():
+                    try:
+                        job = loop.run_until_complete(Job.get(job_id))
+                        job_dict = job.model_dump() if job else None
+                    except Exception:
+                        job_dict = None
+                if job_dict:
+                    terms = []
+                    for fld in ("must_have_skills", "nice_to_have", "required_skills", "preferred_skills"):
+                        v = job_dict.get(fld) or []
+                        if isinstance(v, str):
+                            v = [v]
+                        if isinstance(v, list):
+                            terms.extend([str(x) for x in v if x])
+                    raw = (parsed_data.get("raw_text") or "").lower()
+                    add = []
+                    for term in terms:
+                        t = str(term).strip()
+                        if len(t) >= 2 and t.lower() in raw:
+                            add.append(t)
+                    if add:
+                        key_skills = list(dict.fromkeys(list(key_skills) + add))
+        except Exception:
+            pass
+        # fallback derive candidate_name from email or filename
+        if not candidate_name:
+            try:
+                contact = (parsed_data or {}).get("contact_info") or {}
+                if not candidate_email:
+                    candidate_email = contact.get("email")
+                name_from_contact = contact.get("name")
+                if name_from_contact and isinstance(name_from_contact, str) and len(name_from_contact.strip()) >= 3:
+                    candidate_name = name_from_contact.strip()
+                elif candidate_email and isinstance(candidate_email, str):
+                    local = candidate_email.split("@")[0]
+                    import re as _re
+                    parts = [p for p in _re.split(r"[._-]+", local) if p]
+                    if parts:
+                        candidate_name = " ".join([p[:1].upper() + p[1:] for p in parts])
+                if not candidate_name and isinstance(filename, str):
+                    import re as _re
+                    base = _re.sub(r"\.[^./]+$", "", filename)
+                    parts = [p for p in _re.split(r"[._-]+", base) if p]
+                    if parts:
+                        candidate_name = " ".join([p[:1].upper() + p[1:] for p in parts[:3]])
+            except Exception:
+                pass
+
+        try:
+            if meta:
+                # Do not mark COMPLETED yet; set fields and save. We'll mark COMPLETED after details+indexing.
+                meta.candidate_email = candidate_email
+                meta.candidate_name = candidate_name
+                meta.key_skills = key_skills[:20] if isinstance(key_skills, list) else []
+                meta.job_id = job_id or meta.job_id
+                meta.processing_mode = ProcessingMode.STANDARD
+                loop.run_until_complete(meta.save())
+            else:
+                # Fallback if metadata not created
+                meta = ResumeMetadata(
+                    file_id=resume_id,
+                    filename=filename,
+                    user_id=str(user_id),
+                    file_size=0,
+                    mime_type=None,
+                    status=ProcessingStatus.COMPLETED,
+                    processing_mode=ProcessingMode.STANDARD,
+                    job_id=job_id,
+                    candidate_name=candidate_name,
+                    candidate_email=candidate_email,
+                    key_skills=key_skills[:20] if isinstance(key_skills, list) else [],
+                    source=source,
+                )
+                loop.run_until_complete(meta.insert())
+        except Exception as db_e:
+            logger.warning(f"[celery] Failed to update metadata: {db_e}")
+
+        # Create details
+        try:
+            slim = {
+                "summary": (parsed_data or {}).get("summary"),
+                "skills": (parsed_data or {}).get("skills"),
+                "experience": (parsed_data or {}).get("experience"),
+                "education": (parsed_data or {}).get("education"),
+                "contact_info": (parsed_data or {}).get("contact_info"),
+                "title": (parsed_data or {}).get("title"),
+                "total_experience_years": (parsed_data or {}).get("total_experience_years"),
+            }
+            # Build AI payload safely even if scoring returned None or malformed
+            # Always build a dict to avoid downstream .get on None
+            overall = None
+            scoring_obj = analysis_results if isinstance(analysis_results, dict) else {}
+            try:
+                overall = scoring_obj.get("overall_score")
+                if overall is None:
+                    overall = (scoring_obj.get("derived") or {}).get("server_check_overall")
+            except Exception:
+                overall = None
+            ai_payload = {
+                "ai_overall_score": overall,
+                "ai_scoring": scoring_obj,
+            }
+
+            details = ResumeDetails(
+                resume_id=str(meta.id),
+                raw_text=None,
+                parsed_data=slim,
+                analysis_results=ai_payload,
+            )
+            loop.run_until_complete(details.insert())
+        except Exception as db2_e:
+            logger.warning(f"[celery] Failed to persist details: {db2_e}")
+
+        # Vector indexing
+        try:
+            from app.vector.store import upsert_resume_chunks, Chunk, get_mode
+            chunks: list[Chunk] = []
+            def _chunkify(text: str, section: str, size: int = 1200, overlap: int = 200):
+                if not text:
+                    return
+                n = len(text)
+                pos = 0
+                while pos < n:
+                    end = min(n, pos + size)
+                    chunks.append(Chunk(text=text[pos:end], section=section, chunk_index=len(chunks)))
+                    if end == n:
+                        break
+                    pos = end - overlap
+            summary = (parsed_data or {}).get("summary") or ""
+            skills_text = ", ".join((parsed_data or {}).get("skills") or [])
+            raw_text = (parsed_data or {}).get("raw_text") or ""
+            _chunkify(summary, 'summary')
+            _chunkify(skills_text, 'skills')
+            _chunkify(raw_text, 'raw_text')
+            try:
+                inserted = upsert_resume_chunks(str(meta.id), chunks, user_id=str(user_id or 'unknown'))
+                logger.info(f"[vector] Upserted {inserted} chunks for direct file {filename} ({get_mode()})")
+            except Exception as vex:
+                logger.warning(f"[vector] Upsert failed for {filename}: {vex}")
+        except Exception as vex_all:
+            logger.warning(f"[vector] Indexing skipped: {vex_all}")
+
+        # Mark metadata COMPLETED now that details created and indexing attempted
+        try:
+            if meta:
+                meta.status = ProcessingStatus.COMPLETED
+                meta.processing_completed_at = datetime.now(timezone.utc)
+                loop.run_until_complete(meta.save())
+        except Exception:
+            pass
+
+        # Cleanup tmp file
+        try:
+            if os.path.exists(tmp_file_path):
+                os.unlink(tmp_file_path)
+        except Exception:
+            pass
+
+        # Log completion
+        from app.core.json_logging import log_resume_processing
+        log_resume_processing(
+            event="processing_completed",
+            filename=filename,
+            resume_id=str(meta.id) if meta else resume_id,
+            job_id=job_id,
+            status="completed"
+        )
+
+        return {
+            'resume_id': str(meta.id) if meta else resume_id,
+            'filename': filename,
+            'success': True,
+            'status': 'completed',
+        }
+
+    except Exception as e:
+        # Attempt to set metadata to FAILED
+        try:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                m = loop.run_until_complete(ResumeMetadata.get(resume_id))
+            except Exception:
+                m = None
+            if m:
+                m.status = ProcessingStatus.FAILED
+                m.error_message = str(e)
+                m.processing_completed_at = datetime.now(timezone.utc)
+                loop.run_until_complete(m.save())
+        except Exception:
+            pass
+        try:
+            if os.path.exists(tmp_file_path):
+                os.unlink(tmp_file_path)
+        except Exception:
+            pass
+        # Log full traceback to identify root cause precisely
+        logger.exception("[celery] Direct resume processing failed")
+        return {'resume_id': resume_id, 'filename': filename, 'success': False, 'error_message': str(e)}
+
     return "Test task completed successfully!"
 
 
@@ -749,6 +1061,22 @@ def process_chunk_sync(file_ids: List[str], credentials_dict: Dict[str, Any],
                             pass
 
                         # Create metadata
+                        # sanitize skills before saving
+                        _skills = (parsed_data.get("skills") or [])
+                        if isinstance(_skills, list):
+                            _clean = []
+                            for s in _skills:
+                                if not isinstance(s, str):
+                                    continue
+                                t = s.strip()
+                                if len(t) <= 3:
+                                    continue
+                                if any(len(tok) <= 2 for tok in t.split()):
+                                    if t.lower() not in {"ci", "cd"} and not any(c in t for c in [".", "-","/"]):
+                                        continue
+                                _clean.append(t)
+                            _skills = list(dict.fromkeys(_clean))
+
                         meta = ResumeMetadata(
                             file_id=result.get('file_id'),
                             filename=result.get('filename'),
@@ -760,7 +1088,7 @@ def process_chunk_sync(file_ids: List[str], credentials_dict: Dict[str, Any],
                             job_id=effective_job_id or None,
                             candidate_name=candidate_name,
                             candidate_email=candidate_email,
-                            key_skills=(parsed_data.get("skills") or []),
+                            key_skills=_skills,
                             file_size=file_size,
                             mime_type=mime_type,
                         )

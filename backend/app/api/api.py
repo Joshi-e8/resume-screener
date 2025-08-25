@@ -19,6 +19,7 @@ from app.api.endpoints import (
     users,
     websocket,
 )
+from app.api.routes import parser as parser_router
 
 api_router = APIRouter()
 
@@ -36,3 +37,6 @@ api_router.include_router(linkedin.router, prefix="/linkedin", tags=["linkedin"]
 api_router.include_router(google_drive.router, prefix="/google-drive", tags=["google-drive"])
 api_router.include_router(sse.router, prefix="/sse", tags=["sse"])
 api_router.include_router(websocket.router, prefix="/websocket", tags=["websocket"])
+
+# New parser routes (v1)
+api_router.include_router(parser_router.router)

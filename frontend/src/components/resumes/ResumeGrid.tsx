@@ -190,7 +190,15 @@ export function ResumeGrid({ initialSearchQuery = '' }: ResumeGridProps) {
         source: rec.source || 'Google Drive',
         ai_overall_score: rec.ai_overall_score,
         ai_scoring: rec.ai_scoring,
-      } as Resume & { ai_overall_score?: number; ai_scoring?: any };
+        // Add the experience array for detailed view
+        experience_array: Array.isArray(rec.experience) ? rec.experience : [],
+        projects: Array.isArray(rec.projects) ? rec.projects : [],
+      } as Resume & {
+        ai_overall_score?: number;
+        ai_scoring?: any;
+        experience_array?: any[];
+        projects?: any[];
+      };
     });
   }, [apiResumes, processingProgress?.results, cachedResults]);
 

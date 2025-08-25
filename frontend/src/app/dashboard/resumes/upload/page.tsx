@@ -66,15 +66,9 @@ export default function ResumeUploadPage() {
           </div>
         </div>
 
-        {/* Quick Actions */}
+        {/* Quick Actions (moved into upload component for clarity) */}
         <div className="flex flex-col sm:flex-row gap-3 lg:min-w-fit">
-          <select className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-blue-500 focus:border-transparent bg-white">
-            <option value="">Associate with position (optional)</option>
-            <option value="software-engineer">Software Engineer</option>
-            <option value="product-manager">Product Manager</option>
-            <option value="data-scientist">Data Scientist</option>
-            <option value="marketing-manager">Marketing Manager</option>
-          </select>
+          {/* Job association select is now inside the Upload component */}
           <button className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors duration-200 whitespace-nowrap">
             + Quick Job
           </button>

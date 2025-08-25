@@ -13,6 +13,7 @@ import PyPDF2
 from docx import Document
 
 
+
 class ResumeParser:
     """Service for parsing resumes from various file formats"""
 
@@ -127,6 +128,30 @@ class ResumeParser:
         if file_extension not in self.supported_formats:
             raise ValueError(f"Unsupported file format: {file_extension}")
 
+        # Try universal LLM parser first if enabled (highest priority)
+        use_universal_llm = False
+        try:
+            from app.core.config import settings
+            setting_value = getattr(settings, "PARSER_USE_UNIVERSAL_LLM", False)
+            if isinstance(setting_value, bool):
+                use_universal_llm = setting_value
+            else:
+                use_universal_llm = bool(int(str(setting_value or "0")))
+        except Exception:
+            use_universal_llm = False
+
+        if use_universal_llm:
+            try:
+                from app.services.llm_resume_parser import LLMResumeParser
+                llm_parser = LLMResumeParser()
+                result = await llm_parser.parse_resume_from_memory(file_content, filename, file_extension)
+                print(f"✅ Universal LLM parser completed for {filename} (memory)")
+                return result
+            except Exception as e:
+                print(f"❌ Universal LLM parser failed for {filename}, falling back to fast mode: {e}")
+                import traceback
+                traceback.print_exc()
+
         # Extract text based on file type directly from memory
         if file_extension == ".pdf":
             text = await self._extract_pdf_text_from_memory(file_content)
@@ -238,7 +263,70 @@ class ResumeParser:
         if file_extension not in self.supported_formats:
             raise ValueError(f"Unsupported file format: {file_extension}")
 
-        # Extract text based on file type
+        # Try universal LLM parser first if enabled (highest priority)
+        use_universal_llm = False
+        try:
+            from app.core.config import settings
+            setting_value = getattr(settings, "PARSER_USE_UNIVERSAL_LLM", False)
+            if isinstance(setting_value, bool):
+                use_universal_llm = setting_value
+            else:
+                use_universal_llm = bool(int(str(setting_value or "0")))
+        except Exception:
+            use_universal_llm = False
+
+        if use_universal_llm:
+            try:
+                from app.services.llm_resume_parser import LLMResumeParser
+                llm_parser = LLMResumeParser()
+                result = await llm_parser.parse_resume(file_path)
+                print(f"✅ Universal LLM parser completed for {file_path}")
+                return result
+            except Exception as e:
+                print(f"❌ Universal LLM parser failed, falling back to orchestrator: {e}")
+                import traceback
+                traceback.print_exc()
+
+        # Use NLP-first approach instead of rule-based orchestrator
+        use_nlp_first = True
+        try:
+            from app.core.config import settings
+            setting_value = getattr(settings, "PARSER_USE_NLP_FIRST", True)
+            if isinstance(setting_value, bool):
+                use_nlp_first = setting_value
+            else:
+                use_nlp_first = bool(int(str(setting_value or "1")))
+        except Exception:
+            use_nlp_first = True
+
+        if use_nlp_first:
+            try:
+                from app.services.llm_resume_parser import LLMResumeParser
+                import os as _os
+                llm_parser = LLMResumeParser()
+
+                # Get file size for metadata
+                size = 0
+                try:
+                    size = _os.path.getsize(file_path)
+                except Exception:
+                    pass
+
+                # Use LLM parser for accurate extraction
+                result = await llm_parser.parse_resume(file_path)
+
+                # Ensure compatibility with existing format
+                if result and isinstance(result, dict):
+                    result["parsed_at"] = datetime.now(timezone.utc).isoformat()
+                    result["processing_mode"] = "nlp_first"
+                    return result
+                else:
+                    print(f"Warning: NLP parser returned invalid result for {file_path}, falling back to legacy parser")
+
+            except Exception as e:
+                print(f"NLP parser failed, falling back to legacy: {e}")
+
+        # Legacy extraction path
         if file_extension == ".pdf":
             text = await self._extract_pdf_text(file_path)
         elif file_extension in [".docx", ".doc"]:
@@ -454,7 +542,8 @@ class ResumeParser:
         print(f"Contact info extraction: {int((time.time() - start_time) * 1000)}ms")
 
         start_time = time.time()
-        parsed_data["skills"] = self._extract_skills(cleaned_text)
+        skills = self._extract_skills_nlp(cleaned_text) or self._extract_skills(cleaned_text)
+        parsed_data["skills"] = skills
         print(f"Skills extraction: {int((time.time() - start_time) * 1000)}ms")
 
         start_time = time.time()
@@ -474,6 +563,20 @@ class ResumeParser:
             parsed_data["experience"] = self._extract_experience(lines)
             print(f"Experience extraction: {int((time.time() - start_time) * 1000)}ms")
 
+            # Try to extract a probable title from the first few lines
+            try:
+                head = " ".join(lines[:5])[:200].lower()
+                titles = [
+                    "python developer", "backend developer", "software engineer",
+                    "backend engineer", "full stack developer", "full-stack developer"
+                ]
+                for t in titles:
+                    if t in head:
+                        parsed_data["title"] = t.title()
+                        break
+            except Exception:
+                pass
+
             start_time = time.time()
             parsed_data["summary"] = self._extract_summary(lines)
             print(f"Summary extraction: {int((time.time() - start_time) * 1000)}ms")
@@ -492,12 +595,56 @@ class ResumeParser:
 
         return parsed_data
 
+    def _map_orchestrator_to_legacy(self, obj: Dict[str, Any], file_extension: str) -> Dict[str, Any]:
+        """Map orchestrator output to legacy parsed schema expected by current consumers."""
+        # Contact info
+        cand = obj.get("candidate") or {}
+        contact = {
+            "name": cand.get("name"),
+            "email": (cand.get("emails") or [None])[0],
+            "phone": (cand.get("phones") or [None])[0],
+            "linkedin": (cand.get("links") or {}).get("linkedin"),
+            "github": (cand.get("links") or {}).get("github"),
+            "location": (cand.get("location") or {}).get("raw") or None,
+        }
+        # Skills (legacy expects simple list)
+        skills_struct = obj.get("skills") or []
+        skills = [s.get("name") for s in skills_struct if isinstance(s, dict) and s.get("name")]
+        # Education simple list of objects
+        education = obj.get("education") or []
+        # Experience minimal mapping to legacy list
+        experience = obj.get("experience") or []
+        # Summary
+        summary = obj.get("summary") or ""
+        # Languages/certs/projects
+        languages = [l.get("name") for l in (obj.get("languages") or []) if isinstance(l, dict) and l.get("name")]
+        certs = obj.get("certifications") or []
+        projects = obj.get("projects") or []
+        return {
+            "raw_text": "",
+            "file_type": file_extension,
+            "contact_info": contact,
+            "skills": skills,
+            "education": education,
+            "experience": experience,
+            "summary": summary,
+            "certifications": certs,
+            "languages": languages,
+            "projects": projects,
+        }
+
+
     def _clean_text(self, text: str) -> str:
-        """Clean and normalize text"""
-        # Remove extra whitespace
-        text = re.sub(r"\s+", " ", text)
-        # Remove special characters but keep basic punctuation
-        text = re.sub(r"[^\w\s@.-]", " ", text)
+        """Clean and normalize text while preserving newlines for section parsing."""
+        # Normalize line endings
+        text = text.replace("\r\n", "\n").replace("\r", "\n")
+        # Collapse spaces and tabs but keep newlines
+        text = re.sub(r"[\t\x0b\x0c\f]+", " ", text)
+        text = re.sub(r"[ ]{2,}", " ", text)
+        # Collapse excessive newlines to single
+        text = re.sub(r"\n{3,}", "\n\n", text)
+        # Keep punctuation useful for skills (.,-/+ and commas for splitting)
+        text = re.sub(r"[^\w\s@\.,\-/\+]", " ", text)
         return text.strip()
 
     def _extract_contact_info(self, text: str) -> Dict[str, Optional[str]]:
@@ -530,44 +677,129 @@ class ResumeParser:
         if github_match:
             contact_info["github"] = github_match.group()
 
-        # Extract location (simple heuristic)
-        location_patterns = [
-            r"([A-Z][a-z]+,\s*[A-Z]{2})",  # City, State
-            r"([A-Z][a-z]+\s+[A-Z][a-z]+,\s*[A-Z]{2})",  # City Name, State
-        ]
 
-        for pattern in location_patterns:
-            location_match = re.search(pattern, text)
-            if location_match:
-                contact_info["location"] = location_match.group()
-                break
+    def _extract_skills_nlp(self, text: str) -> List[str]:
+        """
+        NLP-based skills/keyword extraction using spaCy if available.
+        Returns a cleaned, deduplicated list of plausible skills/technologies/keywords.
+        """
+        try:
+            import re
+            nlp = None
+            try:
+                import spacy
+                try:
+                    nlp = spacy.load("en_core_web_sm")
+                except Exception:
+                    # Fall back to a blank English pipeline if model is missing
+                    nlp = spacy.blank("en")
+                    if "sentencizer" not in nlp.pipe_names:
+                        nlp.add_pipe("sentencizer")
+            except Exception:
+                nlp = None
 
-        return contact_info
+            text = text or ""
+            if not text.strip():
+                return []
+
+            # Limit for performance
+            sample = text[:15000]
+            doc = nlp(sample) if nlp is not None else None
+
+            candidates: List[str] = []
+
+            # 1) Noun chunks as candidate skills/phrases (when model available)
+            if doc is not None and hasattr(doc, "noun_chunks"):
+                for chunk in doc.noun_chunks:
+                    tok = chunk.text.strip()
+                    if len(tok) >= 3 and len(tok.split()) <= 5:
+                        candidates.append(tok)
+
+            # 2) Named entities (ORG/PRODUCT often capture tech/product names)
+            if doc is not None:
+                for ent in getattr(doc, "ents", []):
+                    if ent.label_ in ("ORG", "PRODUCT", "WORK_OF_ART"):
+                        tok = ent.text.strip()
+                        if len(tok) >= 3:
+                            candidates.append(tok)
+
+            # 3) Token pattern capturing dotted/slashed tech tokens (Next.js, CI/CD)
+            for m in re.finditer(r"\b[A-Za-z][A-Za-z0-9\.\+\/#-]{2,}\b", sample):
+                tok = m.group(0)
+                if any(c in tok for c in [".", "/", "+", "-"]):
+                    candidates.append(tok)
+
+            # Clean and dedupe
+            cleaned: List[str] = []
+            seen = set()
+            for s in candidates:
+                s = re.sub(r"\s+", " ", s).strip()
+                if len(s) <= 2:
+                    continue
+                # Skip long multi-word phrases unless they include tech punctuation
+                if len(s.split()) > 5 and not any(c in s for c in [".", "/", "+", "-"]):
+                    continue
+                # Filter obvious fragments unless allowlisted
+                toks = s.split()
+                if any(len(t) <= 2 for t in toks):
+                    if not any(x in s for x in ["CI/CD", "C++", "C#", ".js", "S3", "EC2"]):
+                        if not (s.isupper() and len(s) <= 5):
+                            continue
+                key = s.lower()
+                if key not in seen:
+                    seen.add(key)
+                    cleaned.append(s)
+
+            # Prioritize tokens appearing in a skills section
+            m = self.skills_section_pattern.search(text)
+            if m:
+                sec = (m.group(1) or "").lower()
+                cleaned.sort(key=lambda t: 0 if t.lower() in sec else 1)
+
+            return cleaned[:30]
+        except Exception:
+            return []
 
     def _extract_skills(self, text: str) -> List[str]:
-        """Extract technical skills"""
-        found_skills = []
-        text_lower = text.lower()
+        """Domain-agnostic skills/keywords extraction with noise suppression and proper tokenization."""
+        found: List[str] = []
+        import re
 
-        for skill in self.tech_skills:
-            if skill.lower() in text_lower:
-                found_skills.append(skill)
+        def add_skill(s: str):
+            s_norm = re.sub(r"\s+", " ", s).strip()
+            if not s_norm:
+                return
+            if len(s_norm) <= 2:
+                return
+            # Avoid obvious fragments unless common allowlist
+            toks = s_norm.split()
+            if any(len(t) <= 2 for t in toks):
+                if not any(x in s_norm for x in ["CI/CD", "C++", "C#", ".js", "S3", "EC2"]):
+                    if not (s_norm.isupper() and len(s_norm) <= 5):
+                        return
+            if s_norm not in found:
+                found.append(s_norm)
 
-        # Look for skills sections using pre-compiled pattern
-        skills_match = self.skills_section_pattern.search(text)
+        # 1) Prefer items from an explicit Skills section
+        m = self.skills_section_pattern.search(text)
+        if m:
+            skills_text = m.group(1)
+            parts = re.split(r"[,;\|\n\r\t•\-]+", skills_text)
+            for p in parts:
+                token = p.strip()
+                if not token:
+                    continue
+                # keep short phrases (<=5 words) and tokens with tech punctuation
+                if len(token.split()) <= 5 or any(c in token for c in ["/", ".", "+", "-"]):
+                    add_skill(token)
 
-        if skills_match:
-            skills_text = skills_match.group(1)
-            # Extract comma-separated or bullet-pointed skills
-            additional_skills = re.findall(
-                r"[•\-\*]?\s*([A-Za-z][A-Za-z0-9\s\.\+\#]{2,20})", skills_text
-            )
-            for skill in additional_skills:
-                skill = skill.strip()
-                if len(skill) > 2 and skill not in found_skills:
-                    found_skills.append(skill)
+        # 2) Also capture globally any token with tech/business punctuation
+        for m in re.finditer(r"\b[A-Za-z][A-Za-z0-9\.\+\/#-]{2,}\b", text):
+            tok = m.group(0)
+            if any(c in tok for c in [".", "/", "+", "-"]):
+                add_skill(tok)
 
-        return list(set(found_skills))  # Remove duplicates
+        return found[:30]
 
     def _extract_education(self, lines: List[str]) -> List[Dict[str, str]]:
         """Extract education information"""
