@@ -171,13 +171,36 @@ async def list_resumes_by_job(job_id: str, current_user: User = Depends(get_curr
                     first = exp[0] or {}
                     title = first.get("title")
 
+        # Get comprehensive skills from parsed data
+        comprehensive_skills = m.key_skills or []
+        if details and isinstance(details.parsed_data, dict):
+            parsed_skills = details.parsed_data.get("skills", [])
+            if isinstance(parsed_skills, list):
+                # Combine and deduplicate skills
+                all_skills = list(set(comprehensive_skills + parsed_skills))
+                comprehensive_skills = all_skills
+
+        # Get experience data
+        experience_data = []
+        if details and isinstance(details.parsed_data, dict):
+            exp_data = details.parsed_data.get("experience", [])
+            if isinstance(exp_data, list):
+                experience_data = exp_data
+
+        # Get projects data
+        projects_data = []
+        if details and isinstance(details.parsed_data, dict):
+            proj_data = details.parsed_data.get("projects", [])
+            if isinstance(proj_data, list):
+                projects_data = proj_data
+
         results.append({
             "id": str(m.id),
             "file_id": m.file_id,
             "filename": m.filename,
             "candidate_name": m.candidate_name,
             "candidate_email": m.candidate_email,
-            "key_skills": m.key_skills,
+            "key_skills": comprehensive_skills,
             "created_at": m.created_at.isoformat(),
             "ai_overall_score": ai_overall,
             "ai_scoring": ai_scoring,
@@ -186,6 +209,8 @@ async def list_resumes_by_job(job_id: str, current_user: User = Depends(get_curr
             "title": title,
             "summary": summary,
             "education": education,
+            "experience": experience_data,
+            "projects": projects_data,
             "file_size": file_size,
             "mime_type": mime_type,
             "source": "Google Drive",
@@ -235,13 +260,83 @@ async def list_resumes(current_user: User = Depends(get_current_user)) -> Any:
                     first = exp[0] or {}
                     title = first.get("title")
 
-        results.append({
+        # Calculate experience years from experience array
+        experience_years = 0
+        if details and isinstance(details.parsed_data, dict):
+            exp_array = details.parsed_data.get("experience", [])
+            if isinstance(exp_array, list) and exp_array:
+                # Try to extract years from experience entries
+                for exp in exp_array:
+                    if isinstance(exp, dict):
+                        duration = exp.get("duration", "")
+                        if isinstance(duration, str) and "year" in duration.lower():
+                            # Extract number from duration like "2 years", "3+ years"
+                            import re
+                            years_match = re.search(r'(\d+)', duration)
+                            if years_match:
+                                experience_years = max(experience_years, int(years_match.group(1)))
+
+        # Format education properly
+        formatted_education = []
+        if isinstance(education, list):
+            for edu in education:
+                if isinstance(edu, dict):
+                    formatted_education.append({
+                        "degree": edu.get("degree", ""),
+                        "school": edu.get("institution") or edu.get("school", ""),
+                        "year": edu.get("year", 0)
+                    })
+
+        # Derive file type from mime_type or filename
+        file_type = "pdf"
+        if mime_type:
+            if "word" in mime_type or "docx" in mime_type:
+                file_type = "docx"
+            elif "msword" in mime_type:
+                file_type = "doc"
+        elif m.filename:
+            if m.filename.lower().endswith('.docx'):
+                file_type = "docx"
+            elif m.filename.lower().endswith('.doc'):
+                file_type = "doc"
+
+        # Generate tags from skills
+        tags = []
+        if m.key_skills:
+            # Take first 3 skills as tags
+            tags = m.key_skills[:3]
+
+        # Get comprehensive skills from parsed data
+        comprehensive_skills = m.key_skills or []
+        if details and isinstance(details.parsed_data, dict):
+            parsed_skills = details.parsed_data.get("skills", [])
+            if isinstance(parsed_skills, list):
+                # Combine and deduplicate skills
+                all_skills = list(set(comprehensive_skills + parsed_skills))
+                comprehensive_skills = all_skills
+
+        # Get experience data
+        experience_data = []
+        if details and isinstance(details.parsed_data, dict):
+            exp_data = details.parsed_data.get("experience", [])
+            if isinstance(exp_data, list):
+                experience_data = exp_data
+
+        # Get projects data
+        projects_data = []
+        if details and isinstance(details.parsed_data, dict):
+            proj_data = details.parsed_data.get("projects", [])
+            if isinstance(proj_data, list):
+                projects_data = proj_data
+
+        # Keep the original backend format that frontend maps from
+        resume = {
             "id": str(m.id),
             "file_id": m.file_id,
             "filename": m.filename,
             "candidate_name": m.candidate_name,
             "candidate_email": m.candidate_email,
-            "key_skills": m.key_skills,
+            "key_skills": comprehensive_skills,
             "created_at": m.created_at.isoformat(),
             "ai_overall_score": ai_overall,
             "ai_scoring": ai_scoring,
@@ -250,12 +345,17 @@ async def list_resumes(current_user: User = Depends(get_current_user)) -> Any:
             "phone": phone,
             "title": title,
             "summary": summary,
-            "education": education,
+            "education": formatted_education,
+            "experience": experience_data,
+            "projects": projects_data,
             "file_size": file_size,
             "mime_type": mime_type,
-            "source": "Google Drive",
-        })
+            "total_experience_years": experience_years,
+            "source": "upload",
+        }
+        results.append(resume)
 
+    # Return wrapped response as expected by frontend
     return {
         "result": "success",
         "message": "Resumes retrieved successfully",

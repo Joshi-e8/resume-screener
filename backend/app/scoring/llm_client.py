@@ -30,6 +30,13 @@ except Exception:  # pragma: no cover
 
 _cache = TTLCache(maxsize=1024, ttl=300)
 
+def clear_scoring_cache():
+    """Clear the scoring cache to ensure fresh results"""
+    global _cache
+    _cache.clear()
+    from loguru import logger
+    logger.info("[scoring] Cache cleared for fresh scoring results")
+
 # Runtime gating if provider repeatedly fails
 _LLM_DISABLED = False
 _LAST_ERROR: str | None = None
@@ -224,10 +231,19 @@ class LLMClient:
             raise ValidationFailed(f"Validation failed after repair: {_mask_pii(str(e))}; original: {_mask_pii(str(original_err))}")
 
     def score(self, resume: Dict[str, Any], job: Dict[str, Any], weights: Dict[str, float], context_chunks: list[Dict[str, Any]] | None = None) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        # Include more candidate-specific data in cache key to avoid identical scores
+        resume_skills = resume.get("skills", [])[:5]  # First 5 skills for uniqueness
+        resume_experience = resume.get("experience", [])
+        exp_titles = [exp.get("title", "") for exp in resume_experience[:2]] if isinstance(resume_experience, list) else []
+
         payload = {
             "provider": self.cfg.provider,
             "model": self.cfg.model,
-            "resume": {"name": resume.get("name", "")},  # PII-safe subset for cache key hashing
+            "resume": {
+                "name": resume.get("name", ""),
+                "skills_sample": resume_skills,  # Include skills for uniqueness
+                "exp_titles": exp_titles  # Include experience titles
+            },
             "job": {"title": job.get("title", "")},
             "weights": weights,
             "chunks_hash": len(context_chunks or []),  # keep cache key simple; avoid PII
