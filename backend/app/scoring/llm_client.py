@@ -65,27 +65,45 @@ def _cache_key(payload: Dict[str, Any]) -> str:
 
 
 def _write_scoring_log(kind: str, data: Any) -> None:
-    """Append a line to backend/logs/scoring.log and mirror to ai_analysis_<date>.log. Best-effort; never raise."""
+    """Append JSON formatted logs to backend/logs/scoring.log and mirror to ai_analysis_<date>.log. Best-effort; never raise."""
     try:
         base_dir = Path(__file__).resolve().parents[2]  # backend/
         log_dir = base_dir / "logs"
         log_dir.mkdir(parents=True, exist_ok=True)
-        ts = datetime.now(timezone.utc).isoformat()
-        line = f"{ts} [{kind}] "
+
+        # Create JSON log entry
+        log_entry = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "level": "INFO",
+            "event_type": "ai_scoring_log",
+            "log_kind": kind.lower(),
+        }
+
+        # Add the data to the log entry
+        if isinstance(data, dict):
+            log_entry.update(data)
+        elif isinstance(data, str):
+            log_entry["message"] = data
+        else:
+            log_entry["data"] = data
+
+        # Convert to JSON string
         try:
-            if isinstance(data, str):
-                line += data
-            else:
-                line += json.dumps(data, ensure_ascii=False)
+            json_line = json.dumps(log_entry, ensure_ascii=False, default=str)
         except Exception:
-            line += str(data)
-        # scoring.log
+            # Fallback if JSON serialization fails
+            log_entry["data"] = str(data)
+            json_line = json.dumps(log_entry, ensure_ascii=False, default=str)
+
+        # Write to scoring.log
         with (log_dir / "scoring.log").open("a", encoding="utf-8") as f:
-            f.write(line + "\n")
-        # mirror to ai_analysis_<date>.log
+            f.write(json_line + "\n")
+
+        # Mirror to ai_analysis_<date>.log
         today = datetime.now(timezone.utc).date().isoformat()
         with (log_dir / f"ai_analysis_{today}.log").open("a", encoding="utf-8") as f2:
-            f2.write(line + "\n")
+            f2.write(json_line + "\n")
+
     except Exception:
         # swallow any file I/O errors silently
         pass
@@ -220,7 +238,15 @@ class LLMClient:
         if key in _cache:
             result = _cache[key]
             obs = self._obs(start, cache_hit=True)
-            logger.info("[scoring] cache_hit=true provider={} model={} duration_ms={}", obs["provider"], obs["model"], obs["duration_ms"])  # no PII
+
+            from app.core.json_logging import log_ai_scoring
+            log_ai_scoring(
+                event="cache_hit",
+                provider=obs["provider"],
+                model=obs["model"],
+                processing_time_ms=obs["duration_ms"],
+                cache_hit=True
+            )
             return result, obs
 
         messages = build_messages(resume, job, weights, context_chunks=context_chunks)
@@ -240,7 +266,14 @@ class LLMClient:
                     if isinstance(c, str):
                         c = _mask_pii(c)
                     safe_messages.append({"role": m.get("role"), "content": (c[:trunc] if isinstance(c, str) else c)})
-                logger.info("[scoring] prompt messages={}…", safe_messages)
+
+                logger.info("AI scoring prompt generated",
+                           event_type="ai_scoring",
+                           event="prompt_generated",
+                           provider=self.cfg.provider,
+                           model=self.cfg.model,
+                           message_count=len(safe_messages),
+                           total_chars=sum(len(str(m.get("content", ""))) for m in safe_messages))
                 _write_scoring_log("PROMPT", {"provider": self.cfg.provider, "model": self.cfg.model, "messages": safe_messages})
         except Exception:
             pass
@@ -256,7 +289,14 @@ class LLMClient:
                 except Exception:
                     trunc = 2000
                 masked = _mask_pii((raw or "")[:trunc])
-                logger.info("[scoring] raw_response={}…", masked)
+
+                logger.info("AI scoring response received",
+                           event_type="ai_scoring",
+                           event="response_received",
+                           provider=self.cfg.provider,
+                           model=self.cfg.model,
+                           response_length=len(raw) if raw else 0,
+                           response_preview=masked)
                 _write_scoring_log("RESPONSE", {"provider": self.cfg.provider, "model": self.cfg.model, "raw": masked})
         except Exception:
             pass
@@ -264,6 +304,16 @@ class LLMClient:
         data = self._validate_or_repair(raw)
         _cache[key] = data
         obs = self._obs(start, cache_hit=False)
-        logger.info("[scoring] cache_hit=false provider={} model={} duration_ms={}", obs["provider"], obs["model"], obs["duration_ms"])  # no PII
+
+        from app.core.json_logging import log_ai_scoring
+        log_ai_scoring(
+            event="scoring_completed",
+            provider=obs["provider"],
+            model=obs["model"],
+            processing_time_ms=obs["duration_ms"],
+            cache_hit=False,
+            overall_score=data.get("overall_score"),
+            breakdown=data.get("breakdown")
+        )
         return data, obs
 

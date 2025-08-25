@@ -211,16 +211,33 @@ def normalize_resume(parsed: Dict[str, Any]) -> Dict[str, Any]:
 def normalize_job(job: Dict[str, Any]) -> Dict[str, Any]:
     title = _get(job, ["title", "role", "position"], "")
 
-    must_have = _get(job, ["must_have_skills", "must_have", "required_skills"], []) or []
+    # Map Job model fields to scoring format
+    # Job.skills -> must_have_skills (primary skills requirement)
+    must_have = _get(job, ["must_have_skills", "must_have", "required_skills", "skills"], []) or []
     if isinstance(must_have, str):
         must_have = [must_have]
 
-    nice = _get(job, ["nice_to_have", "nice_to_have_skills", "preferred_skills"], []) or []
+    # Job.requirements can contain additional skills or be used as nice_to_have
+    nice = _get(job, ["nice_to_have", "nice_to_have_skills", "preferred_skills", "requirements"], []) or []
     if isinstance(nice, str):
         nice = [nice]
 
+    # Extract minimum years from experience_level or other fields
     min_years = _get(job, ["min_years", "min_experience", "minimum_years"], 0) or 0
-    domain = _get(job, ["domain", "industry"], None)
+
+    # Try to extract years from experience_level enum if min_years not set
+    if min_years == 0:
+        exp_level = _get(job, ["experience_level"], "")
+        if exp_level == "ENTRY":
+            min_years = 0
+        elif exp_level == "MID":
+            min_years = 2
+        elif exp_level == "SENIOR":
+            min_years = 5
+        elif exp_level == "LEAD":
+            min_years = 8
+
+    domain = _get(job, ["domain", "industry", "department"], None)
 
     edu_req = _get(job, ["education_requirements", "education"], []) or []
     if isinstance(edu_req, str):

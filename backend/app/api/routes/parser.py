@@ -31,15 +31,18 @@ async def parser_health() -> Dict[str, Any]:
 async def parse_one(file: UploadFile = File(...), enable_ocr: bool | None = Form(None), enable_ner: bool | None = Form(None), domain_pack: str | None = Form(None)) -> Dict[str, Any]:
     try:
         content = await file.read()
-        # write to temp file-like for orchestrator which expects path; reuse existing ResumeParser memory extract? keep simple: save to temp
+        # Use ResumeParser instead of ParserOrchestrator to get Universal LLM Parser
         import tempfile, os
+        from app.services.resume_parser import ResumeParser
+
         suffix = "." + (file.filename.split(".")[-1] if "." in file.filename else "bin")
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
             tmp.write(content)
             tmp_path = tmp.name
         try:
-            orch = ParserOrchestrator()
-            result = await orch.parse(tmp_path, filename=file.filename, size=len(content))
+            # Use ResumeParser which includes Universal LLM Parser integration
+            parser = ResumeParser()
+            result = await parser.parse_resume(tmp_path)
             return result
         finally:
             try:
@@ -74,7 +77,8 @@ class BatchItem(BaseException):
 @router.post("/parse-batch")
 async def parse_batch(files: List[UploadFile] = File(...)) -> Dict[str, Any]:
     results: List[Dict[str, Any]] = []
-    orch = ParserOrchestrator()
+    from app.services.resume_parser import ResumeParser
+    parser = ResumeParser()
     import tempfile, os
     for f in files:
         try:
@@ -84,7 +88,8 @@ async def parse_batch(files: List[UploadFile] = File(...)) -> Dict[str, Any]:
                 tmp.write(content)
                 tmp_path = tmp.name
             try:
-                res = await orch.parse(tmp_path, filename=f.filename, size=len(content))
+                # Use ResumeParser which includes Universal LLM Parser integration
+                res = await parser.parse_resume(tmp_path)
                 results.append(res)
             finally:
                 try:

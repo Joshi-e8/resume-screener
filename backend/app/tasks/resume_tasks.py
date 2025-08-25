@@ -298,6 +298,16 @@ def process_direct_resume_file(self, resume_id: str, tmp_file_path: str, filenam
         except Exception:
             pass
 
+        # Log completion
+        from app.core.json_logging import log_resume_processing
+        log_resume_processing(
+            event="processing_completed",
+            filename=filename,
+            resume_id=str(meta.id) if meta else resume_id,
+            job_id=job_id,
+            status="completed"
+        )
+
         return {
             'resume_id': str(meta.id) if meta else resume_id,
             'filename': filename,

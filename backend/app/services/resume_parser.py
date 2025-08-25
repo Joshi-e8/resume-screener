@@ -128,6 +128,30 @@ class ResumeParser:
         if file_extension not in self.supported_formats:
             raise ValueError(f"Unsupported file format: {file_extension}")
 
+        # Try universal LLM parser first if enabled (highest priority)
+        use_universal_llm = False
+        try:
+            from app.core.config import settings
+            setting_value = getattr(settings, "PARSER_USE_UNIVERSAL_LLM", False)
+            if isinstance(setting_value, bool):
+                use_universal_llm = setting_value
+            else:
+                use_universal_llm = bool(int(str(setting_value or "0")))
+        except Exception:
+            use_universal_llm = False
+
+        if use_universal_llm:
+            try:
+                from app.services.llm_resume_parser import LLMResumeParser
+                llm_parser = LLMResumeParser()
+                result = await llm_parser.parse_resume_from_memory(file_content, filename, file_extension)
+                print(f"✅ Universal LLM parser completed for {filename} (memory)")
+                return result
+            except Exception as e:
+                print(f"❌ Universal LLM parser failed for {filename}, falling back to fast mode: {e}")
+                import traceback
+                traceback.print_exc()
+
         # Extract text based on file type directly from memory
         if file_extension == ".pdf":
             text = await self._extract_pdf_text_from_memory(file_content)
@@ -239,11 +263,39 @@ class ResumeParser:
         if file_extension not in self.supported_formats:
             raise ValueError(f"Unsupported file format: {file_extension}")
 
+        # Try universal LLM parser first if enabled (highest priority)
+        use_universal_llm = False
+        try:
+            from app.core.config import settings
+            setting_value = getattr(settings, "PARSER_USE_UNIVERSAL_LLM", False)
+            if isinstance(setting_value, bool):
+                use_universal_llm = setting_value
+            else:
+                use_universal_llm = bool(int(str(setting_value or "0")))
+        except Exception:
+            use_universal_llm = False
+
+        if use_universal_llm:
+            try:
+                from app.services.llm_resume_parser import LLMResumeParser
+                llm_parser = LLMResumeParser()
+                result = await llm_parser.parse_resume(file_path)
+                print(f"✅ Universal LLM parser completed for {file_path}")
+                return result
+            except Exception as e:
+                print(f"❌ Universal LLM parser failed, falling back to orchestrator: {e}")
+                import traceback
+                traceback.print_exc()
+
         # Try new orchestrator behind feature flag; gracefully fall back to legacy
         use_orch = True
         try:
             from app.core.config import settings
-            use_orch = bool(int(str(getattr(settings, "PARSER_USE_ORCHESTRATOR", 1) or "1")))
+            setting_value = getattr(settings, "PARSER_USE_ORCHESTRATOR", True)
+            if isinstance(setting_value, bool):
+                use_orch = setting_value
+            else:
+                use_orch = bool(int(str(setting_value or "1")))
         except Exception:
             use_orch = True
         if use_orch:

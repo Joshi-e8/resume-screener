@@ -48,14 +48,30 @@ class Settings(BaseSettings):
     OPENAI_MODEL: str = "gpt-4"
     GROQ_MODEL: str = "llama-3.1-70b-versatile"
     ENABLE_SCORING: bool = True
+
+    # Parser Configuration
+    PARSER_USE_ORCHESTRATOR: bool = True
+    PARSER_USE_UNIVERSAL_LLM: bool = False
+    PARSER_FORCE_LLM: bool = False
+    PARSER_ENABLE_OCR: bool = True
+    PARSER_ENABLE_NER: bool = True
+    PARSER_MAX_OCR_PAGES: int = 2
+    PARSER_LOW_TEXT_THRESHOLD: float = 0.02
+    PARSER_MIN_SKILL_CONF: float = 0.6
+    PARSER_LLM_FAST_MODE: bool = True  # Use fast mode for better performance
+    LOG_AI_RESPONSES: bool = True  # Log AI responses to terminal for debugging
     SCORING_TEMPERATURE: float = 0.2
     SCORING_MAX_TOKENS: int = 1200
     CACHE_TTL_SECONDS: int = 300
 
     # Scoring Prompt/Response Logging
-    LOG_SCORING_PROMPTS: bool = False
-    LOG_SCORING_RESPONSES: bool = False
+    LOG_SCORING_PROMPTS: bool = True  # Enable for JSON logging
+    LOG_SCORING_RESPONSES: bool = True  # Enable for JSON logging
     LOG_SCORING_TRUNCATE_CHARS: int = 2000
+
+    # JSON Logging Configuration
+    ENABLE_JSON_LOGGING: bool = True
+    JSON_LOG_LEVEL: str = "INFO"
 
 
     # Vector DB (Qdrant) Configuration
