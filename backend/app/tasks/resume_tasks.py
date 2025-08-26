@@ -51,6 +51,7 @@ def process_direct_resume_file(self, resume_id: str, tmp_file_path: str, filenam
     """
     Process a single directly uploaded resume file (tmp path) in background.
     Updates ResumeMetadata and creates ResumeDetails. Also performs scoring and vector indexing.
+    Sends real-time progress updates via SSE.
     """
     try:
         self.update_state(state='PROGRESS', meta={'current': 0, 'total': 1, 'status': 'Starting...'})
@@ -64,6 +65,35 @@ def process_direct_resume_file(self, resume_id: str, tmp_file_path: str, filenam
             loop.run_until_complete(init_database())
         except Exception:
             pass
+
+        # Send initial SSE progress update via HTTP API
+        if user_id:
+            try:
+                import requests
+                import time
+                # Small delay to ensure frontend SSE connection is established
+                time.sleep(1)
+                logger.info(f"📡 SSE: Sending initial progress for user {user_id}")
+                response = requests.post(
+                    "http://localhost:8000/api/v1/sse/progress/update",
+                    json={
+                        "user_id": user_id,
+                        "progress_data": {
+                            'completed': 0,
+                            'total': 1,
+                            'status': 'processing',
+                            'message': 'Starting resume processing...',
+                            'filename': filename
+                        }
+                    },
+                    timeout=5
+                )
+                if response.status_code == 200:
+                    logger.info(f"✅ SSE: Initial progress sent successfully")
+                else:
+                    logger.warning(f"⚠️ SSE: Failed to send initial progress: {response.status_code}")
+            except Exception as e:
+                logger.error(f"❌ SSE: Failed to send initial progress: {e}")
 
         parser = ResumeParser()
 
@@ -85,6 +115,28 @@ def process_direct_resume_file(self, resume_id: str, tmp_file_path: str, filenam
 
         # Parse resume with timeout for robustness
         self.update_state(state='PROGRESS', meta={'current': 0, 'total': 1, 'status': 'Parsing resume...'})
+
+        # Send SSE progress update for parsing stage
+        if user_id:
+            try:
+                import requests
+                requests.post(
+                    "http://localhost:8000/api/v1/sse/progress/update",
+                    json={
+                        "user_id": user_id,
+                        "progress_data": {
+                            'completed': 0,
+                            'total': 1,
+                            'status': 'processing',
+                            'message': 'Parsing resume content...',
+                            'filename': filename
+                        }
+                    },
+                    timeout=5
+                )
+            except Exception as e:
+                logger.error(f"❌ SSE: Failed to send parsing progress: {e}")
+
         try:
             parsed_data = loop.run_until_complete(asyncio.wait_for(parser.parse_resume(tmp_file_path), timeout=25.0))
         except Exception as pe:
@@ -101,6 +153,27 @@ def process_direct_resume_file(self, resume_id: str, tmp_file_path: str, filenam
         # Optional scoring
         analysis_results = None
         if job_id:
+            # Send SSE progress update for scoring stage
+            if user_id:
+                try:
+                    import requests
+                    requests.post(
+                        "http://localhost:8000/api/v1/sse/progress/update",
+                        json={
+                            "user_id": user_id,
+                            "progress_data": {
+                                'completed': 0,
+                                'total': 1,
+                                'status': 'processing',
+                                'message': 'Analyzing resume against job requirements...',
+                                'filename': filename
+                            }
+                        },
+                        timeout=5
+                    )
+                except Exception as e:
+                    logger.error(f"❌ SSE: Failed to send scoring progress: {e}")
+
             try:
                 job = loop.run_until_complete(Job.get(job_id))
                 if job:
@@ -270,6 +343,27 @@ def process_direct_resume_file(self, resume_id: str, tmp_file_path: str, filenam
             logger.warning(f"[celery] Failed to persist details: {db2_e}")
 
         # Vector indexing
+        # Send SSE progress update for vector indexing stage
+        if user_id:
+            try:
+                import requests
+                requests.post(
+                    "http://localhost:8000/api/v1/sse/progress/update",
+                    json={
+                        "user_id": user_id,
+                        "progress_data": {
+                            'completed': 0,
+                            'total': 1,
+                            'status': 'processing',
+                            'message': 'Creating searchable index...',
+                            'filename': filename
+                        }
+                    },
+                    timeout=5
+                )
+            except Exception as e:
+                logger.error(f"❌ SSE: Failed to send indexing progress: {e}")
+
         try:
             from app.vector.store import upsert_resume_chunks, Chunk, get_mode
             chunks: list[Chunk] = []
@@ -324,6 +418,33 @@ def process_direct_resume_file(self, resume_id: str, tmp_file_path: str, filenam
             status="completed"
         )
 
+        # Send final SSE completion update
+        if user_id:
+            try:
+                import requests
+                response = requests.post(
+                    "http://localhost:8000/api/v1/sse/progress/update",
+                    json={
+                        "user_id": user_id,
+                        "progress_data": {
+                            'completed': 1,
+                            'total': 1,
+                            'status': 'completed',
+                            'message': 'Resume processing completed successfully!',
+                            'filename': filename,
+                            'resume_id': str(meta.id) if meta else resume_id,
+                            'success': True
+                        }
+                    },
+                    timeout=5
+                )
+                if response.status_code == 200:
+                    logger.info(f"✅ SSE: Sent completion update for user {user_id}")
+                else:
+                    logger.warning(f"⚠️ SSE: Failed to send completion update: {response.status_code}")
+            except Exception as e:
+                logger.error(f"❌ SSE: Failed to send completion update: {e}")
+
         return {
             'resume_id': str(meta.id) if meta else resume_id,
             'filename': filename,
@@ -352,6 +473,32 @@ def process_direct_resume_file(self, resume_id: str, tmp_file_path: str, filenam
                 os.unlink(tmp_file_path)
         except Exception:
             pass
+
+        # Send SSE error update
+        if user_id:
+            try:
+                import requests
+                requests.post(
+                    "http://localhost:8000/api/v1/sse/progress/update",
+                    json={
+                        "user_id": user_id,
+                        "progress_data": {
+                            'completed': 0,
+                            'total': 1,
+                            'status': 'error',
+                            'message': f'Resume processing failed: {str(e)}',
+                            'filename': filename,
+                            'resume_id': resume_id,
+                            'success': False,
+                            'error': str(e)
+                        }
+                    },
+                    timeout=5
+                )
+                logger.info(f"✅ SSE: Sent error update for user {user_id}")
+            except Exception as sse_e:
+                logger.error(f"❌ SSE: Failed to send error update: {sse_e}")
+
         # Log full traceback to identify root cause precisely
         logger.exception("[celery] Direct resume processing failed")
         return {'resume_id': resume_id, 'filename': filename, 'success': False, 'error_message': str(e)}

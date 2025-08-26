@@ -93,6 +93,7 @@ async def upload_resume(
                 "job_id": job_id,
                 "task_id": task.id,
                 "status": "processing",
+                "user_id": str(current_user.id),
             }
         else:
             # Fallback: synchronous processing (existing behavior)

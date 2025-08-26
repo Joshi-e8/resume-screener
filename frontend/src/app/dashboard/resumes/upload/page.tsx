@@ -21,17 +21,9 @@ export default function ResumeUploadPage() {
       message: `${files.length} file(s) have been uploaded and are being processed.`
     });
 
-    // Simulate processing progress
-    setUploadProgress(0);
-    const interval = setInterval(() => {
-      setUploadProgress(prev => {
-        if (prev >= 100) {
-          clearInterval(interval);
-          return 100;
-        }
-        return prev + 10;
-      });
-    }, 500);
+    // Set progress to 100% since files are uploaded and processing is complete
+    // (The real-time progress is handled by SSE in the ResumeUpload component)
+    setUploadProgress(100);
   };
 
   // Keyboard shortcuts
@@ -176,7 +168,7 @@ export default function ResumeUploadPage() {
             </h3>
             <LinearProgress
               value={uploadProgress}
-              label="Processing"
+              label={uploadProgress === 100 ? "Complete" : "Processing"}
               className="w-48"
               size="sm"
             />

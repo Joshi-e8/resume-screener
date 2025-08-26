@@ -41,6 +41,7 @@ import {
   ProgressUpdate,
 } from "@/lib/services/googleDriveServices";
 import { websocketService } from "@/lib/services/websocketService";
+import { sseService } from "@/lib/services/sseService";
 import GoogleDriveService from "@/lib/services/googleDriveServices";
 import useResumeServices from "@/lib/services/resumeServices";
 import useJobServices from "@/lib/services/jobServices";
@@ -372,14 +373,147 @@ function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
   const simulateUpload = async (file: File, jobId?: string): Promise<void> => {
     return new Promise(async (resolve, reject) => {
       try {
-        await uploadSingleResume(file, selectedJobId || jobId, (e) => {
+        let sseConnected = false;
+        let processingCompleted = false;
+
+        // Initialize progress at 0%
+        const initialProgress = { ...uploadProgress };
+        initialProgress[file.name] = 0;
+        dispatch(setUploadProgress(initialProgress));
+
+        // Start the upload first to get the user_id for SSE connection
+        const uploadResponse = await uploadSingleResume(file, selectedJobId || jobId, (e: any) => {
+          // This is just the file upload progress, not processing progress
           const total = e.total || file.size || 1;
           const loaded = e.loaded || 0;
-          const progress = Math.min(100, Math.round((loaded / total) * 100));
-          dispatch(setUploadProgress({ ...uploadProgress, [file.name]: progress }));
+          const fileUploadProgress = Math.min(100, Math.round((loaded / total) * 100));
+
+          // Show upload progress up to 15% to leave room for processing progress
+          const displayProgress = Math.min(15, Math.round((fileUploadProgress / 100) * 15));
+          const currentProgress = { ...uploadProgress };
+          currentProgress[file.name] = displayProgress;
+          dispatch(setUploadProgress(currentProgress));
         });
-        resolve();
+
+        // If we got a user_id from the response, setup SSE for processing updates
+        if (uploadResponse?.user_id) {
+          // Show that upload is complete and processing will start
+          const currentProgress = { ...uploadProgress };
+          currentProgress[file.name] = 15; // Upload complete, processing starting
+          dispatch(setUploadProgress(currentProgress));
+
+          try {
+            await sseService.connect(uploadResponse.user_id);
+            sseConnected = true;
+
+            // Show that we're connected and waiting for processing updates
+            const connectedProgress = { ...uploadProgress };
+            connectedProgress[file.name] = 18; // Connected, waiting for first update
+            dispatch(setUploadProgress(connectedProgress));
+
+            // Setup progress callback for SSE updates
+            const progressCallback = (progress: ProgressUpdate & { message?: string; filename?: string; error?: string }) => {
+              console.log('📡 Received SSE progress update for single file:', progress);
+
+              // Update progress based on SSE data and processing stage
+              if (progress.status === 'processing') {
+                let displayProgress = 20; // Default starting progress after upload
+
+                // Map different processing stages to progress ranges (20% to 95%)
+                const message = progress.message || '';
+                if (message.includes('Starting')) {
+                  displayProgress = 20; // Starting processing
+                } else if (message.includes('Parsing')) {
+                  displayProgress = 35; // Parsing content
+                } else if (message.includes('Analyzing') || message.includes('requirements')) {
+                  displayProgress = 60; // AI analysis
+                } else if (message.includes('Creating') || message.includes('index')) {
+                  displayProgress = 80; // Vector indexing
+                } else {
+                  // Generic processing progress - ensure it's at least 20%
+                  displayProgress = Math.max(20, 20 + (progress.completed / progress.total * 75)); // 20% to 95%
+                }
+
+                console.log(`🔄 Processing stage: "${message}" → ${displayProgress}%`);
+
+                const currentProgress = { ...uploadProgress };
+                currentProgress[file.name] = Math.min(95, displayProgress); // Cap at 95% until completion
+                dispatch(setUploadProgress(currentProgress));
+
+              } else if (progress.status === 'completed') {
+                // Mark as 100% complete
+                const currentProgress = { ...uploadProgress };
+                currentProgress[file.name] = 100;
+                dispatch(setUploadProgress(currentProgress));
+                console.log('🎉 Single file processing completed via SSE');
+
+                // Clear progress after a brief moment to show completion
+                setTimeout(() => {
+                  dispatch(setUploadProgress({}));
+                }, 1000);
+
+                processingCompleted = true;
+                // Cleanup SSE connection
+                sseService.disconnect();
+                resolve();
+              } else if (progress.status === 'error') {
+                console.error('❌ Single file processing failed via SSE:', progress.message || progress.error);
+                dispatch(setErrors([progress.message || progress.error || 'Processing failed']));
+                processingCompleted = true;
+                // Cleanup SSE connection
+                sseService.disconnect();
+                reject(new Error(progress.message || progress.error || 'Processing failed'));
+              }
+            };
+
+            sseService.onProgress(progressCallback);
+
+            // Wait for processing to complete via SSE
+            // If no SSE update comes within 90 seconds, resolve anyway (resume processing can take time)
+            setTimeout(() => {
+              if (!processingCompleted) {
+                console.warn('⚠️ SSE processing timeout, resolving anyway');
+                const currentProgress = { ...uploadProgress };
+                currentProgress[file.name] = 100;
+                dispatch(setUploadProgress(currentProgress));
+                // Cleanup SSE connection on timeout
+                sseService.disconnect();
+                resolve();
+              }
+            }, 90000);
+
+          } catch (sseError) {
+            console.warn('⚠️ SSE connection failed, upload completed but no real-time processing updates:', sseError);
+            // Still resolve since upload was successful
+            const currentProgress = { ...uploadProgress };
+            currentProgress[file.name] = 100;
+            dispatch(setUploadProgress(currentProgress));
+            resolve();
+          }
+        } else {
+          // No user_id in response, simulate basic progress without SSE
+          console.warn('⚠️ No user_id in upload response, cannot setup SSE - showing basic progress');
+
+          // Simulate basic processing stages without real-time updates
+          const stages = [
+            { progress: 20, delay: 1000, message: 'Processing...' },
+            { progress: 40, delay: 2000, message: 'Analyzing...' },
+            { progress: 70, delay: 2000, message: 'Finalizing...' },
+            { progress: 100, delay: 1000, message: 'Complete!' }
+          ];
+
+          for (const stage of stages) {
+            await new Promise(resolve => setTimeout(resolve, stage.delay));
+            const currentProgress = { ...uploadProgress };
+            currentProgress[file.name] = stage.progress;
+            dispatch(setUploadProgress(currentProgress));
+          }
+
+          resolve();
+        }
+
       } catch (err) {
+        console.error('❌ Upload failed:', err);
         reject(err);
       }
     });
@@ -409,9 +543,11 @@ function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
 
       dispatch(setUploadSuccess(true));
 
+      // Clear progress immediately after completion to avoid showing fake progress
+      dispatch(setUploadProgress({}));
+
       setTimeout(() => {
         dispatch(setSelectedFiles([]));
-        dispatch(setUploadProgress({}));
         dispatch(setUploadSuccess(false));
         dispatch(setZipContents([]));
       }, 2000);
