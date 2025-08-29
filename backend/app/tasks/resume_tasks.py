@@ -667,6 +667,177 @@ def process_resume_task(self, file_id: str, access_token: str, credentials_dict:
         }
 
 
+@celery_app.task(bind=True)
+def process_direct_resume_files_batch(self, items: List[Dict[str, Any]], user_id: str, job_id: str | None = None):
+    """
+    Process multiple directly uploaded files (tmp on disk) as a single batch.
+    Sends SSE progress updates for the provided user_id.
+    Each item must include: resume_id, tmp_file_path, filename, file_size, mime_type
+    """
+    total = len(items)
+    completed = 0
+
+    # Helper to send SSE progress via HTTP call (reuses existing endpoint)
+    def sse(progress: Dict[str, Any]):
+        if not user_id:
+            return
+        try:
+            import requests
+            requests.post(
+                "http://localhost:8000/api/v1/sse/progress/update",
+                json={
+                    "user_id": user_id,
+                    "progress_data": progress,
+                },
+                timeout=5,
+            )
+        except Exception as e:
+            logger.warning(f"[batch] SSE send failed: {e}")
+
+    # Initial notice
+    sse({
+        'completed': 0,
+        'total': total,
+        'status': 'processing',
+        'message': f'Starting batch processing ({total} files)…'
+    })
+
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        loop.run_until_complete(init_database())
+    except Exception:
+        pass
+
+    parser = ResumeParser()
+
+    # Preload job once
+    job_payload = None
+    if job_id:
+        try:
+            job = loop.run_until_complete(Job.get(job_id))
+            if job:
+                job_payload = job.model_dump()
+        except Exception:
+            pass
+
+    # Bounded concurrency via env var (default 2)
+    try:
+        concurrency = int(os.getenv("BATCH_CONCURRENCY", "2") or "2")
+    except Exception:
+        concurrency = 2
+    concurrency = max(1, min(6, concurrency))
+
+    results: List[Dict[str, Any]] = []
+    lock = asyncio.Lock()
+    sem = asyncio.Semaphore(concurrency)
+
+    async def process_one(idx: int, item: Dict[str, Any]):
+        nonlocal completed
+        resume_id = item.get('resume_id')
+        tmp_file_path = item.get('tmp_file_path')
+        filename = item.get('filename')
+        try:
+            sse({
+                'completed': completed,
+                'total': total,
+                'status': 'processing',
+                'message': f'Parsing {filename}…',
+                'filename': filename,
+                'current_index': idx,
+            })
+        except Exception:
+            pass
+        async with sem:
+            try:
+                parsed_data = await parser.parse_resume(tmp_file_path)
+                scoring_obj = None
+                overall = None
+                if job_payload:
+                    try:
+                        scoring_obj = await loop.run_in_executor(None, lambda: score_resume_against_job(parsed_data, job_payload, None))
+                        overall = scoring_obj.get("overall_score") or (scoring_obj.get("derived") or {}).get("server_check_overall")
+                    except Exception as se:
+                        logger.warning(f"[batch] scoring failed for {filename}: {se}")
+                try:
+                    meta = await ResumeMetadata.get(resume_id)
+                    if meta:
+                        meta.candidate_name = (parsed_data or {}).get('contact_info', {}).get('name')
+                        meta.candidate_email = (parsed_data or {}).get('contact_info', {}).get('email')
+                        meta.key_skills = (parsed_data or {}).get('skills') or []
+                        meta.status = ProcessingStatus.COMPLETED
+                        meta.processing_completed_at = datetime.now(timezone.utc)
+                        await meta.save()
+                    ai_payload = {"ai_overall_score": overall, "ai_scoring": scoring_obj or {}}
+                    details = ResumeDetails(resume_id=str(resume_id), raw_text=None, parsed_data=parsed_data, analysis_results=ai_payload)
+                    await details.insert()
+                except Exception as me:
+                    logger.warning(f"[batch] metadata/details persist failed for {filename}: {me}")
+                try:
+                    from app.vector.store import upsert_resume_chunks, Chunk
+                    chunks: list[Chunk] = []
+                    def _chunkify(text: str, section: str, size: int = 1200, overlap: int = 200):
+                        if not text:
+                            return
+                        n = len(text)
+                        pos = 0
+                        while pos < n:
+                            end = min(n, pos + size)
+                            chunks.append(Chunk(text=text[pos:end], section=section, chunk_index=len(chunks)))
+                            if end == n:
+                                break
+                            pos = end - overlap
+                    summary = (parsed_data or {}).get('summary') or ''
+                    skills_text = ', '.join((parsed_data or {}).get('skills') or [])
+                    raw_text = (parsed_data or {}).get('raw_text') or ''
+                    _chunkify(summary, 'summary')
+                    _chunkify(skills_text, 'skills')
+                    _chunkify(raw_text, 'raw_text')
+                    try:
+                        await loop.run_in_executor(None, lambda: upsert_resume_chunks(str(resume_id), chunks, user_id=str(user_id or 'unknown')))
+                    except Exception as vex:
+                        logger.warning(f"[batch][vector] upsert failed for {filename}: {vex}")
+                except Exception as vex_all:
+                    logger.warning(f"[batch] vector indexing skipped: {vex_all}")
+                async with lock:
+                    completed += 1
+                    try:
+                        sse({'completed': completed, 'total': total, 'status': 'processing', 'message': f'Processed {completed}/{total} files...'})
+                    except Exception:
+                        pass
+                    results.append({'filename': filename, 'success': True})
+            except Exception as e:
+                logger.exception(f"[batch] failed for {filename}")
+                async with lock:
+                    results.append({'filename': filename, 'success': False, 'error': str(e)})
+            finally:
+                try:
+                    if tmp_file_path and os.path.exists(tmp_file_path):
+                        os.unlink(tmp_file_path)
+                except Exception:
+                    pass
+
+    tasks = [process_one(idx, item) for idx, item in enumerate(items, start=1)]
+    loop.run_until_complete(asyncio.gather(*tasks))
+
+
+    # Final SSE
+    sse({
+        'completed': total,
+        'total': total,
+        'status': 'completed',
+        'results': results,
+    })
+
+    return {
+        'status': 'completed',
+        'results': results,
+        'total': total,
+        'successful_files': len([r for r in results if r.get('success')]),
+        'failed_files': len([r for r in results if not r.get('success')]),
+    }
+
+
 @celery_app.task(bind=True, soft_time_limit=3300, time_limit=3600)
 def process_bulk_resumes_task(self, file_ids: List[str], access_token: str, credentials_dict: Dict[str, Any],
                              user_id: str = None, job_id: str = None):

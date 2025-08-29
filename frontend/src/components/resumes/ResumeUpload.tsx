@@ -368,7 +368,7 @@ function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
     dispatch(setSelectedFiles(selectedFiles.filter((_, i) => i !== index)));
   };
 
-  const { uploadSingleResume } = useResumeServices();
+  const { uploadSingleResume, uploadMultipleResumes } = useResumeServices();
 
   const simulateUpload = async (file: File, jobId?: string): Promise<void> => {
     return new Promise(async (resolve, reject) => {
@@ -520,6 +520,58 @@ function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
   };
 
   const handleUpload = async () => {
+    // If user selected Multiple mode, use the new batch endpoint and SSE
+    if (uploadMode === "multiple") {
+      if (selectedFiles.length === 0) return;
+      dispatch(setIsUploading(true));
+      dispatch(setUploadSuccess(false));
+      dispatch(setErrors([]));
+
+      try {
+        if (!selectedJobId) {
+          dispatch(setErrors(["Please select a position before uploading."]));
+          dispatch(setIsUploading(false));
+          return;
+        }
+
+        // Kick off batch upload (pass selected job for AI scoring)
+        const resp = await uploadMultipleResumes(selectedFiles, selectedJobId, true);
+
+        // Wire SSE if backend returned user_id
+        if (resp?.user_id) {
+          await sseService.connect(resp.user_id);
+          sseService.onProgress((progress) => {
+            // Map batch progress to per-file bars (approximate)
+            const { completed = 0, total = selectedFiles.length, filename, status } = progress || {} as any;
+            const percent = total > 0 ? Math.min(95, Math.round((completed / total) * 100)) : 10;
+            const current = { ...uploadProgress } as any;
+            if (filename && current[filename] !== undefined) {
+              current[filename] = percent;
+            } else {
+              // Update all files approximately
+              selectedFiles.forEach((f) => { current[f.name] = percent; });
+            }
+            dispatch(setUploadProgress(current));
+            if (status === 'completed') {
+              // Finish all bars
+              const done = { ...uploadProgress } as any;
+              selectedFiles.forEach((f) => { done[f.name] = 100; });
+              dispatch(setUploadProgress(done));
+              setTimeout(() => dispatch(setUploadProgress({})), 800);
+            }
+          });
+        }
+
+        // Notify parent callback
+        onFilesUploaded(selectedFiles);
+        dispatch(setUploadSuccess(true));
+      } catch (e) {
+        dispatch(setErrors(["Upload failed. Please try again."]));
+      } finally {
+        dispatch(setIsUploading(false));
+      }
+      return; // Do not run single-file path
+    }
     if (selectedFiles.length === 0) return;
 
     dispatch(setIsUploading(true));

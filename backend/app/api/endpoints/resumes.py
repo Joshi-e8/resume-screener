@@ -131,6 +131,104 @@ async def upload_resume(
         except Exception:
             pass
 
+
+@router.post("/upload/multiple")
+async def upload_multiple_resumes(
+    files: List[UploadFile] = File(...),
+    job_id: str = Form(None),
+    async_processing: bool = Form(True),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    """
+    Upload multiple resume files. For async_processing=True, enqueue a single Celery batch
+    task that processes all files at once and reports progress via SSE.
+    """
+    if not files:
+        raise HTTPException(status_code=400, detail="No files provided")
+
+    allowed_extensions = [".pdf", ".docx", ".doc", ".txt"]
+    max_size = 10 * 1024 * 1024  # 10MB per file
+
+    tmp_payloads = []
+    try:
+        # Create initial metadata entries and save temp files
+        for f in files:
+            ext = os.path.splitext(f.filename)[1].lower()
+            if ext not in allowed_extensions:
+                raise HTTPException(status_code=400, detail=f"Unsupported file type for {f.filename}")
+
+            content = await f.read()
+            if len(content) > max_size:
+                raise HTTPException(status_code=400, detail=f"File too large: {f.filename} (max 10MB)")
+
+            with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmpf:
+                tmpf.write(content)
+                tmp_path = tmpf.name
+
+            # Create metadata with PROCESSING status
+            file_id = uuid4().hex
+            meta = ResumeMetadata(
+                file_id=file_id,
+                filename=f.filename,
+                user_id=str(current_user.id),
+                file_size=len(content),
+                mime_type=getattr(f, "content_type", None),
+                status=ProcessingStatus.PROCESSING,
+                processing_mode=ProcessingMode.STANDARD,
+                job_id=job_id,
+                source="direct",
+            )
+            await meta.insert()
+
+            tmp_payloads.append({
+                "resume_id": str(meta.id),
+                "tmp_file_path": tmp_path,
+                "filename": f.filename,
+                "file_size": len(content),
+                "mime_type": getattr(f, "content_type", None),
+            })
+
+        if async_processing:
+            # Enqueue single batch task that processes all provided files at once
+            from app.tasks.resume_tasks import process_direct_resume_files_batch
+            task = process_direct_resume_files_batch.delay(tmp_payloads, str(current_user.id), job_id)
+            logger.info(f"[upload/multiple] Enqueued Celery batch task {task.id} for {len(tmp_payloads)} files")
+            return {
+                "message": "Batch accepted for background processing",
+                "status": "processing",
+                "async_processing": True,
+                "user_id": str(current_user.id),
+                "total": len(tmp_payloads),
+                "task_id": task.id,
+            }
+        else:
+            # Synchronous (not recommended for many files) — process sequentially using the same parser
+            from app.services.resume_parser import ResumeParser
+            parser = ResumeParser()
+            processed = 0
+            for p in tmp_payloads:
+                parsed = await parser.parse_resume(p["tmp_file_path"])
+                # Mark metadata completed
+                m = await ResumeMetadata.get(p["resume_id"])  # type: ignore
+                if m:
+                    m.status = ProcessingStatus.COMPLETED
+                    await m.save()
+                processed += 1
+            return {
+                "message": "Batch processed synchronously",
+                "status": "completed",
+                "async_processing": False,
+                "processed": processed,
+                "total": len(tmp_payloads),
+            }
+
+    except HTTPException:
+        # Propagate validation errors
+        raise
+    except Exception as e:
+        logger.exception("[upload/multiple] Failed")
+        raise HTTPException(status_code=500, detail=f"Failed to process batch: {str(e)}")
+
 @router.get("/job/{job_id}")
 async def list_resumes_by_job(job_id: str, current_user: User = Depends(get_current_user)) -> Any:
     """
@@ -158,8 +256,9 @@ async def list_resumes_by_job(job_id: str, current_user: User = Depends(get_curr
         mime_type = getattr(m, 'mime_type', None)
         if details:
             if isinstance(details.analysis_results, dict):
-                ai_overall = details.analysis_results.get("ai_overall_score")
-                ai_scoring = details.analysis_results.get("ai_scoring")
+                ar = details.analysis_results or {}
+                ai_overall = ar.get("ai_overall_score") or ar.get("overall_score") or (ar.get("derived") or {}).get("server_check_overall")
+                ai_scoring = ar.get("ai_scoring") or ar
             if isinstance(details.parsed_data, dict):
                 pd = details.parsed_data or {}
                 contact = pd.get("contact_info") or {}
@@ -222,8 +321,9 @@ async def list_resumes(current_user: User = Depends(get_current_user)) -> Any:
         mime_type = getattr(m, 'mime_type', None)
         if details:
             if isinstance(details.analysis_results, dict):
-                ai_overall = details.analysis_results.get("ai_overall_score")
-                ai_scoring = details.analysis_results.get("ai_scoring")
+                ar = details.analysis_results or {}
+                ai_overall = ar.get("ai_overall_score") or ar.get("overall_score") or (ar.get("derived") or {}).get("server_check_overall")
+                ai_scoring = ar.get("ai_scoring") or ar
             if isinstance(details.parsed_data, dict):
                 pd = details.parsed_data or {}
                 contact = pd.get("contact_info") or {}
