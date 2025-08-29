@@ -3,11 +3,18 @@ Server-Sent Events (SSE) endpoints for real-time progress updates
 """
 
 from fastapi import APIRouter, Request, HTTPException, status
+from pydantic import BaseModel
 from app.core.sse_manager import sse_manager
 from loguru import logger
-from typing import Any
+from typing import Any, Dict
 
 router = APIRouter()
+
+
+class ProgressUpdateRequest(BaseModel):
+    """Request model for sending progress updates"""
+    user_id: str
+    progress_data: Dict[str, Any]
 
 
 @router.get("/progress/stream/{user_id}")
@@ -124,10 +131,49 @@ async def get_connections_status() -> Any:
             "status": "healthy",
             "message": f"SSE manager is running with {connection_count} active connections"
         }
-        
+
     except Exception as e:
         logger.error(f"❌ Failed to get connections status: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to get connections status: {str(e)}"
+        )
+
+
+@router.post("/progress/update")
+async def send_progress_update(request: ProgressUpdateRequest) -> Any:
+    """
+    Send a progress update to SSE streams
+
+    This endpoint allows external processes (like Celery tasks) to send
+    progress updates to active SSE streams in the FastAPI server process.
+
+    Args:
+        request: Progress update request containing user_id and progress_data
+
+    Returns:
+        Success status and number of streams updated
+    """
+    try:
+        logger.info(f"📡 SSE API: Received progress update for user {request.user_id}")
+        logger.info(f"📊 SSE API: Progress data: {request.progress_data}")
+
+        # Send the progress update using the SSE manager
+        await sse_manager.update_progress(request.user_id, request.progress_data)
+
+        # Get the number of active streams for this user
+        stream_count = len(sse_manager.active_streams.get(request.user_id, []))
+
+        return {
+            "user_id": request.user_id,
+            "status": "success",
+            "message": f"Progress update sent to {stream_count} active streams",
+            "streams_updated": stream_count
+        }
+
+    except Exception as e:
+        logger.error(f"❌ Failed to send progress update: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to send progress update: {str(e)}"
         )

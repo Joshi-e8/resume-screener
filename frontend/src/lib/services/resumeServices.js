@@ -24,13 +24,14 @@ const useResumeServices = () => {
   };
 
   // Upload multiple resume files
-  const uploadMultipleResumes = async (files, jobId) => {
+  const uploadMultipleResumes = async (files, jobId, asyncProcessing = true) => {
     try {
       const formData = new FormData();
-      Array.from(files).forEach((file) => {
+      Array.from(files || []).forEach((file) => {
         formData.append('files', file);
       });
-      formData.append('job_id', jobId);
+      if (jobId) formData.append('job_id', jobId);
+      formData.append('async_processing', String(asyncProcessing));
 
       const response = await axios.post(CONSTANTS.RESUMES.UPLOAD.MULTIPLE, formData, {
         headers: { "Content-Type": "multipart/form-data" }
