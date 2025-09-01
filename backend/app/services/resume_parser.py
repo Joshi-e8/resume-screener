@@ -153,6 +153,27 @@ class ResumeParser:
                 traceback.print_exc()
 
         # Extract text based on file type directly from memory
+        # If NLP-first is enabled, use LLM parser from memory before falling back to fast path
+        try:
+            from app.core.config import settings as _settings
+            use_nlp_first_mem = getattr(_settings, "PARSER_USE_NLP_FIRST", True) or getattr(_settings, "PARSER_FORCE_LLM", False)
+        except Exception:
+            use_nlp_first_mem = True
+
+        if use_nlp_first_mem:
+            try:
+                from app.services.llm_resume_parser import LLMResumeParser
+                _llm = LLMResumeParser()
+                result = await _llm.parse_resume_from_memory(file_content, filename, file_extension)
+                # Ensure compatibility metadata
+                if isinstance(result, dict):
+                    result.setdefault("processing_mode", "nlp_first_memory")
+                return result
+            except Exception as e:
+                print(f"❌ NLP-first LLM (memory) failed for {filename}, falling back to ultra-fast: {e}")
+                import traceback as _tb
+                _tb.print_exc()
+
         if file_extension == ".pdf":
             text = await self._extract_pdf_text_from_memory(file_content)
         elif file_extension in [".docx", ".doc"]:

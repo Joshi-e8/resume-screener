@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useMemo, useEffect, useState } from "react";
+import { useCallback, useMemo, useEffect, useState, useRef } from "react";
+import { useSession } from "next-auth/react";
 import {
   Upload,
   FileText,
@@ -77,19 +78,31 @@ function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
   const [jobs, setJobs] = useState<any[]>([]);
   const [selectedJobId, setSelectedJobId] = useState<string>("");
   const { getAllJobs } = useJobServices();
+  const { status, data: session } = useSession();
+  const fetchedJobsRef = useRef(false);
   useEffect(() => {
-    let isMounted = true;
+    if (status !== "authenticated" || !session?.user?.accessToken) return;
+    if (fetchedJobsRef.current) return;
+
+    let cancelled = false;
     (async () => {
       try {
         const data = await getAllJobs({ page: 1, size: 100 });
-        if (isMounted) setJobs(data?.records || []);
+        const list = data?.records || [];
+        if (!cancelled) {
+          setJobs(list);
+          if (!selectedJobId && list.length > 0) {
+            setSelectedJobId(list[0].id);
+          }
+          fetchedJobsRef.current = true;
+        }
       } catch {}
     })();
+
     return () => {
-      isMounted = false;
+      cancelled = true;
     };
-    // intentionally run once on mount to avoid re-fetch loops
-  }, []);
+  }, [status, session?.user?.accessToken]);
 
 
   // Enhanced tab/window switching protection during processing
@@ -540,9 +553,9 @@ function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
         // Wire SSE if backend returned user_id
         if (resp?.user_id) {
           await sseService.connect(resp.user_id);
-          sseService.onProgress((progress) => {
+          sseService.onProgress((progress: ProgressUpdate & { filename?: string; message?: string; error?: string }) => {
             // Map batch progress to per-file bars (approximate)
-            const { completed = 0, total = selectedFiles.length, filename, status } = progress || {} as any;
+            const { completed = 0, total = selectedFiles.length, filename, status } = (progress || {}) as any;
             const percent = total > 0 ? Math.min(95, Math.round((completed / total) * 100)) : 10;
             const current = { ...uploadProgress } as any;
             if (filename && current[filename] !== undefined) {
@@ -613,6 +626,10 @@ function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
   // Handle Google Drive file upload with smart processing
   const handleGoogleDriveUpload = async () => {
     if (selectedGoogleDriveFiles.length === 0) return;
+    if (!selectedJobId) {
+      dispatch(setErrors(["Please select a position before smart processing Google Drive files."]));
+      return;
+    }
 
     console.log('🚀 Starting Google Drive upload...');
     dispatch(setGoogleDriveUploading(true));
@@ -625,8 +642,8 @@ function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
       const fileIds = selectedGoogleDriveFiles.map(file => file.id);
       const batchSize = fileIds.length;
 
-      // Determine if we should use async processing
-      const useAsync = batchSize > 10;
+      // Always use async processing; backend forces async for Google Drive bulk
+      const useAsync = true;
       const currentUserId = `user_${Date.now()}`; // Generate a temporary user ID
       dispatch(setUserId(currentUserId)); // Store it in state for reconnections
 
@@ -639,14 +656,15 @@ function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
       }));
 
       if (useAsync) {
-        // Setup WebSocket connection for progress tracking
+        // Setup SSE connection for progress tracking (preferred)
         try {
-          await websocketService.connect(currentUserId);
+          await sseService.connect(currentUserId);
+          // We can reuse wsConnected flag to indicate a live progress channel
           dispatch(setWsConnected(true));
 
           // Setup progress callback
           const progressCallback = (progress: ProgressUpdate) => {
-            console.log('📡 Received WebSocket progress update:', progress);
+            console.log('📡 Received SSE progress update:', progress);
             console.log('📊 Current processing progress state:', processingProgress);
 
             // Validate progress data
@@ -662,38 +680,69 @@ function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
             if (progress.status === 'completed') {
               console.log('🎉 Processing completed, calling completion handler...');
               handleAsyncProcessingComplete(progress);
+              // Cleanup SSE after completion
+              sseService.disconnect();
+              dispatch(setWsConnected(false));
             }
           };
 
-          // Setup connection status callback
-          const connectionCallback = (connected: boolean) => {
-            console.log('🔗 WebSocket connection status changed:', connected);
-            dispatch(setWsConnected(connected));
-          };
+          sseService.onProgress(progressCallback);
 
-          websocketService.onProgress(progressCallback);
-          websocketService.onConnectionChange(connectionCallback);
+          // One-shot snapshot after connect to catch any missed final completion
+          try {
+            setTimeout(async () => {
+              try {
+                const snap = await sseService.checkProgress(currentUserId);
+                if (!snap) return;
+                dispatch(setProcessingProgress(snap));
+                if (snap.status === 'completed') {
+                  handleAsyncProcessingComplete(snap);
+                  sseService.disconnect();
+                  dispatch(setWsConnected(false));
+                }
+              } catch {}
+            }, 1500);
+          } catch {}
+
+          // WebSocket fallback: connect as backup channel to ensure completion is received
+          try {
+            await websocketService.connect(currentUserId);
+            websocketService.onProgress((wsProgress) => {
+              // Only act if we haven't already completed via SSE
+              if (wsProgress) {
+                dispatch(setProcessingProgress(wsProgress));
+                if (wsProgress.status === 'completed') {
+                  handleAsyncProcessingComplete(wsProgress);
+                  try { sseService.disconnect(); } catch {}
+                  try { websocketService.disconnect(); } catch {}
+                  dispatch(setWsConnected(false));
+                }
+              }
+            });
+          } catch (wsErr) {
+            console.warn('⚠️ WebSocket fallback failed:', wsErr);
+          }
 
           // Cleanup function
           const cleanup = () => {
-            websocketService.offProgress(progressCallback);
-            websocketService.offConnectionChange(connectionCallback);
-            websocketService.disconnect();
+            sseService.offProgress(progressCallback);
+            sseService.disconnect();
+            try { websocketService.disconnect(); } catch {}
             dispatch(setWsConnected(false));
           };
 
-          // Store cleanup function for later use
+          // Store cleanup function for later use (reusing same window slot)
           (window as any).wsCleanup = cleanup;
 
-        } catch (wsError) {
-          console.warn('WebSocket connection failed, proceeding without real-time updates:', wsError);
+        } catch (sseError) {
+          console.warn('SSE connection failed, proceeding without real-time updates:', sseError);
         }
       }
 
       // Use bulk upload API with async processing option
       const response = await googleDriveService.bulkUploadResumes(
         fileIds,
-        undefined, // jobId
+        selectedJobId || undefined, // pass selected job for targeted scoring
         currentUserId,
         useAsync
       );
@@ -701,11 +750,7 @@ function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
       if (response.async_processing) {
         // Async processing started - update batch ID
         dispatch(setBatchId(response.batch_id || null));
-
-        // Ensure WebSocket stays connected during processing
-        if (response.batch_id) {
-          ensureWebSocketConnection(currentUserId);
-        }
+        // No need to ensure WebSocket; SSE is connected above
       } else {
         // Synchronous processing completed
         handleSyncProcessingComplete(response);

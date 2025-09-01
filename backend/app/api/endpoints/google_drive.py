@@ -462,6 +462,7 @@ async def bulk_upload_resumes_from_google_drive(
     logger.info(f"📊 ENDPOINT: file_ids count: {len(file_ids)}")
     logger.info(f"📊 ENDPOINT: user_id: {user_id}")
     logger.info(f"📊 ENDPOINT: async_processing: {async_processing}")
+    logger.info(f"📌 ENDPOINT: job_id: {job_id}")
     logger.info(f"📊 ENDPOINT: file_ids: {file_ids[:3]}...")  # Show first 3 IDs
 
     try:

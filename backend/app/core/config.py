@@ -53,7 +53,7 @@ class Settings(BaseSettings):
     PARSER_USE_ORCHESTRATOR: bool = False  # Deprecated: Use rule-based orchestrator
     PARSER_USE_NLP_FIRST: bool = True  # Use enhanced NLP-first approach for better accuracy
     PARSER_USE_UNIVERSAL_LLM: bool = False  # Legacy LLM parser
-    PARSER_FORCE_LLM: bool = False
+    PARSER_FORCE_LLM: bool = True
     PARSER_ENABLE_OCR: bool = True
     PARSER_ENABLE_NER: bool = True
     PARSER_MAX_OCR_PAGES: int = 2

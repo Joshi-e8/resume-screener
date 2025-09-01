@@ -852,14 +852,23 @@ def process_bulk_resumes_task(self, file_ids: List[str], access_token: str, cred
         drive_service = GoogleDriveService()
         parser = ResumeParser()
 
+        # Clear any previous job cache to ensure per-batch correctness
+        try:
+            setattr(process_chunk_sync, "_jobs_cache", None)
+        except Exception:
+            pass
+        from loguru import logger as _logger
+        _logger.info(f"🧭 TASK: Job ID parameter received: {job_id}")
+
         # Process files in much larger chunks for maximum performance
         chunk_size = 20
         chunks = [file_ids[i:i+chunk_size] for i in range(0, len(file_ids), chunk_size)]
 
         processed_count = 0
 
-        # Send initial progress update via WebSocket
+        # Send initial progress updates (WebSocket + SSE)
         if user_id:
+            # Try WebSocket first (backwards-compatible)
             try:
                 from app.core.websocket_manager import websocket_manager
                 logger.info(f"🚀 TASK: Starting bulk processing for user_id: {user_id}")
@@ -882,6 +891,26 @@ def process_bulk_resumes_task(self, file_ids: List[str], access_token: str, cred
                 import traceback
                 logger.error(f"❌ TASK: Traceback: {traceback.format_exc()}")
 
+            # Also try SSE HTTP update (preferred path)
+            try:
+                import requests
+                requests.post(
+                    "http://localhost:8000/api/v1/sse/progress/update",
+                    json={
+                        "user_id": user_id,
+                        "progress_data": {
+                            'completed': 0,
+                            'total': total_files,
+                            'status': 'processing',
+                            'message': 'Starting file processing...'
+                        }
+                    },
+                    timeout=5,
+                )
+                logger.info(f"✅ TASK: Sent initial SSE progress update for user {user_id}")
+            except Exception as e:
+                logger.warning(f"⚠️ TASK: Failed to send initial SSE progress update: {e}")
+
         for chunk_index, chunk in enumerate(chunks):
             # Update progress
             self.update_state(
@@ -902,12 +931,22 @@ def process_bulk_resumes_task(self, file_ids: List[str], access_token: str, cred
                 pass
 
             # Process chunk
-            chunk_results = process_chunk_sync(chunk, credentials_dict, drive_service, parser, job_id=job_id, user_id=user_id)
+            chunk_results = process_chunk_sync(
+                chunk,
+                credentials_dict,
+                drive_service,
+                parser,
+                job_id=job_id,
+                user_id=user_id,
+                total_files=total_files,
+                base_completed=processed_count,
+            )
             results.extend(chunk_results)
             processed_count += len(chunk)
 
-            # Send WebSocket progress update if user_id provided (only every 2 chunks to reduce overhead)
+            # Send progress updates if user_id provided (only every 2 chunks to reduce overhead)
             if user_id and (chunk_index % 2 == 0 or chunk_index == len(chunks) - 1):
+                # WebSocket update (backwards-compatible)
                 try:
                     from app.core.websocket_manager import websocket_manager
                     logger.info(f"📊 TASK: Sending progress update {processed_count}/{total_files} for user {user_id}")
@@ -928,6 +967,26 @@ def process_bulk_resumes_task(self, file_ids: List[str], access_token: str, cred
                     logger.error(f"❌ TASK: Failed to send WebSocket progress update: {e}")
                     import traceback
                     logger.error(f"❌ TASK: Traceback: {traceback.format_exc()}")
+
+                # SSE HTTP update (preferred path in new flow)
+                try:
+                    import requests
+                    requests.post(
+                        "http://localhost:8000/api/v1/sse/progress/update",
+                        json={
+                            "user_id": user_id,
+                            "progress_data": {
+                                'completed': processed_count,
+                                'total': total_files,
+                                'status': 'processing',
+                                'message': f'Processed {processed_count}/{total_files} files...'
+                            }
+                        },
+                        timeout=5,
+                    )
+                    logger.info(f"✅ TASK: Sent SSE progress update {processed_count}/{total_files}")
+                except Exception as e:
+                    logger.warning(f"⚠️ TASK: Failed to send SSE progress update: {e}")
 
         # Final update
         successful_files = sum(1 for r in results if r['success'])
@@ -1042,6 +1101,29 @@ def process_bulk_resumes_task(self, file_ids: List[str], access_token: str, cred
             import traceback
             logger.error(f"❌ Full traceback:\n{traceback.format_exc()}")
 
+        # Also send final SSE completion update via HTTP
+        if user_id:
+            try:
+                import requests
+                requests.post(
+                    "http://localhost:8000/api/v1/sse/progress/update",
+                    json={
+                        "user_id": user_id,
+                        "progress_data": {
+                            'completed': total_files,
+                            'total': total_files,
+                            'results': results,
+                            'status': 'completed',
+                            'successful_files': successful_files,
+                            'failed_files': failed_files
+                        }
+                    },
+                    timeout=5,
+                )
+                logger.info(f"✅ TASK: Successfully sent final SSE update for user {user_id}")
+            except Exception as e:
+                logger.warning(f"⚠️ TASK: Failed to send final SSE update: {e}")
+
         # Send final WebSocket update
         if user_id:
             try:
@@ -1119,7 +1201,8 @@ def process_bulk_resumes_task(self, file_ids: List[str], access_token: str, cred
 
 def process_chunk_sync(file_ids: List[str], credentials_dict: Dict[str, Any],
                       drive_service: GoogleDriveService, parser: ResumeParser,
-                      job_id: str | None = None, user_id: str | None = None) -> List[Dict[str, Any]]:
+                      job_id: str | None = None, user_id: str | None = None,
+                      total_files: int | None = None, base_completed: int = 0) -> List[Dict[str, Any]]:
     """
     Process a chunk of files with ultra-high performance
     """
@@ -1144,7 +1227,7 @@ def process_chunk_sync(file_ids: List[str], credentials_dict: Dict[str, Any],
 
                         parsed_data = await asyncio.wait_for(
                             parser.parse_resume_from_memory(file_content, filename, file_extension),
-                            timeout=3.0
+                            timeout=15.0
                         )
 
                         return {
@@ -1174,7 +1257,36 @@ def process_chunk_sync(file_ids: List[str], credentials_dict: Dict[str, Any],
 
             # Process all files simultaneously
             tasks = [process_single_file_ultra_fast(file_id) for file_id in file_ids]
-            return await asyncio.gather(*tasks, return_exceptions=True)
+            results_list = await asyncio.gather(*tasks, return_exceptions=True)
+
+            # After each file completes, send SSE incremental progress if user_id provided
+            try:
+                if user_id:
+                    import requests
+                    completed_so_far = base_completed
+                    for res in results_list:
+                        if not isinstance(res, Exception):
+                            completed_so_far += 1
+                            try:
+                                requests.post(
+                                    "http://localhost:8000/api/v1/sse/progress/update",
+                                    json={
+                                        "user_id": user_id,
+                                        "progress_data": {
+                                            'completed': completed_so_far,
+                                            'total': total_files or (base_completed + len(results_list)),
+                                            'status': 'processing',
+                                            'message': f'Processed {completed_so_far}/{total_files or (base_completed + len(results_list))} files...'
+                                        }
+                                    },
+                                    timeout=3,
+                                )
+                            except Exception:
+                                pass
+            except Exception:
+                pass
+
+            return results_list
 
         # Parse all files (ultra fast path)
         chunk_results = loop.run_until_complete(process_files_ultra_fast())
@@ -1232,6 +1344,15 @@ def process_chunk_sync(file_ids: List[str], credentials_dict: Dict[str, Any],
                         # Ensure DB is initialized and fetch job list once outside the loop if needed
                         # Build job list to score against
                         jobs_cache = getattr(process_chunk_sync, "_jobs_cache", None)
+
+                        # Force rebuild when explicit job_id is provided to avoid stale cache from prior tasks
+                        if job_id:
+                            jobs_cache = None
+                            try:
+                                setattr(process_chunk_sync, "_jobs_cache", None)
+                            except Exception:
+                                pass
+
                         if jobs_cache is None:
                             try:
                                 loop.run_until_complete(init_database())
@@ -1244,8 +1365,24 @@ def process_chunk_sync(file_ids: List[str], credentials_dict: Dict[str, Any],
                                     jd = loop.run_until_complete(Job.get(job_id))
                                     if jd:
                                         jobs = [jd]
-                                except Exception:
+                                        try:
+                                            from loguru import logger as _logger
+                                            _logger.info(f"🧭 TASK: Using explicit job_id {getattr(jd, 'id', job_id)} | {getattr(jd, 'title', '')}")
+                                        except Exception:
+                                            pass
+                                    else:
+                                        try:
+                                            from loguru import logger as _logger
+                                            _logger.warning(f"🧭 TASK: Explicit job_id provided but not found: {job_id}. Skipping auto-match fallbacks.")
+                                        except Exception:
+                                            pass
+                                except Exception as _e:
                                     jobs = []
+                                    try:
+                                        from loguru import logger as _logger
+                                        _logger.warning(f"🧭 TASK: Failed to fetch explicit job_id {job_id}: {_e}")
+                                    except Exception:
+                                        pass
                             else:
                                 if user_id:
                                     # All ACTIVE jobs for this user; fallback to all user jobs
@@ -1262,7 +1399,8 @@ def process_chunk_sync(file_ids: List[str], credentials_dict: Dict[str, Any],
                             jobs_cache = jobs
 
                         # If no user/job-scoped jobs found, fall back to all active jobs, then all jobs
-                        if not jobs_cache:
+                        # IMPORTANT: do NOT fall back when an explicit job_id was requested (even if not found)
+                        if not jobs_cache and not job_id:
                             try:
                                 jobs_cache = loop.run_until_complete(Job.find({"status": "active"}).sort("-created_at").to_list())
                             except Exception:
@@ -1464,7 +1602,7 @@ async def process_file_async_fast(file_id: str, credentials_dict: Dict[str, Any]
         # Parse resume directly from memory with aggressive timeout
         parsed_data = await asyncio.wait_for(
             parser.parse_resume_from_memory(file_content, filename, file_extension),
-            timeout=5.0  # Much more aggressive timeout
+            timeout=15.0
         )
 
         return {

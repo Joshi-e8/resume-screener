@@ -109,6 +109,10 @@ export interface ProgressUpdate {
   status: string;
   successful_files?: number;
   failed_files?: number;
+  // Optional fields that backend may include in progress payloads
+  message?: string;
+  filename?: string;
+  error?: string;
 }
 
 class GoogleDriveService {
