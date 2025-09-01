@@ -1218,7 +1218,12 @@ def process_chunk_sync(file_ids: List[str], credentials_dict: Dict[str, Any],
             # Use much higher concurrency for maximum speed
             semaphore = asyncio.Semaphore(20)  # Ultra-high concurrency
 
+            # Track completed files for real-time progress updates
+            completed_count = base_completed
+            completed_lock = asyncio.Lock()
+
             async def process_single_file_ultra_fast(file_id: str):
+                nonlocal completed_count
                 async with semaphore:
                     start_time = time.time()
                     try:
@@ -1230,7 +1235,7 @@ def process_chunk_sync(file_ids: List[str], credentials_dict: Dict[str, Any],
                             timeout=15.0
                         )
 
-                        return {
+                        result = {
                             'file_id': file_id,
                             'filename': filename,
                             'success': True,
@@ -1238,16 +1243,46 @@ def process_chunk_sync(file_ids: List[str], credentials_dict: Dict[str, Any],
                             'processing_time_ms': int((time.time() - start_time) * 1000)
                         }
 
+                        # Send parsing completion progress update (not final completion)
+                        if user_id:
+                            async with completed_lock:
+                                # Don't increment completed_count yet - this is just parsing done
+                                try:
+                                    import requests
+                                    requests.post(
+                                        "http://localhost:8000/api/v1/sse/progress/update",
+                                        json={
+                                            "user_id": user_id,
+                                            "progress_data": {
+                                                'completed': completed_count,
+                                                'total': total_files or (base_completed + len(file_ids)),
+                                                'status': 'processing',
+                                                'message': f'Parsed {filename}, starting analysis...',
+                                                'filename': filename
+                                            }
+                                        },
+                                        timeout=3,
+                                    )
+                                except Exception:
+                                    pass
+
+                        return result
+
                     except asyncio.TimeoutError:
-                        return {
+                        result = {
                             'file_id': file_id,
                             'filename': f'timeout_{file_id}',
                             'success': False,
                             'error_message': "Processing timeout",
                             'processing_time_ms': int((time.time() - start_time) * 1000)
                         }
+
+                        # Don't send progress update for failed files here - will be handled after results are processed
+
+                        return result
+
                     except Exception as e:
-                        return {
+                        result = {
                             'file_id': file_id,
                             'filename': f'error_{file_id}',
                             'success': False,
@@ -1255,36 +1290,13 @@ def process_chunk_sync(file_ids: List[str], credentials_dict: Dict[str, Any],
                             'processing_time_ms': int((time.time() - start_time) * 1000)
                         }
 
+                        # Don't send progress update for failed files here - will be handled after results are processed
+
+                        return result
+
             # Process all files simultaneously
             tasks = [process_single_file_ultra_fast(file_id) for file_id in file_ids]
             results_list = await asyncio.gather(*tasks, return_exceptions=True)
-
-            # After each file completes, send SSE incremental progress if user_id provided
-            try:
-                if user_id:
-                    import requests
-                    completed_so_far = base_completed
-                    for res in results_list:
-                        if not isinstance(res, Exception):
-                            completed_so_far += 1
-                            try:
-                                requests.post(
-                                    "http://localhost:8000/api/v1/sse/progress/update",
-                                    json={
-                                        "user_id": user_id,
-                                        "progress_data": {
-                                            'completed': completed_so_far,
-                                            'total': total_files or (base_completed + len(results_list)),
-                                            'status': 'processing',
-                                            'message': f'Processed {completed_so_far}/{total_files or (base_completed + len(results_list))} files...'
-                                        }
-                                    },
-                                    timeout=3,
-                                )
-                            except Exception:
-                                pass
-            except Exception:
-                pass
 
             return results_list
 
@@ -1581,6 +1593,30 @@ def process_chunk_sync(file_ids: List[str], credentials_dict: Dict[str, Any],
                     result['job_id'] = job_id
 
                 results.append(result)
+
+                # Send final completion progress update after all processing is done (both success and failure)
+                if user_id:
+                    try:
+                        import requests
+                        # Use a simple counter based on results length for thread safety
+                        current_completed = base_completed + len(results)
+                        status_message = f'Completed {result.get("filename")}' if result.get('success') else f'Failed {result.get("filename")}'
+                        requests.post(
+                            "http://localhost:8000/api/v1/sse/progress/update",
+                            json={
+                                "user_id": user_id,
+                                "progress_data": {
+                                    'completed': current_completed,
+                                    'total': total_files or (base_completed + len(file_ids)),
+                                    'status': 'processing',
+                                    'message': f'{status_message} ({current_completed}/{total_files or (base_completed + len(file_ids))})',
+                                    'filename': result.get("filename")
+                                }
+                            },
+                            timeout=3,
+                        )
+                    except Exception:
+                        pass
 
     finally:
         loop.close()

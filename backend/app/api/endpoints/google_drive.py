@@ -533,8 +533,13 @@ async def bulk_upload_resumes_from_google_drive(
         successful_files = 0
         failed_files = 0
 
+        # Track completed files for real-time progress updates
+        completed_count = 0
+        completed_lock = asyncio.Lock()
+
         # Process files concurrently for better performance
         async def process_single_file(file_id: str) -> GoogleDriveBulkFileResult:
+            nonlocal completed_count
             file_start_time = time.time()
 
             try:
@@ -547,13 +552,38 @@ async def bulk_upload_resumes_from_google_drive(
                 # Validate file type
                 allowed_mime_types = drive_service.get_resume_mime_types()
                 if file_metadata["mimeType"] not in allowed_mime_types:
-                    return GoogleDriveBulkFileResult(
+                    result = GoogleDriveBulkFileResult(
                         file_id=file_id,
                         filename=filename,
                         success=False,
                         error_message=f"Unsupported file type: {file_metadata['mimeType']}",
                         processing_time_ms=int((time.time() - file_start_time) * 1000)
                     )
+
+                    # Send progress update even for unsupported files
+                    if user_id:
+                        async with completed_lock:
+                            completed_count += 1
+                            try:
+                                import requests
+                                requests.post(
+                                    "http://localhost:8000/api/v1/sse/progress/update",
+                                    json={
+                                        "user_id": user_id,
+                                        "progress_data": {
+                                            'completed': completed_count,
+                                            'total': len(file_ids),
+                                            'status': 'processing',
+                                            'message': f'Skipped {filename} (unsupported type) ({completed_count}/{len(file_ids)})',
+                                            'filename': filename
+                                        }
+                                    },
+                                    timeout=3,
+                                )
+                            except Exception:
+                                pass
+
+                    return result
 
                 # Download and process file
                 download_start = time.time()
@@ -569,7 +599,7 @@ async def bulk_upload_resumes_from_google_drive(
                     )
                     print(f"Parse for {filename}: {int((time.time() - parse_start) * 1000)}ms")
 
-                    return GoogleDriveBulkFileResult(
+                    result = GoogleDriveBulkFileResult(
                         file_id=file_id,
                         filename=filename,
                         success=True,
@@ -577,8 +607,33 @@ async def bulk_upload_resumes_from_google_drive(
                         processing_time_ms=int((time.time() - file_start_time) * 1000)
                     )
 
+                    # Send real-time progress update immediately after this file completes
+                    if user_id:
+                        async with completed_lock:
+                            completed_count += 1
+                            try:
+                                import requests
+                                requests.post(
+                                    "http://localhost:8000/api/v1/sse/progress/update",
+                                    json={
+                                        "user_id": user_id,
+                                        "progress_data": {
+                                            'completed': completed_count,
+                                            'total': len(file_ids),
+                                            'status': 'processing',
+                                            'message': f'Parsed {filename} ({completed_count}/{len(file_ids)})',
+                                            'filename': filename
+                                        }
+                                    },
+                                    timeout=3,
+                                )
+                            except Exception:
+                                pass
+
+                    return result
+
                 except asyncio.TimeoutError:
-                    return GoogleDriveBulkFileResult(
+                    result = GoogleDriveBulkFileResult(
                         file_id=file_id,
                         filename=filename,
                         success=False,
@@ -586,19 +641,69 @@ async def bulk_upload_resumes_from_google_drive(
                         processing_time_ms=int((time.time() - file_start_time) * 1000)
                     )
 
+                    # Send progress update even for failed files
+                    if user_id:
+                        async with completed_lock:
+                            completed_count += 1
+                            try:
+                                import requests
+                                requests.post(
+                                    "http://localhost:8000/api/v1/sse/progress/update",
+                                    json={
+                                        "user_id": user_id,
+                                        "progress_data": {
+                                            'completed': completed_count,
+                                            'total': len(file_ids),
+                                            'status': 'processing',
+                                            'message': f'Failed to parse {filename} (timeout) ({completed_count}/{len(file_ids)})',
+                                            'filename': filename
+                                        }
+                                    },
+                                    timeout=3,
+                                )
+                            except Exception:
+                                pass
+
+                    return result
+
                 finally:
                     # Clean up temporary file
                     if os.path.exists(tmp_file_path):
                         os.unlink(tmp_file_path)
 
             except Exception as e:
-                return GoogleDriveBulkFileResult(
+                result = GoogleDriveBulkFileResult(
                     file_id=file_id,
                     filename=f"unknown_{file_id}",
                     success=False,
                     error_message=str(e),
                     processing_time_ms=int((time.time() - file_start_time) * 1000)
                 )
+
+                # Send progress update even for failed files
+                if user_id:
+                    async with completed_lock:
+                        completed_count += 1
+                        try:
+                            import requests
+                            requests.post(
+                                "http://localhost:8000/api/v1/sse/progress/update",
+                                json={
+                                    "user_id": user_id,
+                                    "progress_data": {
+                                        'completed': completed_count,
+                                        'total': len(file_ids),
+                                        'status': 'processing',
+                                        'message': f'Error parsing file ({completed_count}/{len(file_ids)})',
+                                        'filename': f"unknown_{file_id}"
+                                    }
+                                },
+                                timeout=3,
+                            )
+                        except Exception:
+                            pass
+
+                return result
 
         # Process files with higher concurrency for better performance
         semaphore = asyncio.Semaphore(15)
