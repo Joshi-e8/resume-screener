@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { ResumeCard } from "./ResumeCard";
 import { ResumeListView } from "./ResumeListView";
+import { ResumeDetailModal } from "./ResumeDetailModal";
 import { Resume } from "@/data/mockResumes";
 import useJobServices from "@/lib/services/jobServices";
 import useResumeServices from "@/lib/services/resumeServices";
@@ -58,6 +59,10 @@ export function JobGroupedResumeView({
   const [searchQuery, setSearchQuery] = useState("");
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+
+  // Modal state
+  const [selectedResume, setSelectedResume] = useState<Resume | null>(null);
+  const [showModal, setShowModal] = useState(false);
 
   // Use ref to track if data has been fetched to prevent multiple calls
   const hasFetchedData = useRef(false);
@@ -122,25 +127,55 @@ export function JobGroupedResumeView({
 
         // Distribute resumes to their respective job groups
         for (const resume of allResumes) {
+          // Helper function to derive name from email or filename
+          const deriveNameFromEmail = (email: string) => {
+            if (!email) return '';
+            return email.split('@')[0].replace(/[._]/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+          };
+
+          const deriveNameFromFilename = (filename: string) => {
+            if (!filename) return '';
+            return filename.replace(/\.[^/.]+$/, '').replace(/[._-]/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+          };
+
+          const fallbackName = deriveNameFromEmail(resume.candidate_email) || deriveNameFromFilename(resume.filename);
+
           const mappedResume: Resume = {
             id: resume.id || resume.file_id,
-            name: resume.candidate_name || resume.filename || 'Unknown',
+            name: resume.candidate_name || fallbackName || resume.filename || 'Unknown',
             email: resume.candidate_email || '',
             phone: resume.phone || '',
             location: resume.location || '',
             title: resume.title || '',
             experience: Number(resume.total_experience_years || 0),
             skills: Array.isArray(resume.key_skills) ? resume.key_skills : [],
-            education: Array.isArray(resume.education) ? resume.education : [],
+            education: Array.isArray(resume.education)
+              ? resume.education.map((e: any) => ({
+                  degree: e?.degree || '',
+                  school: e?.institution || e?.school || '',
+                  year: Number(e?.year || 0)
+                }))
+              : [],
             summary: resume.summary || '',
-            status: 'new', // Default status
+            status: 'reviewed' as Resume['status'], // Match ResumeGrid status
             uploadDate: resume.created_at || new Date().toISOString(),
-            fileType: resume.mime_type?.includes('pdf') ? 'pdf' : 'doc',
-            fileSize: resume.file_size || 0,
-            matchScore: resume.ai_overall_score || 0,
-            tags: [],
+            fileType: (resume.mime_type?.includes('pdf') ? 'pdf' : resume.mime_type?.includes('word') ? 'docx' : undefined) as 'pdf' | 'doc' | 'docx' | undefined as any,
+            fileSize: typeof resume.file_size === 'number' ? resume.file_size : 0,
+            matchScore: resume.ai_overall_score ?? undefined,
+            tags: Array.isArray(resume.tags) ? resume.tags : [],
             lastActivity: resume.created_at || new Date().toISOString(),
-            source: resume.source || 'upload'
+            source: resume.source || 'upload',
+            // Add AI scoring data for recommendations
+            ai_overall_score: resume.ai_overall_score,
+            ai_scoring: resume.ai_scoring,
+            // Add the experience array for detailed view
+            experience_array: Array.isArray(resume.experience) ? resume.experience : [],
+            projects: Array.isArray(resume.projects) ? resume.projects : [],
+          } as Resume & {
+            ai_overall_score?: number;
+            ai_scoring?: any;
+            experience_array?: any[];
+            projects?: any[];
           };
 
           const jobId = resume.job_id || 'unassociated';
@@ -220,6 +255,32 @@ export function JobGroupedResumeView({
       case 'closed': return 'bg-red-100 text-red-800';
       default: return 'bg-gray-100 text-gray-800';
     }
+  };
+
+  // Resume action handlers (matching ResumeGrid exactly)
+  const handleView = (resume: Resume) => {
+    setSelectedResume(resume);
+    setShowModal(true);
+  };
+
+  const handleCloseModal = () => {
+    setShowModal(false);
+    setSelectedResume(null);
+  };
+
+  const handleDownload = (resume: Resume) => {
+    console.log('Download resume:', resume.id);
+    // TODO: Implement download functionality
+  };
+
+  const handleDelete = (resume: Resume) => {
+    console.log('Delete resume:', resume.id);
+    // TODO: Implement delete functionality
+  };
+
+  const handleStatusChange = (resume: Resume, status: Resume['status']) => {
+    console.log('Change status:', resume.id, status);
+    // TODO: Implement status change
   };
 
   // Show loading state while session is loading or data is being fetched
@@ -402,20 +463,20 @@ export function JobGroupedResumeView({
                         <ResumeCard
                           key={resume.id}
                           resume={resume}
-                          onView={onView}
-                          onDownload={onDownload}
-                          onDelete={onDelete}
-                          onStatusChange={onStatusChange}
+                          onView={handleView}
+                          onDownload={handleDownload}
+                          onDelete={handleDelete}
+                          onStatusChange={handleStatusChange}
                         />
                       ))}
                     </div>
                   ) : (
                     <ResumeListView
                       resumes={group.resumes}
-                      onView={onView}
-                      onDownload={onDownload}
-                      onDelete={onDelete}
-                      onStatusChange={onStatusChange}
+                      onView={handleView}
+                      onDownload={handleDownload}
+                      onDelete={handleDelete}
+                      onStatusChange={handleStatusChange}
                     />
                   )}
                 </div>
@@ -441,6 +502,16 @@ export function JobGroupedResumeView({
           </div>
         </div>
       )}
+
+      {/* Resume Detail Modal */}
+      <ResumeDetailModal
+        resume={selectedResume}
+        isOpen={showModal}
+        onClose={handleCloseModal}
+        onDownload={handleDownload}
+        onDelete={handleDelete}
+        onStatusChange={handleStatusChange}
+      />
     </div>
   );
 }

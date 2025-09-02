@@ -70,12 +70,13 @@ def _parse_years_from_text(text: str) -> float:
     if not text or not isinstance(text, str):
         return 0.0
     t = text
-    # Patterns
+    # Patterns - handle different dash types: hyphen (-), en dash (–), em dash (—)
+    dash_pattern = r"[\-–—]"
     patterns = [
-        r"(?P<m1>\d{1,2})\/(?P<y1>\d{4})\s*-\s*(?P<m2>\d{1,2})\/(?P<y2>\d{4})",
-        r"(?P<y1>\d{4})\s*-\s*(?P<y2>\d{4})",
-        r"(?P<m1>\d{1,2})\/(?P<y1>\d{4})\s*-\s*(present|current)",
-        r"(?P<y1>\d{4})\s*-\s*(present|current)",
+        rf"(?P<m1>\d{{1,2}})\/(?P<y1>\d{{4}})\s*{dash_pattern}\s*(?P<m2>\d{{1,2}})\/(?P<y2>\d{{4}})",
+        rf"(?P<y1>\d{{4}})\s*{dash_pattern}\s*(?P<y2>\d{{4}})",
+        rf"(?P<m1>\d{{1,2}})\/(?P<y1>\d{{4}})\s*{dash_pattern}\s*(present|current)",
+        rf"(?P<y1>\d{{4}})\s*{dash_pattern}\s*(present|current)",
     ]
     now = datetime.now()
     for p in patterns:
@@ -186,13 +187,12 @@ def normalize_resume(parsed: Dict[str, Any]) -> Dict[str, Any]:
     if isinstance(certs, str):
         certs = [certs]
 
-    # Total years: prefer parsed value, else sum of entries (cap at reasonable upper bound)
+    # Total years: use AI-calculated value only (no fallback to avoid inconsistency)
     try:
         total_years = float(parsed.get("total_experience_years") or 0.0)
     except Exception:
         total_years = 0.0
-    if total_years <= 0.0 and total_years_accum > 0.0:
-        total_years = round(min(total_years_accum, 50.0), 2)
+    # Removed fallback - rely purely on AI calculation for consistency
 
     # Title: prefer explicit title; else try to infer from the first experience
     title = parsed.get("title") or parsed.get("current_role") or (experience[0]["title"] if experience else "")

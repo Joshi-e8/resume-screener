@@ -570,6 +570,8 @@ JSON format:
   "email": "",
   "phone": "",
   "skills": [],
+  "experience": [{"title": "", "company": "", "duration": ""}],
+  "total_experience_years": 0.0,
   "summary": ""
 }}"""
 
@@ -878,13 +880,15 @@ Extract the following information and return as JSON:
   ],
   "certifications": ["List of certifications"],
   "languages": ["List of languages"],
-  "key_achievements": ["Notable achievements with quantified results"]
+  "key_achievements": ["Notable achievements with quantified results"],
+  "total_experience_years": 2.83
 }}
 
 IMPORTANT:
 - Return ONLY the JSON object, no explanations
 - Use actual data from the resume text
 - If information is not available, use empty string or empty array
+- For total_experience_years: Calculate total work experience in decimal years (e.g., 2.5 for 2 years 6 months). Parse all employment durations and sum them.
 - Ensure all JSON is properly formatted and valid"""
 
         return prompt
