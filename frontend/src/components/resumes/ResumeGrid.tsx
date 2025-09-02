@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { Grid, List, Filter, SortAsc, Search } from "lucide-react";
 import { Resume } from "@/data/mockResumes";
 import { ResumeCard } from "./ResumeCard";
@@ -49,6 +49,9 @@ export function ResumeGrid({ initialSearchQuery = '' }: ResumeGridProps) {
   const [showModal, setShowModal] = useState(false);
   const [showAdvancedSearch, setShowAdvancedSearch] = useState(false);
   const itemsPerPage = 12;
+
+  // Use ref to track if API has been called to prevent infinite loops
+  const hasCalledApi = useRef(false);
 
   // Load recent searches on mount
 
@@ -246,17 +249,19 @@ export function ResumeGrid({ initialSearchQuery = '' }: ResumeGridProps) {
     const jobIdFromCache = (cachedResults || []).find((r: any) => r?.job_id)?.job_id as string | undefined;
     const jobId = jobIdFromRuntime || jobIdFromCache;
 
-    if (!jobId && !apiResumes && status !== 'loading') {
+    if (!jobId && !apiResumes && status === 'authenticated' && !hasCalledApi.current) {
+      hasCalledApi.current = true; // Mark as called to prevent multiple calls
       (async () => {
         try {
           const data = await getAllResumes();
           if (data?.records) setApiResumes(data.records);
         } catch (e) {
           console.warn('Failed to fetch all resumes', e);
+          hasCalledApi.current = false; // Reset on error so user can retry
         }
       })();
     }
-  }, [processingProgress?.results, cachedResults, getAllResumes, apiResumes, status]);
+  }, [processingProgress?.results, cachedResults, apiResumes, status]); // Removed getAllResumes from deps
   // Choose data source: only real data; no mock fallback
   const baseResumes: Resume[] = useMemo(() => runtimeResumes ?? runtimeFromCache ?? runtimeFromApi ?? [], [runtimeResumes, runtimeFromCache, runtimeFromApi]);
 
