@@ -3,6 +3,8 @@ Database configuration and connection
 """
 
 import logging
+import asyncio
+from typing import Optional
 
 from beanie import init_beanie
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -19,8 +21,10 @@ from app.models.user import User
 
 logger = logging.getLogger(__name__)
 
-# Global database client
+# Global database client and initialization state
 client: AsyncIOMotorClient = None
+_db_initialized: bool = False
+_init_lock = asyncio.Lock()
 
 
 async def get_database():
@@ -63,38 +67,71 @@ async def close_mongo_connection():
 
 
 async def init_database():
-    """Initialize database and models"""
-    try:
-        await connect_to_mongo()
+    """Initialize database and models with connection pooling optimization"""
+    global _db_initialized
 
-        # Initialize Beanie with document models
-        await init_beanie(
-            database=client[settings.MONGODB_DB_NAME],
-            document_models=[
-                # Core models
-                User,
-                Job,
-                Candidate,
-                # Resume models
-                UploadedResume,
-                JobDescription,
-                ResumeAnalysis,
-                # Resume processing models
-                ResumeMetadata,
-                ResumeDetails,
-                BatchProcessingJob,
-                ProcessingStats,
-                # Analytics models
-                AnalyticsEvent,
-                DailyMetrics,
-                PlatformMetrics,
-                UserUsageStats,
-            ],
-        )
+    # Fast path: if already initialized, return immediately
+    if _db_initialized and client is not None:
+        return
 
-        logger.info("✅ Database initialized successfully")
-        logger.info(f"Using database: {settings.MONGODB_DB_NAME}")
+    # Use lock to prevent concurrent initialization
+    async with _init_lock:
+        # Double-check after acquiring lock
+        if _db_initialized and client is not None:
+            return
 
-    except Exception:  # noqa: E722
-        logger.error(f"❌ Failed to initialize database: {str(Exception)}")
-        raise
+        try:
+            await connect_to_mongo()
+
+            # Initialize Beanie with document models
+            await init_beanie(
+                database=client[settings.MONGODB_DB_NAME],
+                document_models=[
+                    # Core models
+                    User,
+                    Job,
+                    Candidate,
+                    # Resume models
+                    UploadedResume,
+                    JobDescription,
+                    ResumeAnalysis,
+                    # Resume processing models
+                    ResumeMetadata,
+                    ResumeDetails,
+                    BatchProcessingJob,
+                    ProcessingStats,
+                    # Analytics models
+                    AnalyticsEvent,
+                    DailyMetrics,
+                    PlatformMetrics,
+                    UserUsageStats,
+                ],
+            )
+
+            _db_initialized = True
+            logger.info("✅ Database initialized successfully")
+            logger.info(f"Using database: {settings.MONGODB_DB_NAME}")
+
+        except Exception as e:  # noqa: E722
+            logger.error(f"❌ Failed to initialize database: {str(e)}")
+            raise
+
+
+async def ensure_database_connection():
+    """Ensure database connection is available (optimized for repeated calls)"""
+    global client, _db_initialized
+
+    # Fast path: if already connected and initialized, return immediately
+    if client is not None and _db_initialized:
+        try:
+            # Quick ping to verify connection is still alive
+            await client.admin.command("ping")
+            return
+        except Exception:
+            # Connection lost, reset state and reconnect
+            logger.warning("Database connection lost, reconnecting...")
+            client = None
+            _db_initialized = False
+
+    # Initialize if needed
+    await init_database()

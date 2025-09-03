@@ -343,8 +343,8 @@ class LLMResumeParser:
             logger.info(f"[llm_parser] Text preview: {raw_text[:200]}...")
 
             # Call LLM based on provider - optimized for speed
-            system_msg = "Extract resume data quickly and accurately. Return only JSON." if fast_mode else "You are an expert resume parser. Analyze the provided resume text using contextual understanding without relying on hardcoded patterns. Return ONLY valid JSON that matches the specified schema."
-            max_tokens = 2000 if fast_mode else 4000
+            system_msg = "Extract resume data quickly. Return only JSON." if fast_mode else "You are an expert resume parser. Analyze the provided resume text using contextual understanding without relying on hardcoded patterns. Return ONLY valid JSON that matches the specified schema."
+            max_tokens = 1200 if fast_mode else 4000  # Reduced from 2000 for faster processing
 
             if self.provider == "openai":
                 response = self.llm_client.chat.completions.create(
@@ -881,14 +881,14 @@ Extract the following information and return as JSON:
   "certifications": ["List of certifications"],
   "languages": ["List of languages"],
   "key_achievements": ["Notable achievements with quantified results"],
-  "total_experience_years": 2.83
+  "total_experience_years": 0.0
 }}
 
 IMPORTANT:
 - Return ONLY the JSON object, no explanations
 - Use actual data from the resume text
 - If information is not available, use empty string or empty array
-- For total_experience_years: Calculate total work experience in decimal years (e.g., 2.5 for 2 years 6 months). Parse all employment durations and sum them.
+- For total_experience_years: CAREFULLY calculate total work experience by parsing ALL employment durations from the resume. Look for date ranges, years, months. Sum overlapping periods only once. Examples: "Jan 2020 - Dec 2022" = 3.0 years, "2 years 6 months" = 2.5 years, "6 months" = 0.5 years. DO NOT use example values.
 - Ensure all JSON is properly formatted and valid"""
 
         return prompt

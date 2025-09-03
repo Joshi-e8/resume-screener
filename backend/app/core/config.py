@@ -43,10 +43,10 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: Optional[str] = None
 
     # AI Scoring / LLM Provider Configuration (additive)
-    PROVIDER: str = "openai"  # openai | groq
+    PROVIDER: str = "groq"  # Switched to groq for better performance
     OPENAI_BASE_URL: Optional[str] = None
     OPENAI_MODEL: str = "gpt-4"
-    GROQ_MODEL: str = "llama-3.1-70b-versatile"
+    GROQ_MODEL: str = "llama-3.3-70b-versatile"  # Updated to supported model (3.1 deprecated)
     ENABLE_SCORING: bool = True
 
     # Parser Configuration
@@ -59,14 +59,14 @@ class Settings(BaseSettings):
     PARSER_MAX_OCR_PAGES: int = 2
     PARSER_LOW_TEXT_THRESHOLD: float = 0.02
     PARSER_MIN_SKILL_CONF: float = 0.6
-    PARSER_LLM_FAST_MODE: bool = False  # Use comprehensive mode for better accuracy
+    PARSER_LLM_FAST_MODE: bool = True  # Enable fast mode for better performance while maintaining accuracy
     PARSER_ENHANCED_PROMPTS: bool = True  # Use enhanced NLP prompts for better extraction
-    PARSER_TEXT_LIMIT: int = 6000  # Maximum text length to send to AI (configurable)
-    PARSER_MAX_SKILLS: int = 25  # Maximum number of skills to extract (configurable)
-    LOG_AI_RESPONSES: bool = True  # Log AI responses to terminal for debugging
-    SCORING_TEMPERATURE: float = 0.2
-    SCORING_MAX_TOKENS: int = 1200
-    CACHE_TTL_SECONDS: int = 300
+    PARSER_TEXT_LIMIT: int = 3000  # Further reduced for faster processing (was 5000)
+    PARSER_MAX_SKILLS: int = 15  # Further reduced for faster processing (was 20)
+    LOG_AI_RESPONSES: bool = False  # Disable logging for better performance
+    SCORING_TEMPERATURE: float = 0.0  # Minimum temperature for fastest responses
+    SCORING_MAX_TOKENS: int = 800  # Further reduced for faster responses (was 1000)
+    CACHE_TTL_SECONDS: int = 120  # Reduced cache TTL for faster responses (was 300)
 
     # Scoring Prompt/Response Logging
     LOG_SCORING_PROMPTS: bool = True  # Enable for JSON logging

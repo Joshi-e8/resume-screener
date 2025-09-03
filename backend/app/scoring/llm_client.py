@@ -30,12 +30,23 @@ except Exception:  # pragma: no cover
 
 _cache = TTLCache(maxsize=1024, ttl=300)
 
+# Client connection pooling
+_client_cache: dict[str, Any] = {}
+_client_cache_lock = None
+
 def clear_scoring_cache():
     """Clear the scoring cache to ensure fresh results"""
     global _cache
     _cache.clear()
     from loguru import logger
     logger.info("[scoring] Cache cleared for fresh scoring results")
+
+def clear_client_cache():
+    """Clear the client cache to force reconnection"""
+    global _client_cache
+    _client_cache.clear()
+    from loguru import logger
+    logger.info("[scoring] Client cache cleared for fresh connections")
 
 # Runtime gating if provider repeatedly fails
 _LLM_DISABLED = False
@@ -128,12 +139,39 @@ class LLMClient:
         except Exception:
             pass
 
-        if self.cfg.provider == "openai" and OpenAI is not None:
-            self.client = OpenAI(api_key=self.cfg.api_key, base_url=self.cfg.base_url)
-        elif self.cfg.provider == "groq" and Groq is not None:
-            self.client = Groq(api_key=self.cfg.api_key)
-        else:
-            self.client = None
+        # Use cached client if available
+        self.client = self._get_cached_client()
+
+    def _get_cached_client(self):
+        """Get or create cached client instance for connection pooling"""
+        global _client_cache, _client_cache_lock
+
+        # Initialize lock if needed
+        if _client_cache_lock is None:
+            import threading
+            _client_cache_lock = threading.Lock()
+
+        # Create cache key based on configuration
+        cache_key = f"{self.cfg.provider}:{self.cfg.api_key[:10] if self.cfg.api_key else 'none'}:{self.cfg.base_url or 'default'}"
+
+        with _client_cache_lock:
+            # Return cached client if available
+            if cache_key in _client_cache:
+                return _client_cache[cache_key]
+
+            # Create new client
+            client = None
+            if self.cfg.provider == "openai" and OpenAI is not None:
+                client = OpenAI(api_key=self.cfg.api_key, base_url=self.cfg.base_url)
+            elif self.cfg.provider == "groq" and Groq is not None:
+                client = Groq(api_key=self.cfg.api_key)
+
+            # Cache the client
+            if client is not None:
+                _client_cache[cache_key] = client
+                logger.info(f"[scoring] Cached new {self.cfg.provider} client")
+
+            return client
 
         # Log active config once per process for debugging
         global _CONFIG_LOGGED
@@ -178,8 +216,8 @@ class LLMClient:
         return response.choices[0].message.content or "{}"
 
     @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=1, max=8),
+        stop=stop_after_attempt(3),  # Increased for rate limit handling
+        wait=wait_exponential(multiplier=2, min=2, max=30),  # Longer waits for rate limits
         retry=retry_if_exception_type(ProviderError),
         reraise=True,
     )

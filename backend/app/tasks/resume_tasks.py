@@ -56,14 +56,27 @@ def process_direct_resume_file(self, resume_id: str, tmp_file_path: str, filenam
     try:
         self.update_state(state='PROGRESS', meta={'current': 0, 'total': 1, 'status': 'Starting...'})
 
-        # Initialize async context
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-
-        # Init DB once
+        # Initialize async context - reuse existing loop if available
         try:
-            loop.run_until_complete(init_database())
-        except Exception:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+
+        # Initialize database connection once (optimized with connection pooling)
+        try:
+            from app.core.database import ensure_database_connection
+            loop.run_until_complete(ensure_database_connection())
+        except Exception as db_err:
+            logger.warning(f"Database initialization failed: {db_err}")
+            pass
+
+        # Warm up LLM client cache to reduce cold start time
+        try:
+            from app.scoring.llm_client import LLMClient
+            _ = LLMClient()  # This will cache the client connection
+        except Exception as llm_err:
+            logger.warning(f"LLM client warm-up failed: {llm_err}")
             pass
 
         # Send initial SSE progress update via HTTP API
@@ -71,8 +84,8 @@ def process_direct_resume_file(self, resume_id: str, tmp_file_path: str, filenam
             try:
                 import requests
                 import time
-                # Small delay to ensure frontend SSE connection is established
-                time.sleep(1)
+                # Reduced delay for faster processing (was 1 second)
+                time.sleep(0.1)
                 logger.info(f"📡 SSE: Sending initial progress for user {user_id}")
                 response = requests.post(
                     "http://localhost:8000/api/v1/sse/progress/update",
@@ -569,11 +582,7 @@ def process_resume_task(self, file_id: str, access_token: str, credentials_dict:
             ai_overall = None
             try:
                 if is_truthy(getattr(settings, "ENABLE_SCORING", 1)) and job_id:
-                    # Ensure DB available for Job fetch
-                    try:
-                        loop.run_until_complete(init_database())
-                    except Exception:
-                        pass
+                    # Database connection already established, no need to re-initialize
                     job_doc = loop.run_until_complete(Job.get(job_id)) if job_id else None
                     job_payload = job_doc.model_dump() if job_doc else {"title": ""}
                     scoring = score_resume_against_job(parsed_data, job_payload)
@@ -582,11 +591,7 @@ def process_resume_task(self, file_id: str, access_token: str, credentials_dict:
             except Exception as score_err:
                 logger.warning(f"AI scoring skipped for {filename}: {score_err}")
 
-            # Persist to DB: ResumeMetadata + ResumeDetails
-            try:
-                loop.run_until_complete(init_database())
-            except Exception:
-                pass
+            # Persist to DB: ResumeMetadata + ResumeDetails (connection already established)
             try:
                 # Create metadata
                 meta = ResumeMetadata(
@@ -702,11 +707,19 @@ def process_direct_resume_files_batch(self, items: List[Dict[str, Any]], user_id
         'message': f'Starting batch processing ({total} files)…'
     })
 
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
+    # Optimize event loop management - reuse existing loop if available
     try:
-        loop.run_until_complete(init_database())
-    except Exception:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+    # Use optimized database connection
+    try:
+        from app.core.database import ensure_database_connection
+        loop.run_until_complete(ensure_database_connection())
+    except Exception as db_err:
+        logger.warning(f"Database initialization failed: {db_err}")
         pass
 
     parser = ResumeParser()
@@ -721,12 +734,12 @@ def process_direct_resume_files_batch(self, items: List[Dict[str, Any]], user_id
         except Exception:
             pass
 
-    # Bounded concurrency via env var (default 2)
+    # Reduced concurrency to avoid rate limits (default 1)
     try:
-        concurrency = int(os.getenv("BATCH_CONCURRENCY", "2") or "2")
+        concurrency = int(os.getenv("BATCH_CONCURRENCY", "1") or "1")
     except Exception:
-        concurrency = 2
-    concurrency = max(1, min(6, concurrency))
+        concurrency = 1
+    concurrency = max(1, min(2, concurrency))  # Max 2 to prevent rate limits
 
     results: List[Dict[str, Any]] = []
     lock = asyncio.Lock()
@@ -750,11 +763,17 @@ def process_direct_resume_files_batch(self, items: List[Dict[str, Any]], user_id
             pass
         async with sem:
             try:
+                # Add delay between files to prevent rate limiting
+                if idx > 0:
+                    await asyncio.sleep(2)  # 2 second delay between files
+
                 parsed_data = await parser.parse_resume(tmp_file_path)
                 scoring_obj = None
                 overall = None
                 if job_payload:
                     try:
+                        # Add delay before scoring to prevent rate limits
+                        await asyncio.sleep(1)
                         scoring_obj = await loop.run_in_executor(None, lambda: score_resume_against_job(parsed_data, job_payload, None))
                         overall = scoring_obj.get("overall_score") or (scoring_obj.get("derived") or {}).get("server_check_overall")
                     except Exception as se:

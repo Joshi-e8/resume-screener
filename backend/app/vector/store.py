@@ -27,6 +27,11 @@ EMBED_DIM = int(getattr(settings, "EMBEDDING_DIM", 1536) or 1536)
 _MODE: Optional[str] = None  # 'remote' | 'embedded' | None
 _MODE_LOGGED = False
 
+# Client connection pooling
+_cached_client: Optional[Any] = None
+_client_initialized = False
+_client_lock = None
+
 def get_mode() -> str:
     return _MODE or "unknown"
 
@@ -39,23 +44,46 @@ class Chunk:
 
 
 def _client():
-    global _MODE
+    """Get cached Qdrant client with connection pooling"""
+    global _MODE, _cached_client, _client_initialized, _client_lock
+
+    # Fast path: return cached client if available
+    if _client_initialized and _cached_client is not None:
+        return _cached_client
+
+    # Initialize lock if needed
+    if _client_lock is None:
+        import threading
+        _client_lock = threading.Lock()
+
     if _QdrantClient is None:
         logger.warning("[vector] Qdrant client not installed; skipping vector ops")
         return None
-    try:
-        if DEFAULT_URL:
-            _MODE = "remote"
-            logger.info(f"[vector] Using remote Qdrant url={DEFAULT_URL}")
-            client = _QdrantClient(url=DEFAULT_URL, api_key=DEFAULT_API_KEY)
-        else:
-            _MODE = "embedded"
-            logger.info(f"[vector] Using embedded Qdrant path={DEFAULT_PATH}")
-            client = _QdrantClient(path=DEFAULT_PATH)
-        return client
-    except Exception as e:  # pragma: no cover
-        logger.warning(f"[vector] Qdrant init failed: {e}")
-        return None
+
+    with _client_lock:
+        # Double-check after acquiring lock
+        if _client_initialized and _cached_client is not None:
+            return _cached_client
+
+        try:
+            if DEFAULT_URL:
+                _MODE = "remote"
+                logger.info(f"[vector] Using remote Qdrant url={DEFAULT_URL}")
+                client = _QdrantClient(url=DEFAULT_URL, api_key=DEFAULT_API_KEY)
+            else:
+                _MODE = "embedded"
+                logger.info(f"[vector] Using embedded Qdrant path={DEFAULT_PATH}")
+                client = _QdrantClient(path=DEFAULT_PATH)
+
+            # Cache the client
+            _cached_client = client
+            _client_initialized = True
+            logger.info("[vector] Qdrant client cached for reuse")
+            return client
+
+        except Exception as e:  # pragma: no cover
+            logger.warning(f"[vector] Qdrant init failed: {e}")
+            return None
 
 
 def ensure_collection(client, collection: str = DEFAULT_COLLECTION, dim: int = EMBED_DIM) -> None:
