@@ -192,7 +192,7 @@ export default function TestSSEPage() {
                 <span>Status:</span>
                 <span className={`font-semibold ${
                   progress.status === 'completed' ? 'text-green-600' :
-                  progress.status === 'failed' ? 'text-red-600' :
+                  progress.status === 'error' ? 'text-red-600' :
                   'text-blue-600'
                 }`}>
                   {progress.status}

@@ -6,11 +6,14 @@
 export interface ProgressUpdate {
   completed: number;
   total: number;
-  status: 'processing' | 'completed' | 'failed';
+  status: 'pending' | 'processing' | 'completed' | 'error';
   message?: string;
   successful_files?: number;
   failed_files?: number;
   results?: any[];
+  filename?: string;
+  error?: string;
+  processing_time_ms?: number;
 }
 
 export interface WebSocketMessage {

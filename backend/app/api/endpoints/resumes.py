@@ -4,7 +4,7 @@ Resume upload and management endpoints
 
 # import os  # noqa: F401
 import os
-
+import zipfile
 import tempfile
 from datetime import datetime
 from typing import Any, List
@@ -277,6 +277,183 @@ async def upload_multiple_resumes(
     except Exception as e:
         logger.exception("[upload/multiple] Failed")
         raise HTTPException(status_code=500, detail=f"Failed to process batch: {str(e)}")
+
+
+@router.post("/upload/zip")
+async def upload_zip_resumes(
+    zip_file: UploadFile = File(...),
+    job_id: str = Form(None),
+    async_processing: bool = Form(True),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    """
+    Upload a ZIP file containing multiple resume files. Extracts all supported files
+    from the ZIP and processes them using the same batch processing as multiple upload.
+    """
+    # Validate ZIP file
+    if not zip_file.filename.lower().endswith('.zip'):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="File must be a ZIP archive"
+        )
+
+    # Validate ZIP file size (50MB limit for ZIP files)
+    max_zip_size = 50 * 1024 * 1024  # 50MB
+    zip_content = await zip_file.read()
+    if len(zip_content) > max_zip_size:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="ZIP file too large. Maximum 50MB allowed."
+        )
+
+    allowed_extensions = [".pdf", ".docx", ".doc", ".txt"]
+    max_file_size = 10 * 1024 * 1024  # 10MB per individual file
+    tmp_payloads = []
+    extracted_files = []
+
+    # Save ZIP file temporarily
+    with tempfile.NamedTemporaryFile(delete=False, suffix='.zip') as tmp_zip:
+        tmp_zip.write(zip_content)
+        tmp_zip_path = tmp_zip.name
+
+    try:
+        # Extract files from ZIP
+        with zipfile.ZipFile(tmp_zip_path, 'r') as zip_ref:
+            # Get list of files in ZIP
+            zip_info_list = zip_ref.infolist()
+
+            for zip_info in zip_info_list:
+                # Skip directories and hidden files
+                if zip_info.is_dir() or zip_info.filename.startswith('.') or zip_info.filename.startswith('__MACOSX/'):
+                    continue
+
+                # Check file extension
+                file_ext = os.path.splitext(zip_info.filename)[1].lower()
+                if file_ext not in allowed_extensions:
+                    logger.warning(f"Skipping unsupported file type: {zip_info.filename}")
+                    continue
+
+                # Check individual file size
+                if zip_info.file_size > max_file_size:
+                    logger.warning(f"Skipping large file: {zip_info.filename} ({zip_info.file_size} bytes)")
+                    continue
+
+                # Extract file content
+                try:
+                    file_content = zip_ref.read(zip_info.filename)
+
+                    # Create temporary file for extracted content
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=file_ext) as tmp_file:
+                        tmp_file.write(file_content)
+                        tmp_file_path = tmp_file.name
+
+                    # Get clean filename (remove directory path)
+                    clean_filename = os.path.basename(zip_info.filename)
+
+                    # Create metadata with PROCESSING status
+                    file_id = uuid4().hex
+                    meta = ResumeMetadata(
+                        file_id=file_id,
+                        filename=clean_filename,
+                        user_id=str(current_user.id),
+                        file_size=len(file_content),
+                        mime_type=f"application/{file_ext[1:]}",  # Remove dot from extension
+                        status=ProcessingStatus.PROCESSING,
+                        processing_mode=ProcessingMode.STANDARD,
+                        job_id=job_id,
+                        source="zip_upload",
+                    )
+                    await meta.insert()
+
+                    tmp_payloads.append({
+                        "resume_id": str(meta.id),
+                        "tmp_file_path": tmp_file_path,
+                        "filename": clean_filename,
+                        "file_size": len(file_content),
+                        "mime_type": f"application/{file_ext[1:]}",
+                    })
+
+                    extracted_files.append(clean_filename)
+
+                except Exception as e:
+                    logger.error(f"Failed to extract file {zip_info.filename}: {e}")
+                    continue
+
+        if not tmp_payloads:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No valid resume files found in ZIP archive"
+            )
+
+        logger.info(f"[upload/zip] Extracted {len(tmp_payloads)} files from ZIP: {extracted_files}")
+
+        if async_processing:
+            # Enqueue single batch task that processes all extracted files at once
+            from app.tasks.resume_tasks import process_direct_resume_files_batch
+            task = process_direct_resume_files_batch.delay(tmp_payloads, str(current_user.id), job_id)
+            logger.info(f"[upload/zip] Enqueued Celery batch task {task.id} for {len(tmp_payloads)} files")
+            return {
+                "message": "ZIP file accepted for background processing",
+                "status": "processing",
+                "async_processing": True,
+                "user_id": str(current_user.id),
+                "total": len(tmp_payloads),
+                "task_id": task.id,
+                "extracted_files": extracted_files,
+                "zip_filename": zip_file.filename,
+            }
+        else:
+            # Synchronous processing (not recommended for many files)
+            from app.services.resume_parser import ResumeParser
+            parser = ResumeParser()
+            processed = 0
+            for p in tmp_payloads:
+                try:
+                    parsed = await parser.parse_resume(p["tmp_file_path"])
+                    # Mark metadata completed
+                    m = await ResumeMetadata.get(p["resume_id"])  # type: ignore
+                    if m:
+                        m.status = ProcessingStatus.COMPLETED
+                        await m.save()
+                    processed += 1
+                except Exception as e:
+                    logger.error(f"Failed to process {p['filename']}: {e}")
+                    # Mark as failed
+                    m = await ResumeMetadata.get(p["resume_id"])  # type: ignore
+                    if m:
+                        m.status = ProcessingStatus.FAILED
+                        await m.save()
+
+            return {
+                "message": "ZIP file processed synchronously",
+                "status": "completed",
+                "async_processing": False,
+                "processed": processed,
+                "total": len(tmp_payloads),
+                "extracted_files": extracted_files,
+                "zip_filename": zip_file.filename,
+            }
+
+    except zipfile.BadZipFile:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid ZIP file format"
+        )
+    except HTTPException:
+        # Propagate validation errors
+        raise
+    except Exception as e:
+        logger.exception("[upload/zip] Failed")
+        raise HTTPException(status_code=500, detail=f"Failed to process ZIP file: {str(e)}")
+
+    finally:
+        # Clean up temporary ZIP file
+        try:
+            if os.path.exists(tmp_zip_path):
+                os.unlink(tmp_zip_path)
+        except Exception:
+            pass
+
 
 @router.get("/job/{job_id}")
 async def list_resumes_by_job(job_id: str, current_user: User = Depends(get_current_user)) -> Any:

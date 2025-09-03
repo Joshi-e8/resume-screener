@@ -43,14 +43,16 @@ const useResumeServices = () => {
   };
 
   // Upload zip file containing resumes
-  const uploadZipResumes = async (zipFile, jobId) => {
+  const uploadZipResumes = async (zipFile, jobId, onUploadProgress) => {
     try {
       const formData = new FormData();
       formData.append('zip_file', zipFile);
-      formData.append('job_id', jobId);
+      if (jobId) formData.append('job_id', jobId);
+      formData.append('async_processing', 'true');
 
       const response = await axios.post(CONSTANTS.RESUMES.UPLOAD.ZIP, formData, {
-        headers: { "Content-Type": "multipart/form-data" }
+        headers: { "Content-Type": "multipart/form-data" },
+        onUploadProgress: onUploadProgress,
       });
       return response?.data;
     } catch (error) {

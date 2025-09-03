@@ -106,13 +106,14 @@ export interface ProgressUpdate {
   completed: number;
   total: number;
   results?: GoogleDriveBulkFileResult[];
-  status: string;
+  status: 'pending' | 'processing' | 'completed' | 'error';
   successful_files?: number;
   failed_files?: number;
   // Optional fields that backend may include in progress payloads
   message?: string;
   filename?: string;
   error?: string;
+  processing_time_ms?: number;
 }
 
 class GoogleDriveService {

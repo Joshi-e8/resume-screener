@@ -41,10 +41,11 @@ import {
   GoogleDriveBulkUploadResponse,
   ProgressUpdate,
 } from "@/lib/services/googleDriveServices";
-import { websocketService } from "@/lib/services/websocketService";
 import { sseService } from "@/lib/services/sseService";
 import GoogleDriveService from "@/lib/services/googleDriveServices";
 import useResumeServices from "@/lib/services/resumeServices";
+import { SSEProgressBar } from "@/components/ui/SSEProgressBar";
+import { useSSEProgress } from "@/hooks/useSSEProgress";
 import useJobServices from "@/lib/services/jobServices";
 
 interface ResumeUploadProps {
@@ -81,7 +82,23 @@ function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
   const { status, data: session } = useSession();
   const fetchedJobsRef = useRef(false);
   useEffect(() => {
-    if (status !== "authenticated" || !session?.user?.accessToken) return;
+    // For testing purposes, create mock jobs if not authenticated
+    if (status !== "authenticated" || !session?.user?.accessToken) {
+      if (!fetchedJobsRef.current) {
+        const mockJobs = [
+          { id: "test-job-1", title: "Frontend Developer", company: "Test Company" },
+          { id: "test-job-2", title: "Backend Developer", company: "Demo Corp" },
+          { id: "test-job-3", title: "Full Stack Developer", company: "Sample Inc" }
+        ];
+        setJobs(mockJobs);
+        if (!selectedJobId && mockJobs.length > 0) {
+          setSelectedJobId(mockJobs[0].id);
+        }
+        fetchedJobsRef.current = true;
+      }
+      return;
+    }
+
     if (fetchedJobsRef.current) return;
 
     let cancelled = false;
@@ -113,7 +130,7 @@ function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
       console.log(`👁️ Page visibility changed: ${document.visibilityState}`);
 
       if (document.visibilityState === 'visible' && isAsyncProcessing) {
-        console.log('👁️ Page became visible during processing, checking WebSocket...');
+        console.log('👁️ Page became visible during processing, checking SSE connection...');
 
         // Clear any pending reconnect timeout
         if (reconnectTimeout) {
@@ -121,53 +138,25 @@ function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
           reconnectTimeout = null;
         }
 
-        // Immediate connection check when page becomes visible
-        if (!wsConnected) {
-          console.log('🔄 WebSocket disconnected, attempting immediate reconnection...');
-          console.log(`🔧 Using stored userId: ${userId}`);
-          websocketService.connect(userId).then(() => {
-            dispatch(setWsConnected(true));
-            console.log('✅ WebSocket reconnected after page became visible');
-          }).catch((error) => {
-            console.error('❌ Failed to reconnect WebSocket after page became visible:', error);
-          });
+        // Check SSE connection status
+        if (userId && !sseProgress.isConnected) {
+          console.log('🔄 SSE disconnected, attempting immediate reconnection...');
+          sseProgress.connect(userId);
         }
       } else if (document.visibilityState === 'hidden' && isAsyncProcessing) {
-        console.log('👁️ Page became hidden during processing, setting up reconnect strategy...');
-
-        // Set up delayed reconnection attempt for when page becomes visible again
-        reconnectTimeout = setTimeout(() => {
-          if (document.visibilityState === 'visible' && isAsyncProcessing && !wsConnected) {
-            console.log('🔄 Delayed reconnection attempt after page was hidden...');
-            console.log(`🔧 Using stored userId: ${userId}`);
-            websocketService.connect(userId).then(() => {
-              dispatch(setWsConnected(true));
-              console.log('✅ WebSocket reconnected via delayed attempt');
-            }).catch((error) => {
-              console.error('❌ Failed delayed WebSocket reconnection:', error);
-            });
-          }
-        }, 2000); // Wait 2 seconds after page becomes visible
+        console.log('👁️ Page became hidden during processing, SSE will handle reconnection...');
+        // SSE service handles reconnection automatically
       }
     };
 
     const handleWindowFocus = () => {
       console.log('🪟 Window gained focus during processing');
-      if (isAsyncProcessing && !wsConnected) {
-        console.log('🔄 Window focused, attempting WebSocket reconnection...');
-        console.log(`🔧 Using stored userId: ${userId}`);
-        websocketService.connect(userId).then(() => {
-          dispatch(setWsConnected(true));
-          console.log('✅ WebSocket reconnected after window focus');
-        }).catch((error) => {
-          console.error('❌ Failed to reconnect WebSocket after window focus:', error);
-        });
-      }
+      // SSE handles reconnection automatically
     };
 
     const handleWindowBlur = () => {
       console.log('🪟 Window lost focus during processing');
-      // Don't disconnect, but log for debugging
+      // SSE handles connection management
     };
 
     // Detect browser/system sleep/wake cycles
@@ -178,15 +167,10 @@ function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
 
       // If more than 60 seconds have passed, likely system was sleeping
       if (timeDiff > 60000 && isAsyncProcessing) {
-        console.log('😴 System wake detected during processing, reconnecting WebSocket...');
-        if (!wsConnected) {
-          console.log(`🔧 Using stored userId: ${userId}`);
-          websocketService.connect(userId).then(() => {
-            dispatch(setWsConnected(true));
-            console.log('✅ WebSocket reconnected after system wake');
-          }).catch((error) => {
-            console.error('❌ Failed to reconnect WebSocket after system wake:', error);
-          });
+        console.log('😴 System wake detected during processing, checking SSE connection...');
+        if (userId && !sseProgress.isConnected) {
+          console.log('🔄 Reconnecting SSE after system wake...');
+          sseProgress.connect(userId);
         }
       }
       lastActiveTime = now;
@@ -277,34 +261,8 @@ function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
     ]
   );
 
-  // Function to simulate ZIP file extraction (in real app, this would use a ZIP library)
-  const processZipFile = async (_zipFile: File): Promise<File[]> => {
-    // Mock ZIP processing - in real implementation, use JSZip or similar
-    const mockFiles: File[] = [];
-    const fileCount = Math.floor(Math.random() * 5) + 2; // 2-6 files
-
-    for (let i = 0; i < fileCount; i++) {
-      const mockFileName = `resume_${i + 1}.pdf`;
-      const mockFileSize = Math.floor(Math.random() * 2000000) + 500000; // 0.5-2.5MB
-
-      // Create a mock file object that mimics the File interface
-      const mockFile = {
-        name: mockFileName,
-        size: mockFileSize,
-        type: "application/pdf",
-        lastModified: Date.now(),
-        webkitRelativePath: "",
-        stream: () => new ReadableStream(),
-        text: () => Promise.resolve("mock content"),
-        arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)),
-        slice: () => new Blob(),
-      } as File;
-
-      mockFiles.push(mockFile);
-    }
-
-    return mockFiles;
-  };
+  // Note: ZIP file extraction is now handled by the backend
+  // The frontend just uploads the ZIP file and the backend extracts and processes individual files
 
   const handleFiles = useCallback(
     async (files: FileList | File[]) => {
@@ -324,12 +282,13 @@ function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
           allowedZipTypes.includes(file.type) ||
           file.name.toLowerCase().endsWith(".zip")
         ) {
-          try {
-            const extractedFiles = await processZipFile(file);
-            dispatch(setZipContents(extractedFiles));
-            validFiles.push(...extractedFiles);
-          } catch {
-            newErrors.push(`${file.name}: Failed to extract ZIP file`);
+          // In ZIP mode, just add the ZIP file itself - backend will handle extraction
+          if (uploadMode === "zip") {
+            validFiles.push(file);
+            // Clear any previous ZIP contents since we're uploading a new ZIP
+            dispatch(setZipContents([]));
+          } else {
+            newErrors.push(`${file.name}: ZIP files are only allowed in ZIP upload mode`);
           }
         } else {
           validFiles.push(file);
@@ -381,7 +340,29 @@ function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
     dispatch(setSelectedFiles(selectedFiles.filter((_, i) => i !== index)));
   };
 
-  const { uploadSingleResume, uploadMultipleResumes } = useResumeServices();
+  const { uploadSingleResume, uploadMultipleResumes, uploadZipResumes } = useResumeServices();
+
+  // SSE Progress Hook for real-time updates
+  const sseProgress = useSSEProgress(userId, {
+    onProgress: (progress) => {
+      console.log('📊 SSE Progress update received:', progress);
+      dispatch(setProcessingProgress(progress));
+    },
+    onComplete: (progress) => {
+      console.log('✅ SSE Processing completed:', progress);
+      dispatch(setProcessingProgress(progress));
+      dispatch(setIsAsyncProcessing(false));
+    },
+    onError: (error) => {
+      console.error('❌ SSE Processing error:', error);
+      dispatch(setErrors([error]));
+      dispatch(setIsAsyncProcessing(false));
+    },
+    onConnectionChange: (connected) => {
+      console.log('🔗 SSE Connection status:', connected);
+      dispatch(setWsConnected(connected));
+    }
+  });
 
   const simulateUpload = async (file: File, jobId?: string): Promise<void> => {
     return new Promise(async (resolve, reject) => {
@@ -552,7 +533,13 @@ function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
 
         // Wire SSE if backend returned user_id
         if (resp?.user_id) {
-          await sseService.connect(resp.user_id);
+          dispatch(setUserId(resp.user_id));
+          dispatch(setIsAsyncProcessing(true));
+
+          // Connect using the SSE progress hook
+          await sseProgress.connect(resp.user_id);
+
+          // Also update individual file progress bars for visual feedback
           sseService.onProgress((progress: ProgressUpdate & { filename?: string; message?: string; error?: string }) => {
             // Map batch progress to per-file bars (approximate)
             const { completed = 0, total = selectedFiles.length, filename, status } = (progress || {}) as any;
@@ -585,6 +572,96 @@ function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
       }
       return; // Do not run single-file path
     }
+
+    // If user selected ZIP mode, use the ZIP upload endpoint
+    if (uploadMode === "zip") {
+      if (selectedFiles.length === 0) return;
+      dispatch(setIsUploading(true));
+      dispatch(setUploadSuccess(false));
+      dispatch(setErrors([]));
+
+      try {
+        if (!selectedJobId) {
+          dispatch(setErrors(["Please select a position before uploading."]));
+          dispatch(setIsUploading(false));
+          return;
+        }
+
+        // Get the ZIP file (should be only one file in ZIP mode)
+        const zipFile = selectedFiles[0];
+        if (!zipFile.name.toLowerCase().endsWith('.zip')) {
+          dispatch(setErrors(["Please select a valid ZIP file."]));
+          dispatch(setIsUploading(false));
+          return;
+        }
+
+        // Upload ZIP file with progress tracking
+        const resp = await uploadZipResumes(zipFile, selectedJobId, (e: any) => {
+          const total = e.total || zipFile.size || 1;
+          const loaded = e.loaded || 0;
+          const fileUploadProgress = Math.min(100, Math.round((loaded / total) * 100));
+
+          const current = { ...uploadProgress };
+          current[zipFile.name] = fileUploadProgress;
+          dispatch(setUploadProgress(current));
+        });
+
+        // Wire SSE if backend returned user_id for processing progress
+        if (resp?.user_id) {
+          dispatch(setUserId(resp.user_id));
+          dispatch(setIsAsyncProcessing(true));
+
+          // Connect using the SSE progress hook
+          await sseProgress.connect(resp.user_id);
+
+          // Also update individual file progress bars for visual feedback
+          sseService.onProgress((progress: ProgressUpdate & { filename?: string; message?: string; error?: string }) => {
+            const { completed = 0, total = resp.total || 1, filename, status } = (progress || {}) as any;
+            const percent = total > 0 ? Math.min(95, Math.round((completed / total) * 100)) : 10;
+
+            // Update progress for the ZIP file and show processing status
+            const current = { ...uploadProgress } as any;
+            current[zipFile.name] = 100; // ZIP upload is complete
+
+            // Show processing progress for extracted files
+            if (filename) {
+              current[filename] = percent;
+            }
+
+            dispatch(setUploadProgress(current));
+
+            if (status === 'completed') {
+              // Finish all progress bars
+              const done = { ...uploadProgress } as any;
+              done[zipFile.name] = 100;
+              if (resp.extracted_files) {
+                resp.extracted_files.forEach((fileName: string) => {
+                  done[fileName] = 100;
+                });
+              }
+              dispatch(setUploadProgress(done));
+              setTimeout(() => dispatch(setUploadProgress({})), 800);
+            }
+          });
+        }
+
+        // Notify parent callback with the ZIP file
+        onFilesUploaded([zipFile]);
+        dispatch(setUploadSuccess(true));
+
+        // Show extracted files info if available
+        if (resp?.extracted_files) {
+          console.log(`ZIP processed successfully. Extracted ${resp.extracted_files.length} files:`, resp.extracted_files);
+        }
+
+      } catch (e) {
+        dispatch(setErrors(["ZIP upload failed. Please try again."]));
+      } finally {
+        dispatch(setIsUploading(false));
+      }
+      return; // Do not run single-file path
+    }
+
     if (selectedFiles.length === 0) return;
 
     dispatch(setIsUploading(true));
@@ -658,6 +735,10 @@ function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
       if (useAsync) {
         // Setup SSE connection for progress tracking (preferred)
         try {
+          // Connect using the SSE progress hook
+          await sseProgress.connect(currentUserId);
+
+          // Legacy SSE service for backward compatibility
           await sseService.connect(currentUserId);
           // We can reuse wsConnected flag to indicate a live progress channel
           dispatch(setWsConnected(true));
@@ -682,6 +763,7 @@ function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
               handleAsyncProcessingComplete(progress);
               // Cleanup SSE after completion
               sseService.disconnect();
+              sseProgress.disconnect();
               dispatch(setWsConnected(false));
             }
           };
@@ -704,35 +786,16 @@ function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
             }, 1500);
           } catch {}
 
-          // WebSocket fallback: connect as backup channel to ensure completion is received
-          try {
-            await websocketService.connect(currentUserId);
-            websocketService.onProgress((wsProgress) => {
-              // Only act if we haven't already completed via SSE
-              if (wsProgress) {
-                dispatch(setProcessingProgress(wsProgress));
-                if (wsProgress.status === 'completed') {
-                  handleAsyncProcessingComplete(wsProgress);
-                  try { sseService.disconnect(); } catch {}
-                  try { websocketService.disconnect(); } catch {}
-                  dispatch(setWsConnected(false));
-                }
-              }
-            });
-          } catch (wsErr) {
-            console.warn('⚠️ WebSocket fallback failed:', wsErr);
-          }
-
           // Cleanup function
           const cleanup = () => {
             sseService.offProgress(progressCallback);
             sseService.disconnect();
-            try { websocketService.disconnect(); } catch {}
+            sseProgress.disconnect();
             dispatch(setWsConnected(false));
           };
 
           // Store cleanup function for later use (reusing same window slot)
-          (window as any).wsCleanup = cleanup;
+          (window as any).sseCleanup = cleanup;
 
         } catch (sseError) {
           console.warn('SSE connection failed, proceeding without real-time updates:', sseError);
@@ -750,7 +813,7 @@ function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
       if (response.async_processing) {
         // Async processing started - update batch ID
         dispatch(setBatchId(response.batch_id || null));
-        // No need to ensure WebSocket; SSE is connected above
+        // SSE is connected above for real-time progress updates
       } else {
         // Synchronous processing completed
         handleSyncProcessingComplete(response);
@@ -819,52 +882,7 @@ function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
     dispatch(setGoogleDriveUploading(false));
   };
 
-  // Ensure WebSocket connection stays active during processing
-  const ensureWebSocketConnection = async (userId: string) => {
-    console.log('🔗 Ensuring WebSocket connection for processing...');
-
-    // Force reconnection to ensure fresh connection
-    console.log('🔄 Forcing WebSocket reconnection for processing...');
-    try {
-      websocketService.disconnect();
-      await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second
-      await websocketService.connect(userId);
-      dispatch(setWsConnected(true));
-      console.log('✅ WebSocket connected successfully for processing');
-    } catch (error) {
-      console.error('❌ Failed to connect WebSocket:', error);
-      dispatch(setWsConnected(false));
-    }
-
-    // Set up aggressive connection monitoring during processing
-    const connectionMonitor = setInterval(async () => {
-      console.log('🔍 Checking WebSocket connection status...');
-
-      if (!wsConnected) {
-        console.log('🔄 WebSocket disconnected during processing, attempting reconnect...');
-        try {
-          await websocketService.connect(userId);
-          dispatch(setWsConnected(true));
-          console.log('✅ WebSocket reconnected during processing');
-        } catch (error) {
-          console.error('❌ Failed to reconnect WebSocket during processing:', error);
-          dispatch(setWsConnected(false));
-        }
-      } else {
-        console.log('✅ WebSocket connection is active');
-      }
-    }, 5000); // Check every 5 seconds (more aggressive)
-
-    // Store monitor reference for cleanup
-    (window as any).connectionMonitor = connectionMonitor;
-
-    // Clear monitor after 30 minutes (extended for large batches)
-    setTimeout(() => {
-      console.log('⏰ Stopping connection monitor after timeout');
-      clearInterval(connectionMonitor);
-      (window as any).connectionMonitor = null;
-    }, 1800000); // 30 minutes
-  };
+  // SSE connection is handled by the useSSEProgress hook automatically
 
   // Handle completion of asynchronous processing
   const handleAsyncProcessingComplete = (progress: ProgressUpdate) => {
@@ -874,12 +892,7 @@ function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
     console.log('📊 Updating progress state with completion data...');
     dispatch(setProcessingProgress(progress));
 
-    // Stop any ongoing connection monitoring
-    if ((window as any).connectionMonitor) {
-      console.log('🛑 Stopping WebSocket connection monitor');
-      clearInterval((window as any).connectionMonitor);
-      (window as any).connectionMonitor = null;
-    }
+    // SSE connection cleanup is handled by the useSSEProgress hook
 
     if (progress.results) {
       const successfulUploads = progress.results.filter((r) => r.success);
@@ -921,10 +934,10 @@ function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
       dispatch(setProcessingProgress(null));
     }, 5000); // Increased to 5 seconds to show completion
 
-    // Cleanup WebSocket
-    if ((window as any).wsCleanup) {
-      (window as any).wsCleanup();
-      delete (window as any).wsCleanup;
+    // Cleanup SSE
+    if ((window as any).sseCleanup) {
+      (window as any).sseCleanup();
+      delete (window as any).sseCleanup;
     }
   };
 
@@ -1285,48 +1298,30 @@ function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
               </button>
             </div>
           ) : (
-            // Processing State
-            <div>
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-                    <Loader2 className="w-5 h-5 text-blue-600 animate-spin" />
-                  </div>
-                  <div>
-                    <h3 className="text-lg font-medium text-blue-900">
-                      Processing {selectedGoogleDriveFiles.length} Files
-                    </h3>
-                    <p className="text-sm text-blue-700">
-                      {processingProgress ?
-                        `${processingProgress.completed} of ${processingProgress.total} files processed` :
-                        'Initializing processing...'
-                      }
-                    </p>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <div className="text-sm font-medium text-blue-900">
-                    {processingProgress ?
-                      `${Math.round((processingProgress.completed / processingProgress.total) * 100)}%` :
-                      '0%'
-                    }
-                  </div>
-                  <div className="text-xs text-blue-700">Complete</div>
-                </div>
-              </div>
-
-              {/* Progress Bar */}
-              <div className="w-full bg-blue-200 rounded-full h-2">
-                <div
-                  className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                  style={{
-                    width: processingProgress ?
-                      `${(processingProgress.completed / processingProgress.total) * 100}%` :
-                      '0%'
-                  }}
-                ></div>
-              </div>
-            </div>
+            // Processing State - Enhanced SSE Progress Bar
+            <SSEProgressBar
+              progress={processingProgress ? {
+                completed: processingProgress.completed || 0,
+                total: processingProgress.total || 1,
+                status: processingProgress.status || 'processing',
+                message: processingProgress.message,
+                filename: processingProgress.filename,
+                error: processingProgress.error,
+                successful_files: processingProgress.successful_files,
+                failed_files: processingProgress.failed_files,
+                processing_time_ms: processingProgress.processing_time_ms
+              } : null}
+              title={`Processing ${selectedGoogleDriveFiles.length} Files`}
+              showDetails={true}
+              showFileProgress={true}
+              onComplete={() => {
+                console.log('🎉 SSE Progress Bar: Processing completed');
+              }}
+              onError={(error) => {
+                console.error('❌ SSE Progress Bar: Processing error:', error);
+                dispatch(setErrors([error]));
+              }}
+            />
           )}
         </div>
       )}
@@ -1350,46 +1345,41 @@ function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
         </div>
       )}
 
-      {/* ZIP Contents Preview */}
-      {uploadMode === "zip" && zipContents.length > 0 && (
+      {/* ZIP File Info - Show selected ZIP file info */}
+      {uploadMode === "zip" && selectedFiles.length > 0 && selectedFiles[0].name.toLowerCase().endsWith('.zip') && (
         <div className="mt-6">
-          <div className="bg-green-50 border border-green-200 rounded-xl p-4 mb-4">
+          <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-4">
             <div className="flex items-center gap-2 mb-2">
-              <CheckCircle className="w-5 h-5 text-green-600" />
-              <h4 className="font-medium text-green-900">
-                ZIP File Extracted Successfully
+              <Archive className="w-5 h-5 text-blue-600" />
+              <h4 className="font-medium text-blue-900">
+                ZIP File Selected
               </h4>
             </div>
-            <p className="text-sm text-green-700">
-              Found {zipContents.length} resume files in the ZIP archive
+            <p className="text-sm text-blue-700">
+              The ZIP file will be extracted and processed on the server
             </p>
           </div>
 
           <h4 className="font-medium text-gray-900 mb-4">
-            Extracted Files ({zipContents.length})
+            Selected ZIP File
           </h4>
           <div className="space-y-3 mb-4">
-            {zipContents.map((file, index) => (
-              <div
-                key={index}
-                className="flex items-center justify-between p-3 bg-blue-50 rounded-lg border border-blue-200"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
-                    <FileText className="w-4 h-4 text-blue-600" />
-                  </div>
-                  <div>
-                    <p className="font-medium text-blue-900">{file.name}</p>
-                    <p className="text-xs text-blue-700">
-                      {(file.size / 1024 / 1024).toFixed(2)} MB
-                    </p>
-                  </div>
+            <div className="flex items-center justify-between p-3 bg-blue-50 rounded-lg border border-blue-200">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
+                  <Archive className="w-4 h-4 text-blue-600" />
                 </div>
-                <span className="px-2 py-1 bg-blue-100 text-blue-800 text-xs font-medium rounded-full">
-                  From ZIP
-                </span>
+                <div>
+                  <p className="font-medium text-blue-900">{selectedFiles[0].name}</p>
+                  <p className="text-xs text-blue-700">
+                    {(selectedFiles[0].size / 1024 / 1024).toFixed(2)} MB
+                  </p>
+                </div>
               </div>
-            ))}
+              <span className="px-2 py-1 bg-blue-100 text-blue-800 text-xs font-medium rounded-full">
+                ZIP Archive
+              </span>
+            </div>
           </div>
         </div>
       )}
@@ -1532,6 +1522,86 @@ function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
               ))}
           </div>
 
+          {/* SSE Progress Bar for Regular Uploads (Single/Multiple/ZIP) */}
+          {/* Debug: isAsyncProcessing={isAsyncProcessing}, isUploading={isUploading}, uploadMode={uploadMode}, processingProgress={JSON.stringify(processingProgress)} */}
+          {console.log('🔍 Progress Bar Visibility Check:', { isAsyncProcessing, isUploading, uploadMode, processingProgress, shouldShow: (isAsyncProcessing || isUploading) && uploadMode !== "google-drive" })}
+          {((isAsyncProcessing || isUploading) && uploadMode !== "google-drive") || (processingProgress && processingProgress.status === 'processing') && (
+            <div className="mt-6">
+              <SSEProgressBar
+                progress={processingProgress ? {
+                  completed: processingProgress.completed || 0,
+                  total: processingProgress.total || 1,
+                  status: processingProgress.status || 'processing',
+                  message: processingProgress.message,
+                  filename: processingProgress.filename,
+                  error: processingProgress.error,
+                  successful_files: processingProgress.successful_files,
+                  failed_files: processingProgress.failed_files,
+                  processing_time_ms: processingProgress.processing_time_ms
+                } : {
+                  completed: 0,
+                  total: selectedFiles.length || 1,
+                  status: 'processing',
+                  message: isUploading ? 'Uploading files...' : 'Starting processing...'
+                }}
+                title={
+                  uploadMode === "zip"
+                    ? "Processing ZIP Archive"
+                    : uploadMode === "multiple"
+                    ? "Processing Multiple Files"
+                    : "Processing File"
+                }
+                showDetails={true}
+                showFileProgress={true}
+                onComplete={() => {
+                  console.log('🎉 Regular upload processing completed');
+                  dispatch(setIsAsyncProcessing(false));
+                }}
+                onError={(error) => {
+                  console.error('❌ Regular upload processing error:', error);
+                  dispatch(setErrors([error]));
+                  dispatch(setIsAsyncProcessing(false));
+                }}
+              />
+            </div>
+          )}
+
+          {/* Fallback SSE Progress Bar - Show when we have processing progress data but main bar isn't showing */}
+          {processingProgress && !(((isAsyncProcessing || isUploading) && uploadMode !== "google-drive") || (processingProgress && processingProgress.status === 'processing')) && (
+            <div className="mt-6">
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-4">
+                <p className="text-sm text-yellow-800">
+                  ⚠️ Progress data received but main progress bar not showing. State: isAsyncProcessing={String(isAsyncProcessing)}, isUploading={String(isUploading)}, uploadMode={uploadMode}
+                </p>
+              </div>
+              <SSEProgressBar
+                progress={{
+                  completed: processingProgress.completed || 0,
+                  total: processingProgress.total || 1,
+                  status: processingProgress.status || 'processing',
+                  message: processingProgress.message,
+                  filename: processingProgress.filename,
+                  error: processingProgress.error,
+                  successful_files: processingProgress.successful_files,
+                  failed_files: processingProgress.failed_files,
+                  processing_time_ms: processingProgress.processing_time_ms
+                }}
+                title="Processing Files (Fallback)"
+                showDetails={true}
+                showFileProgress={true}
+                onComplete={() => {
+                  console.log('🎉 Fallback progress bar - processing completed');
+                  dispatch(setIsAsyncProcessing(false));
+                }}
+                onError={(error) => {
+                  console.error('❌ Fallback progress bar - processing error:', error);
+                  dispatch(setErrors([error]));
+                  dispatch(setIsAsyncProcessing(false));
+                }}
+              />
+            </div>
+          )}
+
           {/* Upload Button - Show when files are selected and not processing */}
           {!isAsyncProcessing && (selectedFiles.length > 0 || selectedGoogleDriveFiles.length > 0) && (
             <div className="mt-6 flex justify-end">
@@ -1608,6 +1678,93 @@ function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
                 </>
               )}
             </button>
+
+            {/* Test Progress Button - For demonstration purposes */}
+            {process.env.NODE_ENV === 'development' && selectedFiles.length > 0 && uploadMode !== "google-drive" && (
+              <button
+                onClick={() => {
+                  // Simulate upload progress for testing
+                  dispatch(setIsUploading(true));
+                  dispatch(setIsAsyncProcessing(true));
+
+                  // Initialize progress for all files
+                  const initialProgress: Record<string, number> = {};
+                  selectedFiles.forEach(file => {
+                    initialProgress[file.name] = 0;
+                  });
+                  dispatch(setUploadProgress(initialProgress));
+
+                  // Set initial processing progress
+                  dispatch(setProcessingProgress({
+                    completed: 0,
+                    total: selectedFiles.length,
+                    status: 'processing',
+                    message: 'Starting upload simulation...'
+                  }));
+
+                  // Simulate progress updates
+                  let progress = 0;
+                  const interval = setInterval(() => {
+                    progress += Math.random() * 15 + 5; // Random progress increment
+
+                    if (progress >= 100) {
+                      progress = 100;
+                      clearInterval(interval);
+
+                      // Complete all files
+                      const completeProgress: Record<string, number> = {};
+                      selectedFiles.forEach(file => {
+                        completeProgress[file.name] = 100;
+                      });
+                      dispatch(setUploadProgress(completeProgress));
+
+                      // Set completion status
+                      dispatch(setProcessingProgress({
+                        completed: selectedFiles.length,
+                        total: selectedFiles.length,
+                        status: 'completed',
+                        message: 'All files processed successfully!',
+                        successful_files: selectedFiles.length,
+                        failed_files: 0,
+                        processing_time_ms: 8500
+                      }));
+
+                      // Clean up after 2 seconds
+                      setTimeout(() => {
+                        dispatch(setIsUploading(false));
+                        dispatch(setIsAsyncProcessing(false));
+                        dispatch(setUploadProgress({}));
+                        dispatch(setUploadSuccess(true));
+                      }, 2000);
+                    } else {
+                      // Update individual file progress
+                      const currentProgress: Record<string, number> = {};
+                      selectedFiles.forEach((file, index) => {
+                        currentProgress[file.name] = Math.min(100, progress + (index * 5));
+                      });
+                      dispatch(setUploadProgress(currentProgress));
+
+                      // Update processing progress
+                      const completed = Math.floor((progress / 100) * selectedFiles.length);
+                      dispatch(setProcessingProgress({
+                        completed,
+                        total: selectedFiles.length,
+                        status: 'processing',
+                        message: progress < 30 ? 'Uploading files...' :
+                                progress < 60 ? 'Parsing content...' :
+                                progress < 90 ? 'Analyzing with AI...' : 'Finalizing...',
+                        filename: selectedFiles[Math.min(completed, selectedFiles.length - 1)]?.name
+                      }));
+                    }
+                  }, 500);
+                }}
+                disabled={isUploading || isAsyncProcessing}
+                className="ml-3 px-4 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              >
+                <Zap className="w-4 h-4" />
+                Test Progress
+              </button>
+            )}
           </div>
           )}
         </div>
