@@ -3,24 +3,29 @@ Celery tasks for resume processing
 """
 
 import asyncio
+import os
+import re
+import shutil
 import time
+import traceback
+from datetime import datetime, timezone
 from typing import Dict, List, Any
 
+import requests
+
 from app.core.celery_app import celery_app
+from app.core.config import settings
+from app.core.database import init_database, ensure_database_connection
+from app.core.json_logging import log_resume_processing
+from app.core.websocket_manager import websocket_manager
+from app.models.job import Job
+from app.models.resume_processing import BatchProcessingJob, ProcessingStatus, ResumeMetadata, ResumeDetails, ProcessingMode
+from app.scoring.llm_client import LLMClient, reset_llm_gate
+from app.scoring.service import score_resume_against_job
 from app.services.google_drive_service import GoogleDriveService
 from app.services.resume_parser import ResumeParser
-# WebSocket manager no longer needed - using SSE instead
-# from app.core.websocket_manager import websocket_manager
-from app.models.resume_processing import BatchProcessingJob, ProcessingStatus, ResumeMetadata, ResumeDetails, ProcessingMode
-from app.models.job import Job
-from app.scoring.service import score_resume_against_job
-from app.core.database import init_database
-from app.core.config import settings
-import os
+from app.vector.store import upsert_resume_chunks, Chunk, get_mode
 from loguru import logger
-from datetime import datetime, timezone
-
-import re
 
 
 # Robust truthy parsing for env/config values like 'True', '1', 'false', etc.
@@ -65,7 +70,6 @@ def process_direct_resume_file(self, resume_id: str, tmp_file_path: str, filenam
 
         # Initialize database connection once (optimized with connection pooling)
         try:
-            from app.core.database import ensure_database_connection
             loop.run_until_complete(ensure_database_connection())
         except Exception as db_err:
             logger.warning(f"Database initialization failed: {db_err}")
@@ -73,7 +77,6 @@ def process_direct_resume_file(self, resume_id: str, tmp_file_path: str, filenam
 
         # Warm up LLM client cache to reduce cold start time
         try:
-            from app.scoring.llm_client import LLMClient
             _ = LLMClient()  # This will cache the client connection
         except Exception as llm_err:
             logger.warning(f"LLM client warm-up failed: {llm_err}")
@@ -82,8 +85,6 @@ def process_direct_resume_file(self, resume_id: str, tmp_file_path: str, filenam
         # Send initial SSE progress update via HTTP API
         if user_id:
             try:
-                import requests
-                import time
                 # Reduced delay for faster processing (was 1 second)
                 time.sleep(0.1)
                 logger.info(f"📡 SSE: Sending initial progress for user {user_id}")
@@ -134,14 +135,11 @@ def process_direct_resume_file(self, resume_id: str, tmp_file_path: str, filenam
             meta = loop.run_until_complete(ResumeMetadata.get(resume_id))
             if meta:
                 # Create uploads directory if it doesn't exist
-                from app.core.config import settings
                 upload_dir = getattr(settings, "UPLOAD_DIR", "./uploads")
-                import os
                 os.makedirs(upload_dir, exist_ok=True)
 
                 # Copy temporary file to permanent location
                 permanent_file_path = os.path.join(upload_dir, meta.file_id)
-                import shutil
                 shutil.copy2(tmp_file_path, permanent_file_path)
                 logger.info(f"✅ Saved resume file permanently: {permanent_file_path}")
             else:
@@ -155,7 +153,6 @@ def process_direct_resume_file(self, resume_id: str, tmp_file_path: str, filenam
         # Send SSE progress update for parsing stage
         if user_id:
             try:
-                import requests
                 requests.post(
                     "http://localhost:8000/api/v1/sse/progress/update",
                     json={
@@ -192,7 +189,6 @@ def process_direct_resume_file(self, resume_id: str, tmp_file_path: str, filenam
             # Send SSE progress update for scoring stage
             if user_id:
                 try:
-                    import requests
                     requests.post(
                         "http://localhost:8000/api/v1/sse/progress/update",
                         json={
@@ -300,14 +296,12 @@ def process_direct_resume_file(self, resume_id: str, tmp_file_path: str, filenam
                     candidate_name = name_from_contact.strip()
                 elif candidate_email and isinstance(candidate_email, str):
                     local = candidate_email.split("@")[0]
-                    import re as _re
-                    parts = [p for p in _re.split(r"[._-]+", local) if p]
+                    parts = [p for p in re.split(r"[._-]+", local) if p]
                     if parts:
                         candidate_name = " ".join([p[:1].upper() + p[1:] for p in parts])
                 if not candidate_name and isinstance(filename, str):
-                    import re as _re
-                    base = _re.sub(r"\.[^./]+$", "", filename)
-                    parts = [p for p in _re.split(r"[._-]+", base) if p]
+                    base = re.sub(r"\.[^./]+$", "", filename)
+                    parts = [p for p in re.split(r"[._-]+", base) if p]
                     if parts:
                         candidate_name = " ".join([p[:1].upper() + p[1:] for p in parts[:3]])
             except Exception:
@@ -382,7 +376,6 @@ def process_direct_resume_file(self, resume_id: str, tmp_file_path: str, filenam
         # Send SSE progress update for vector indexing stage
         if user_id:
             try:
-                import requests
                 requests.post(
                     "http://localhost:8000/api/v1/sse/progress/update",
                     json={
@@ -401,7 +394,6 @@ def process_direct_resume_file(self, resume_id: str, tmp_file_path: str, filenam
                 logger.error(f"❌ SSE: Failed to send indexing progress: {e}")
 
         try:
-            from app.vector.store import upsert_resume_chunks, Chunk, get_mode
             chunks: list[Chunk] = []
             def _chunkify(text: str, section: str, size: int = 1200, overlap: int = 200):
                 if not text:
@@ -445,7 +437,6 @@ def process_direct_resume_file(self, resume_id: str, tmp_file_path: str, filenam
             pass
 
         # Log completion
-        from app.core.json_logging import log_resume_processing
         log_resume_processing(
             event="processing_completed",
             filename=filename,
@@ -457,7 +448,6 @@ def process_direct_resume_file(self, resume_id: str, tmp_file_path: str, filenam
         # Send final SSE completion update
         if user_id:
             try:
-                import requests
                 response = requests.post(
                     "http://localhost:8000/api/v1/sse/progress/update",
                     json={
@@ -513,7 +503,6 @@ def process_direct_resume_file(self, resume_id: str, tmp_file_path: str, filenam
         # Send SSE error update
         if user_id:
             try:
-                import requests
                 requests.post(
                     "http://localhost:8000/api/v1/sse/progress/update",
                     json={
@@ -592,14 +581,11 @@ def process_resume_task(self, file_id: str, access_token: str, credentials_dict:
 
             # Save file permanently for downloads
             try:
-                from app.core.config import settings
                 upload_dir = getattr(settings, "UPLOAD_DIR", "./uploads")
-                import os
                 os.makedirs(upload_dir, exist_ok=True)
 
                 # Copy temporary file to permanent location using file_id as filename
                 permanent_file_path = os.path.join(upload_dir, file_id)
-                import shutil
                 shutil.copy2(tmp_file_path, permanent_file_path)
                 logger.info(f"✅ Google Drive: Saved resume file permanently: {permanent_file_path}")
             except Exception as save_error:
@@ -725,7 +711,6 @@ def process_direct_resume_files_batch(self, items: List[Dict[str, Any]], user_id
         if not user_id:
             return
         try:
-            import requests
             requests.post(
                 "http://localhost:8000/api/v1/sse/progress/update",
                 json={
@@ -754,7 +739,6 @@ def process_direct_resume_files_batch(self, items: List[Dict[str, Any]], user_id
 
     # Use optimized database connection
     try:
-        from app.core.database import ensure_database_connection
         loop.run_until_complete(ensure_database_connection())
     except Exception as db_err:
         logger.warning(f"Database initialization failed: {db_err}")
@@ -806,14 +790,11 @@ def process_direct_resume_files_batch(self, items: List[Dict[str, Any]], user_id
                     meta = await ResumeMetadata.get(resume_id)
                     if meta:
                         # Create uploads directory if it doesn't exist
-                        from app.core.config import settings
                         upload_dir = getattr(settings, "UPLOAD_DIR", "./uploads")
-                        import os
                         os.makedirs(upload_dir, exist_ok=True)
 
                         # Copy temporary file to permanent location
                         permanent_file_path = os.path.join(upload_dir, meta.file_id)
-                        import shutil
                         shutil.copy2(tmp_file_path, permanent_file_path)
                         logger.info(f"✅ Batch: Saved resume file permanently: {permanent_file_path}")
                     else:
@@ -851,7 +832,6 @@ def process_direct_resume_files_batch(self, items: List[Dict[str, Any]], user_id
                 except Exception as me:
                     logger.warning(f"[batch] metadata/details persist failed for {filename}: {me}")
                 try:
-                    from app.vector.store import upsert_resume_chunks, Chunk
                     chunks: list[Chunk] = []
                     def _chunkify(text: str, section: str, size: int = 1200, overlap: int = 200):
                         if not text:
@@ -934,8 +914,7 @@ def process_bulk_resumes_task(self, file_ids: List[str], access_token: str, cred
             setattr(process_chunk_sync, "_jobs_cache", None)
         except Exception:
             pass
-        from loguru import logger as _logger
-        _logger.info(f"🧭 TASK: Job ID parameter received: {job_id}")
+        logger.info(f"🧭 TASK: Job ID parameter received: {job_id}")
 
         # Process files in much larger chunks for maximum performance
         chunk_size = 20
@@ -947,7 +926,6 @@ def process_bulk_resumes_task(self, file_ids: List[str], access_token: str, cred
         if user_id:
             # Try WebSocket first (backwards-compatible)
             try:
-                from app.core.websocket_manager import websocket_manager
                 logger.info(f"🚀 TASK: Starting bulk processing for user_id: {user_id}")
                 logger.info(f"📊 TASK: Processing {total_files} files")
 
@@ -965,12 +943,10 @@ def process_bulk_resumes_task(self, file_ids: List[str], access_token: str, cred
                 logger.info(f"✅ TASK: Sent initial WebSocket progress update for user {user_id}")
             except Exception as e:
                 logger.error(f"❌ TASK: Failed to send initial WebSocket progress update: {e}")
-                import traceback
                 logger.error(f"❌ TASK: Traceback: {traceback.format_exc()}")
 
             # Also try SSE HTTP update (preferred path)
             try:
-                import requests
                 requests.post(
                     "http://localhost:8000/api/v1/sse/progress/update",
                     json={
@@ -1002,7 +978,6 @@ def process_bulk_resumes_task(self, file_ids: List[str], access_token: str, cred
 
             # Reset LLM failure gate at the start of each chunk to avoid carry-over between chunks
             try:
-                from app.scoring.llm_client import reset_llm_gate
                 reset_llm_gate()
             except Exception:
                 pass
@@ -1025,7 +1000,6 @@ def process_bulk_resumes_task(self, file_ids: List[str], access_token: str, cred
             if user_id and (chunk_index % 2 == 0 or chunk_index == len(chunks) - 1):
                 # WebSocket update (backwards-compatible)
                 try:
-                    from app.core.websocket_manager import websocket_manager
                     logger.info(f"📊 TASK: Sending progress update {processed_count}/{total_files} for user {user_id}")
 
                     loop = asyncio.new_event_loop()
@@ -1042,12 +1016,10 @@ def process_bulk_resumes_task(self, file_ids: List[str], access_token: str, cred
                     logger.info(f"✅ TASK: Sent WebSocket progress update {processed_count}/{total_files}")
                 except Exception as e:
                     logger.error(f"❌ TASK: Failed to send WebSocket progress update: {e}")
-                    import traceback
                     logger.error(f"❌ TASK: Traceback: {traceback.format_exc()}")
 
                 # SSE HTTP update (preferred path in new flow)
                 try:
-                    import requests
                     requests.post(
                         "http://localhost:8000/api/v1/sse/progress/update",
                         json={
@@ -1309,9 +1281,7 @@ def process_chunk_sync(file_ids: List[str], credentials_dict: Dict[str, Any],
 
                         # Save file permanently for downloads (bulk processing)
                         try:
-                            from app.core.config import settings
                             upload_dir = getattr(settings, "UPLOAD_DIR", "./uploads")
-                            import os
                             os.makedirs(upload_dir, exist_ok=True)
 
                             # Save file content to permanent location using file_id as filename
@@ -1397,7 +1367,6 @@ def process_chunk_sync(file_ids: List[str], credentials_dict: Dict[str, Any],
 
         # Upsert vector chunks BEFORE scoring so retrieval works in same run
         try:
-            from app.vector.store import upsert_resume_chunks, Chunk, get_mode
             logger.info("[vector] Pre-score upsert starting for parsed results…")
             for result in chunk_results:
                 if isinstance(result, Exception):

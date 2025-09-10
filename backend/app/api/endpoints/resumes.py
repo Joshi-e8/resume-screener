@@ -2,27 +2,35 @@
 Resume upload and management endpoints
 """
 
-# import os  # noqa: F401
 import os
-import zipfile
+import random
+import re
 import tempfile
-from datetime import datetime
+import zipfile
+from datetime import datetime, timedelta
 from typing import Any, List
+from uuid import uuid4
 
 from fastapi import (APIRouter, Depends, File, Form, HTTPException, UploadFile,
                      status)
-from uuid import uuid4
+from fastapi.responses import FileResponse
 from loguru import logger
-from app.models.job import Job
-from app.models.resume_processing import ProcessingMode
-from app.scoring.service import score_resume_against_job
-from app.vector.store import upsert_resume_chunks, Chunk
 
-from app.core.security import get_current_user
 from app.core.config import settings
+from app.core.security import get_current_user
 from app.models.analytics import EventType
-import re
-from datetime import datetime
+from app.models.candidate import CandidateCreate
+from app.models.job import Job
+from app.models.resume_processing import (ProcessingMode, ProcessingStatus,
+                                        ResumeDetails, ResumeMetadata)
+from app.models.user import User
+from app.scoring.service import score_resume_against_job
+from app.services.analytics_service import AnalyticsService
+from app.services.candidate_service import CandidateService
+from app.services.resume_parser import ResumeParser
+from app.tasks.resume_tasks import (process_direct_resume_file,
+                                  process_direct_resume_files_batch)
+from app.vector.store import upsert_resume_chunks, Chunk
 
 
 def _parse_years_from_duration(duration_str: str) -> float:
@@ -70,13 +78,9 @@ def _parse_years_from_duration(duration_str: str) -> float:
         return 1.0
 
     return 0.0
-from app.models.candidate import CandidateCreate
-from app.models.user import User
-from app.models.resume_processing import ResumeMetadata, ResumeDetails, ProcessingStatus
 
-from app.services.analytics_service import AnalyticsService
-from app.services.candidate_service import CandidateService
-from app.services.resume_parser import ResumeParser
+
+
 
 router = APIRouter()
 
@@ -134,7 +138,6 @@ async def upload_resume(
 
         if async_processing:
             # Enqueue Celery task; don't delete tmp file so worker can read it
-            from app.tasks.resume_tasks import process_direct_resume_file
             task = process_direct_resume_file.delay(str(meta.id), tmp_file_path, file.filename, str(current_user.id), job_id, source)
             logger.info(f"[upload] Enqueued Celery task {task.id} for resume {meta.id}")
             return {
@@ -240,7 +243,6 @@ async def upload_multiple_resumes(
 
         if async_processing:
             # Enqueue single batch task that processes all provided files at once
-            from app.tasks.resume_tasks import process_direct_resume_files_batch
             task = process_direct_resume_files_batch.delay(tmp_payloads, str(current_user.id), job_id)
             logger.info(f"[upload/multiple] Enqueued Celery batch task {task.id} for {len(tmp_payloads)} files")
             return {
@@ -253,7 +255,6 @@ async def upload_multiple_resumes(
             }
         else:
             # Synchronous (not recommended for many files) — process sequentially using the same parser
-            from app.services.resume_parser import ResumeParser
             parser = ResumeParser()
             processed = 0
             for p in tmp_payloads:
@@ -390,7 +391,6 @@ async def upload_zip_resumes(
 
         if async_processing:
             # Enqueue single batch task that processes all extracted files at once
-            from app.tasks.resume_tasks import process_direct_resume_files_batch
             task = process_direct_resume_files_batch.delay(tmp_payloads, str(current_user.id), job_id)
             logger.info(f"[upload/zip] Enqueued Celery batch task {task.id} for {len(tmp_payloads)} files")
             return {
@@ -405,7 +405,6 @@ async def upload_zip_resumes(
             }
         else:
             # Synchronous processing (not recommended for many files)
-            from app.services.resume_parser import ResumeParser
             parser = ResumeParser()
             processed = 0
             for p in tmp_payloads:
@@ -594,7 +593,6 @@ async def list_resumes(current_user: User = Depends(get_current_user)) -> Any:
                     experience_years = round(total_years, 2)
                 else:
                     # More varied fallback based on position count with some randomization
-                    import random
                     base_years = len(exp_array) * random.uniform(1.2, 2.5)  # Vary between 1.2-2.5 years per position
                     experience_years = round(min(base_years, 15), 2)
 
@@ -714,7 +712,6 @@ async def download_resume(
             )
 
         # Return file response
-        from fastapi.responses import FileResponse
         return FileResponse(
             path=file_path,
             filename=meta.filename,
@@ -746,7 +743,6 @@ async def get_resume_stats(current_user: User = Depends(get_current_user)) -> An
         failed_count = await ResumeMetadata.find({"status": ProcessingStatus.FAILED}).count()
 
         # Get resumes from this month
-        from datetime import datetime, timedelta
         month_start = datetime.utcnow().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
         this_month_count = await ResumeMetadata.find({
             "created_at": {"$gte": month_start}

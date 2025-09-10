@@ -2,15 +2,24 @@
 Google Drive integration endpoints
 """
 
+import asyncio
 import os
+import requests
 import tempfile
+import time
+import uuid
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Query, status
 from fastapi.responses import JSONResponse, RedirectResponse
+from loguru import logger
 from pydantic import BaseModel
+
+from app.core.celery_app import celery_app
+from app.models.resume_processing import BatchProcessingJob, ProcessingStatus
 from app.services.google_drive_service import GoogleDriveService
 from app.services.resume_parser import ResumeParser
+from app.tasks.resume_tasks import process_bulk_resumes_task
 
 router = APIRouter()
 
@@ -105,7 +114,6 @@ async def initiate_google_drive_auth(
         drive_service = GoogleDriveService()
 
         # Use a random state for security - in production you'd want to store this securely
-        import uuid
         state = str(uuid.uuid4())
         authorization_url = drive_service.get_authorization_url(state=state)
 
@@ -448,12 +456,6 @@ async def bulk_upload_resumes_from_google_drive(
     """
     Bulk upload and process multiple resumes from Google Drive with smart processing
     """
-    import time
-    import asyncio
-    import uuid
-    from app.tasks.resume_tasks import process_bulk_resumes_task
-    from app.models.resume_processing import BatchProcessingJob, ProcessingStatus
-    from loguru import logger
 
     start_time = time.time()
 
@@ -565,7 +567,6 @@ async def bulk_upload_resumes_from_google_drive(
                         async with completed_lock:
                             completed_count += 1
                             try:
-                                import requests
                                 requests.post(
                                     "http://localhost:8000/api/v1/sse/progress/update",
                                     json={
@@ -612,7 +613,6 @@ async def bulk_upload_resumes_from_google_drive(
                         async with completed_lock:
                             completed_count += 1
                             try:
-                                import requests
                                 requests.post(
                                     "http://localhost:8000/api/v1/sse/progress/update",
                                     json={
@@ -646,7 +646,6 @@ async def bulk_upload_resumes_from_google_drive(
                         async with completed_lock:
                             completed_count += 1
                             try:
-                                import requests
                                 requests.post(
                                     "http://localhost:8000/api/v1/sse/progress/update",
                                     json={
@@ -685,7 +684,6 @@ async def bulk_upload_resumes_from_google_drive(
                     async with completed_lock:
                         completed_count += 1
                         try:
-                            import requests
                             requests.post(
                                 "http://localhost:8000/api/v1/sse/progress/update",
                                 json={
@@ -746,8 +744,6 @@ async def get_batch_processing_status(batch_id: str) -> Any:
     """
     Get the status of a batch processing job
     """
-    from app.models.resume_processing import BatchProcessingJob
-    from app.core.celery_app import celery_app
 
     try:
         # Find the batch job

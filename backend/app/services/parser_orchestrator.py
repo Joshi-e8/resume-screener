@@ -4,12 +4,17 @@ performs section-aware extraction, skills canonicalization via runtime-loaded ga
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
-from loguru import logger
-import time
+import os
 import re
+import time
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Any, Dict, List, Optional
 
+from loguru import logger
+
+from app.core.config import settings
+from app.services.resume_parser import ResumeParser
 from .parser_config import get_parser_config_provider
 from .parser_utils import parse_date_range, compute_overlap_safe_years, is_probable_location
 from .parser_schema import validate_parsed_resume
@@ -26,7 +31,6 @@ class OrchestratorConfig:
 
 def _get_settings_safe() -> OrchestratorConfig:
     try:
-        from app.core.config import settings
         return OrchestratorConfig(
             enable_ocr=bool(int(str(getattr(settings, "PARSER_ENABLE_OCR", 0) or "0"))),
             enable_ner=bool(int(str(getattr(settings, "PARSER_ENABLE_NER", 0) or "0"))),
@@ -41,7 +45,6 @@ def _get_settings_safe() -> OrchestratorConfig:
 class DocumentTypeDetector:
     def detect(self, file_path: str) -> Dict[str, Any]:
         # Only light inspection to avoid I/O costs; rely on extension and parsers for details
-        import os
         ext = os.path.splitext(file_path)[1].lower()
         return {"ext": ext, "encrypted": False, "pages": None}
 
@@ -49,19 +52,16 @@ class DocumentTypeDetector:
 class DigitalExtractors:
     async def extract_pdf(self, file_path: str) -> Dict[str, Any]:
         # Reuse existing extraction for PDFs from ResumeParser
-        from app.services.resume_parser import ResumeParser
         rp = ResumeParser()
         text = await rp._extract_pdf_text(file_path)  # type: ignore[attr-defined]
         return {"text": text, "backend": "pdfplumber+pypdf2"}
 
     async def extract_doc(self, file_path: str) -> Dict[str, Any]:
-        from app.services.resume_parser import ResumeParser
         rp = ResumeParser()
         text = await rp._extract_docx_text(file_path)  # type: ignore[attr-defined]
         return {"text": text, "backend": "python-docx"}
 
     async def extract_txt(self, file_path: str) -> Dict[str, Any]:
-        from app.services.resume_parser import ResumeParser
         rp = ResumeParser()
         text = await rp._extract_txt_text(file_path)  # type: ignore[attr-defined]
         return {"text": text, "backend": "plain"}
@@ -118,12 +118,11 @@ class ParserOrchestrator:
         # Map education lines to objects to satisfy schema
         education_lines = sections.get("education", []) or []
         education = []
-        import re as _re
         for ln in education_lines:
             if not ln or len(ln) < 2:
                 continue
             year = None
-            m = _re.search(r"(19|20)\d{2}", ln)
+            m = re.search(r"(19|20)\d{2}", ln)
             if m:
                 try:
                     year = int(m.group(0))
@@ -243,7 +242,6 @@ class ParserOrchestrator:
         }
 
     def _extract_contacts(self, sections: Dict[str, Any], full_text: str) -> Dict[str, Any]:
-        import re
         region = "\n".join((sections.get("contact") or [])[:20]) or "\n".join(full_text.splitlines()[:25])
         emails = list({m.group(0) for m in re.finditer(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", region)})[:3]
         phones = list({m.group(0) for m in re.finditer(r"(\+?\d{1,3}[-.\s]?)?\(?\d{2,4}\)?[-.\s]?\d{3,4}[-.\s]?\d{3,4}", region)})[:3]
@@ -278,7 +276,6 @@ class ParserOrchestrator:
                     cur = {}
                 start, end = dr
                 if end is None:
-                    from datetime import datetime
                     now = datetime.utcnow()
                     end = (now.year, now.month)
                 ranges.append((start, end))
