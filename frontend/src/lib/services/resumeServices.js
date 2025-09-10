@@ -132,6 +132,92 @@ const useResumeServices = () => {
     }
   };
 
+  // Get resume statistics
+  const getResumeStats = async () => {
+    try {
+      const response = await axios.get(CONSTANTS.RESUMES.STATS);
+      return response?.data;
+    } catch (error) {
+      return errorHandler(error);
+    }
+  };
+
+  // Search resumes with filters
+  const searchResumes = async (searchRequest) => {
+    try {
+      const response = await axios.post(CONSTANTS.RESUMES.SEARCH, searchRequest);
+      return response?.data;
+    } catch (error) {
+      return errorHandler(error);
+    }
+  };
+
+  // Bulk delete resumes
+  const bulkDeleteResumes = async (resumeIds) => {
+    try {
+      const response = await axios.post(CONSTANTS.RESUMES.BULK_DELETE, {
+        resume_ids: resumeIds
+      });
+      return response?.data;
+    } catch (error) {
+      return errorHandler(error);
+    }
+  };
+
+  // Bulk update resume status
+  const bulkUpdateStatus = async (resumeIds, status) => {
+    try {
+      const response = await axios.post(CONSTANTS.RESUMES.BULK_STATUS, {
+        resume_ids: resumeIds,
+        status: status
+      });
+      return response?.data;
+    } catch (error) {
+      return errorHandler(error);
+    }
+  };
+
+  // Download resume file
+  const downloadResume = async (resumeId, filename) => {
+    try {
+      console.log('Requesting download for resume:', resumeId);
+
+      const response = await axios.get(CONSTANTS.RESUMES.DOWNLOAD(resumeId), {
+        responseType: 'blob'
+      });
+
+      console.log('Download response received:', response.status);
+
+      // Check if response is actually a blob
+      if (response.data instanceof Blob) {
+        // Create blob URL and trigger download
+        const blob = new Blob([response.data]);
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename || `resume_${resumeId}.pdf`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
+
+        console.log('Download triggered successfully');
+        return { success: true };
+      } else {
+        console.error('Response is not a blob:', response.data);
+        return { success: false, error: 'Invalid response format' };
+      }
+    } catch (error) {
+      console.error('Download error:', error);
+      if (error.response?.status === 401) {
+        return { success: false, error: 'Authentication required' };
+      } else if (error.response?.status === 404) {
+        return { success: false, error: 'Resume file not found' };
+      }
+      return errorHandler(error);
+    }
+  };
+
   return {
     uploadSingleResume,
     uploadMultipleResumes,
@@ -143,6 +229,11 @@ const useResumeServices = () => {
     screenResumes,
     getScreeningResults,
     updateResumeStatus,
+    getResumeStats,
+    searchResumes,
+    bulkDeleteResumes,
+    bulkUpdateStatus,
+    downloadResume,
   };
 };
 

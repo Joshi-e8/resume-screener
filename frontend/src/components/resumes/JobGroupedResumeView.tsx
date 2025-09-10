@@ -268,9 +268,31 @@ export function JobGroupedResumeView({
     setSelectedResume(null);
   };
 
-  const handleDownload = (resume: Resume) => {
-    console.log('Download resume:', resume.id);
-    // TODO: Implement download functionality
+  const handleDownload = async (resume: Resume) => {
+    console.log('🔥 JobGroupedResumeView handleDownload called with resume:', resume.id, resume.filename);
+    try {
+      console.log('Downloading resume:', resume.id);
+
+      // Check if user is authenticated
+      if (status !== 'authenticated') {
+        console.error('User not authenticated, status:', status);
+        alert('Please log in to download resumes');
+        return;
+      }
+
+      console.log('User is authenticated, proceeding with download...');
+      const result = await resumeServices.downloadResume(resume.id, resume.filename);
+
+      if (result?.success) {
+        console.log('Download completed for:', resume.filename);
+      } else {
+        console.error('Download failed:', result);
+        alert('Download failed. Please try again.');
+      }
+    } catch (error) {
+      console.error('Download failed:', error);
+      alert('Download failed. Please check your connection and try again.');
+    }
   };
 
   const handleDelete = (resume: Resume) => {

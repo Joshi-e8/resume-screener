@@ -19,6 +19,7 @@ from app.scoring.service import score_resume_against_job
 from app.vector.store import upsert_resume_chunks, Chunk
 
 from app.core.security import get_current_user
+from app.core.config import settings
 from app.models.analytics import EventType
 import re
 from datetime import datetime
@@ -683,3 +684,364 @@ async def list_resumes(current_user: User = Depends(get_current_user)) -> Any:
         "records": results,
         "total": len(results)
     }
+
+
+@router.get("/{resume_id}/download")
+async def download_resume(
+    resume_id: str,
+    current_user: User = Depends(get_current_user)
+) -> Any:
+    """
+    Download a resume file by ID
+    """
+    try:
+        # Get resume metadata
+        meta = await ResumeMetadata.get(resume_id)
+        if not meta:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Resume not found"
+            )
+
+        # Check if file exists in uploads directory
+        upload_dir = getattr(settings, "UPLOAD_DIR", "./uploads")
+        file_path = os.path.join(upload_dir, meta.file_id)
+
+        if not os.path.exists(file_path):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Resume file not found on disk"
+            )
+
+        # Return file response
+        from fastapi.responses import FileResponse
+        return FileResponse(
+            path=file_path,
+            filename=meta.filename,
+            media_type=meta.mime_type or 'application/octet-stream'
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to download resume {resume_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to download resume"
+        )
+
+
+@router.get("/stats")
+async def get_resume_stats(current_user: User = Depends(get_current_user)) -> Any:
+    """
+    Get resume processing statistics
+    """
+    try:
+        # Get total resumes count
+        total_resumes = await ResumeMetadata.count()
+
+        # Get processing status counts
+        processing_count = await ResumeMetadata.find({"status": ProcessingStatus.PROCESSING}).count()
+        completed_count = await ResumeMetadata.find({"status": ProcessingStatus.COMPLETED}).count()
+        failed_count = await ResumeMetadata.find({"status": ProcessingStatus.FAILED}).count()
+
+        # Get resumes from this month
+        from datetime import datetime, timedelta
+        month_start = datetime.utcnow().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        this_month_count = await ResumeMetadata.find({
+            "created_at": {"$gte": month_start}
+        }).count()
+
+        # Get resumes from this week
+        week_start = datetime.utcnow() - timedelta(days=7)
+        this_week_count = await ResumeMetadata.find({
+            "created_at": {"$gte": week_start}
+        }).count()
+
+        # Calculate match rate (resumes with AI scores > 70)
+        high_match_count = 0
+        try:
+            # Get resumes with high AI scores
+            details = await ResumeDetails.find({
+                "analysis_results.ai_overall_score": {"$gte": 70}
+            }).to_list()
+            high_match_count = len(details)
+        except Exception:
+            pass
+
+        match_rate = round((high_match_count / max(completed_count, 1)) * 100, 1)
+
+        return {
+            "result": "success",
+            "stats": {
+                "total_resumes": total_resumes,
+                "processing": processing_count,
+                "completed": completed_count,
+                "failed": failed_count,
+                "this_month": this_month_count,
+                "this_week": this_week_count,
+                "match_rate": match_rate,
+                "high_matches": high_match_count
+            }
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to get resume stats: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve statistics"
+        )
+
+
+@router.post("/search")
+async def search_resumes(
+    search_request: dict,
+    current_user: User = Depends(get_current_user)
+) -> Any:
+    """
+    Advanced resume search with filters
+    """
+    try:
+        # Extract search parameters
+        query = search_request.get("query", "")
+        filters = search_request.get("filters", {})
+        sort_by = search_request.get("sort_by", "created_at")
+        sort_order = search_request.get("sort_order", "desc")
+        limit = min(search_request.get("limit", 50), 100)  # Max 100 results
+        skip = search_request.get("skip", 0)
+
+        # Build MongoDB query
+        mongo_query = {"status": ProcessingStatus.COMPLETED}
+
+        # Add text search if query provided
+        if query.strip():
+            # Search in filename and candidate name
+            mongo_query["$or"] = [
+                {"filename": {"$regex": query, "$options": "i"}},
+                {"candidate_name": {"$regex": query, "$options": "i"}},
+                {"candidate_email": {"$regex": query, "$options": "i"}}
+            ]
+
+        # Add filters
+        if filters.get("job_id"):
+            mongo_query["job_id"] = filters["job_id"]
+
+        if filters.get("date_range"):
+            date_range = filters["date_range"]
+            if date_range.get("start"):
+                mongo_query["created_at"] = {"$gte": datetime.fromisoformat(date_range["start"])}
+            if date_range.get("end"):
+                if "created_at" not in mongo_query:
+                    mongo_query["created_at"] = {}
+                mongo_query["created_at"]["$lte"] = datetime.fromisoformat(date_range["end"])
+
+        if filters.get("file_types"):
+            file_types = filters["file_types"]
+            if isinstance(file_types, list) and file_types:
+                mongo_query["filename"] = {"$regex": f"\.({'|'.join(file_types)})$", "$options": "i"}
+
+        # Build sort criteria
+        sort_direction = -1 if sort_order == "desc" else 1
+        sort_criteria = [(sort_by, sort_direction)]
+
+        # Execute query
+        metas = await ResumeMetadata.find(mongo_query).sort(sort_criteria).skip(skip).limit(limit).to_list()
+        total_count = await ResumeMetadata.find(mongo_query).count()
+
+        # Format results (reuse existing logic)
+        results = []
+        for m in metas:
+            # Get details if available
+            details = None
+            try:
+                details = await ResumeDetails.find_one({"resume_id": str(m.id)})
+            except Exception:
+                pass
+
+            # Extract basic info
+            parsed_data = details.parsed_data if details else {}
+            contact_info = parsed_data.get("contact_info", {})
+
+            # Build result
+            result = {
+                "id": str(m.id),
+                "file_id": m.file_id,
+                "filename": m.filename,
+                "candidate_name": m.candidate_name or contact_info.get("name", ""),
+                "candidate_email": m.candidate_email or contact_info.get("email", ""),
+                "key_skills": parsed_data.get("skills", [])[:10],  # Limit skills
+                "created_at": m.created_at.isoformat(),
+                "job_id": m.job_id,
+                "file_size": m.file_size,
+                "mime_type": m.mime_type,
+                "source": "upload"
+            }
+
+            # Add AI scoring if available
+            if details and details.analysis_results:
+                ai_data = details.analysis_results
+                result["ai_overall_score"] = ai_data.get("ai_overall_score")
+                result["ai_scoring"] = ai_data.get("ai_scoring")
+
+            results.append(result)
+
+        return {
+            "result": "success",
+            "message": "Search completed successfully",
+            "records": results,
+            "total": total_count,
+            "returned": len(results),
+            "query": query,
+            "filters": filters
+        }
+
+    except Exception as e:
+        logger.error(f"Resume search failed: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Search failed"
+        )
+
+
+@router.post("/bulk-delete")
+async def bulk_delete_resumes(
+    request: dict,
+    current_user: User = Depends(get_current_user)
+) -> Any:
+    """
+    Delete multiple resumes by IDs
+    """
+    try:
+        resume_ids = request.get("resume_ids", [])
+        if not resume_ids or not isinstance(resume_ids, list):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="resume_ids must be a non-empty list"
+            )
+
+        if len(resume_ids) > 100:  # Safety limit
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cannot delete more than 100 resumes at once"
+            )
+
+        deleted_count = 0
+        failed_ids = []
+
+        for resume_id in resume_ids:
+            try:
+                # Get metadata
+                meta = await ResumeMetadata.get(resume_id)
+                if meta:
+                    # Delete file from disk
+                    upload_dir = getattr(settings, "UPLOAD_DIR", "./uploads")
+                    file_path = os.path.join(upload_dir, meta.file_id)
+                    if os.path.exists(file_path):
+                        os.unlink(file_path)
+
+                    # Delete metadata
+                    await meta.delete()
+
+                    # Delete details
+                    details = await ResumeDetails.find_one({"resume_id": resume_id})
+                    if details:
+                        await details.delete()
+
+                    deleted_count += 1
+                else:
+                    failed_ids.append(resume_id)
+
+            except Exception as e:
+                logger.warning(f"Failed to delete resume {resume_id}: {e}")
+                failed_ids.append(resume_id)
+
+        return {
+            "result": "success",
+            "message": f"Bulk delete completed",
+            "deleted_count": deleted_count,
+            "failed_count": len(failed_ids),
+            "failed_ids": failed_ids
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Bulk delete failed: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Bulk delete operation failed"
+        )
+
+
+@router.post("/bulk-status")
+async def bulk_update_status(
+    request: dict,
+    current_user: User = Depends(get_current_user)
+) -> Any:
+    """
+    Update status for multiple resumes
+    """
+    try:
+        resume_ids = request.get("resume_ids", [])
+        new_status = request.get("status")
+
+        if not resume_ids or not isinstance(resume_ids, list):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="resume_ids must be a non-empty list"
+            )
+
+        if not new_status:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="status is required"
+            )
+
+        # Validate status
+        valid_statuses = ["pending", "processing", "completed", "failed", "cancelled"]
+        if new_status not in valid_statuses:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid status. Must be one of: {valid_statuses}"
+            )
+
+        if len(resume_ids) > 100:  # Safety limit
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cannot update more than 100 resumes at once"
+            )
+
+        updated_count = 0
+        failed_ids = []
+
+        for resume_id in resume_ids:
+            try:
+                meta = await ResumeMetadata.get(resume_id)
+                if meta:
+                    meta.status = ProcessingStatus(new_status)
+                    await meta.save()
+                    updated_count += 1
+                else:
+                    failed_ids.append(resume_id)
+
+            except Exception as e:
+                logger.warning(f"Failed to update status for resume {resume_id}: {e}")
+                failed_ids.append(resume_id)
+
+        return {
+            "result": "success",
+            "message": f"Bulk status update completed",
+            "updated_count": updated_count,
+            "failed_count": len(failed_ids),
+            "failed_ids": failed_ids,
+            "new_status": new_status
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Bulk status update failed: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Bulk status update operation failed"
+        )

@@ -29,6 +29,9 @@ const CONSTANTS = {
     SCREENING_RESULTS: (jobId) => `resumes/screening-results/${jobId}/`,
     DOWNLOAD: (id) => `resumes/${id}/download/`,
     BULK_DELETE: "resumes/bulk-delete/",
+    BULK_STATUS: "resumes/bulk-status/",
+    STATS: "resumes/stats/",
+    SEARCH: "resumes/search/",
   },
 
   // Job management endpoints

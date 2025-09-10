@@ -48,6 +48,8 @@ export function ResumeGrid({ initialSearchQuery = '' }: ResumeGridProps) {
   const [selectedResume, setSelectedResume] = useState<Resume | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [showAdvancedSearch, setShowAdvancedSearch] = useState(false);
+  const [selectedResumeIds, setSelectedResumeIds] = useState<Set<string>>(new Set());
+  const [showBulkActions, setShowBulkActions] = useState(false);
   const itemsPerPage = 12;
 
   // Use ref to track if API has been called to prevent infinite loops
@@ -61,7 +63,7 @@ export function ResumeGrid({ initialSearchQuery = '' }: ResumeGridProps) {
     setRecentSearches(getSearchHistory());
   }, []);
 
-  const { getResumesByJob, getAllResumes } = useResumeServices();
+  const { getResumesByJob, getAllResumes, downloadResume, searchResumes, bulkDeleteResumes, bulkUpdateStatus } = useResumeServices();
   const deriveNameFromEmail = (email?: string) => {
     if (!email) return undefined;
     const local = email.split('@')[0];
@@ -121,6 +123,7 @@ export function ResumeGrid({ initialSearchQuery = '' }: ResumeGridProps) {
           tags: [],
           lastActivity: new Date().toISOString(),
           source: "Google Drive",
+          filename: r.filename,
           ai_overall_score: (r as any).ai_overall_score,
           ai_scoring: (r as any).ai_scoring,
         }));
@@ -158,6 +161,7 @@ export function ResumeGrid({ initialSearchQuery = '' }: ResumeGridProps) {
           tags: [],
           lastActivity: new Date().toISOString(),
           source: "Google Drive",
+          filename: r.filename,
           ai_overall_score: (r as any).ai_overall_score,
           ai_scoring: (r as any).ai_scoring,
         }));
@@ -191,6 +195,7 @@ export function ResumeGrid({ initialSearchQuery = '' }: ResumeGridProps) {
         tags: Array.isArray(rec.tags) ? rec.tags : [],
         lastActivity: rec.created_at || new Date().toISOString(),
         source: rec.source || 'Google Drive',
+        filename: rec.filename, // Add filename for downloads
         ai_overall_score: rec.ai_overall_score,
         ai_scoring: rec.ai_scoring,
         // Add the experience array for detailed view
@@ -398,7 +403,7 @@ export function ResumeGrid({ initialSearchQuery = '' }: ResumeGridProps) {
     setRecentSearches([]);
   };
 
-  const handleAdvancedSearch = (filters: {
+  const handleAdvancedSearch = async (filters: {
     keywords: string;
     location: string;
     experience: { min: number; max: number };
@@ -409,36 +414,78 @@ export function ResumeGrid({ initialSearchQuery = '' }: ResumeGridProps) {
     dateRange: string;
     status: string[];
   }) => {
-    // Convert advanced search filters to our filter format
-    const newFilters: {
-      location?: string[];
-      experience?: [number, number];
-      skills?: string[];
-      status?: Resume['status'][];
-    } = {};
+    try {
+      // Build search request for backend API
+      const searchRequest = {
+        query: filters.keywords,
+        filters: {
+          ...(filters.location && { location: filters.location }),
+          ...(filters.skills.length > 0 && { skills: filters.skills }),
+          ...(filters.status.length > 0 && { status: filters.status }),
+          ...(filters.dateRange !== 'all' && { date_range: filters.dateRange }),
+          // Add file type filter for common resume formats
+          file_types: ['pdf', 'docx', 'doc', 'txt']
+        },
+        sort_by: 'created_at',
+        sort_order: 'desc',
+        limit: 50
+      };
 
-    if (filters.keywords) {
-      setSearchQuery(filters.keywords);
+      console.log('Advanced search request:', searchRequest);
+
+      // Call backend search API
+      const response = await searchResumes(searchRequest);
+
+      if (response?.result === 'success' && response.records) {
+        // Update the API resumes with search results
+        setApiResumes(response.records);
+        console.log(`Advanced search found ${response.total} results`);
+      } else {
+        console.warn('Advanced search returned no results');
+        setApiResumes([]);
+      }
+
+      // Also update local search query for UI consistency
+      if (filters.keywords) {
+        setSearchQuery(filters.keywords);
+      }
+
+      setCurrentPage(1);
+
+    } catch (error) {
+      console.error('Advanced search failed:', error);
+
+      // Fallback to local filtering if API search fails
+      const newFilters: {
+        location?: string[];
+        experience?: [number, number];
+        skills?: string[];
+        status?: Resume['status'][];
+      } = {};
+
+      if (filters.keywords) {
+        setSearchQuery(filters.keywords);
+      }
+
+      if (filters.location) {
+        newFilters.location = [filters.location];
+      }
+
+      if (filters.experience.min > 0 || filters.experience.max < 20) {
+        newFilters.experience = [filters.experience.min, filters.experience.max];
+      }
+
+      if (filters.skills.length > 0) {
+        newFilters.skills = filters.skills;
+      }
+
+      if (filters.status.length > 0) {
+        newFilters.status = filters.status as Resume['status'][];
+      }
+
+      setSelectedFilters(newFilters);
+      setCurrentPage(1);
     }
-
-    if (filters.location) {
-      newFilters.location = [filters.location];
-    }
-
-    if (filters.experience.min > 0 || filters.experience.max < 20) {
-      newFilters.experience = [filters.experience.min, filters.experience.max];
-    }
-
-    if (filters.skills.length > 0) {
-      newFilters.skills = filters.skills;
-    }
-
-    if (filters.status.length > 0) {
-      newFilters.status = filters.status as Resume['status'][];
-    }
-
-    setSelectedFilters(newFilters);
-    setCurrentPage(1);
   };
 
   const handleView = (resume: Resume) => {
@@ -451,9 +498,31 @@ export function ResumeGrid({ initialSearchQuery = '' }: ResumeGridProps) {
     setSelectedResume(null);
   };
 
-  const handleDownload = (resume: Resume) => {
-    console.log('Download resume:', resume.id);
-    // TODO: Implement download functionality
+  const handleDownload = async (resume: Resume) => {
+    console.log('🔥 handleDownload called with resume:', resume.id, resume.filename);
+    try {
+      console.log('Downloading resume:', resume.id);
+
+      // Check if user is authenticated
+      if (status !== 'authenticated') {
+        console.error('User not authenticated, status:', status);
+        alert('Please log in to download resumes');
+        return;
+      }
+
+      console.log('User is authenticated, proceeding with download...');
+      const result = await downloadResume(resume.id, resume.filename);
+
+      if (result?.success) {
+        console.log('Download completed for:', resume.filename);
+      } else {
+        console.error('Download failed:', result);
+        alert('Download failed. Please try again.');
+      }
+    } catch (error) {
+      console.error('Download failed:', error);
+      alert('Download failed. Please check your connection and try again.');
+    }
   };
 
   const handleDelete = (resume: Resume) => {
@@ -464,6 +533,85 @@ export function ResumeGrid({ initialSearchQuery = '' }: ResumeGridProps) {
   const handleStatusChange = (resume: Resume, status: Resume['status']) => {
     console.log('Change status:', resume.id, status);
     // TODO: Implement status change
+  };
+
+  // Bulk operation handlers
+  const handleSelectResume = (resumeId: string, selected: boolean) => {
+    const newSelected = new Set(selectedResumeIds);
+    if (selected) {
+      newSelected.add(resumeId);
+    } else {
+      newSelected.delete(resumeId);
+    }
+    setSelectedResumeIds(newSelected);
+    setShowBulkActions(newSelected.size > 0);
+  };
+
+  const handleSelectAll = (selected: boolean) => {
+    if (selected) {
+      const allIds = new Set(paginatedResumes.map(r => r.id));
+      setSelectedResumeIds(allIds);
+      setShowBulkActions(true);
+    } else {
+      setSelectedResumeIds(new Set());
+      setShowBulkActions(false);
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedResumeIds.size === 0) return;
+
+    try {
+      const resumeIdsArray = Array.from(selectedResumeIds);
+      console.log('Bulk deleting resumes:', resumeIdsArray);
+
+      const response = await bulkDeleteResumes(resumeIdsArray);
+
+      if (response?.result === 'success') {
+        console.log(`Successfully deleted ${response.deleted_count} resumes`);
+
+        // Remove deleted resumes from local state
+        if (apiResumes) {
+          const remainingResumes = apiResumes.filter(r => !selectedResumeIds.has(r.id));
+          setApiResumes(remainingResumes);
+        }
+
+        // Clear selection
+        setSelectedResumeIds(new Set());
+        setShowBulkActions(false);
+      }
+    } catch (error) {
+      console.error('Bulk delete failed:', error);
+    }
+  };
+
+  const handleBulkStatusUpdate = async (newStatus: string) => {
+    if (selectedResumeIds.size === 0) return;
+
+    try {
+      const resumeIdsArray = Array.from(selectedResumeIds);
+      console.log('Bulk updating status:', resumeIdsArray, newStatus);
+
+      const response = await bulkUpdateStatus(resumeIdsArray, newStatus);
+
+      if (response?.result === 'success') {
+        console.log(`Successfully updated ${response.updated_count} resumes`);
+
+        // Update status in local state
+        if (apiResumes) {
+          const updatedResumes = apiResumes.map(r =>
+            selectedResumeIds.has(r.id) ? { ...r, status: newStatus as Resume['status'] } : r
+          );
+          setApiResumes(updatedResumes);
+        }
+
+        // Clear selection
+        setSelectedResumeIds(new Set());
+        setShowBulkActions(false);
+      }
+    } catch (error) {
+      console.error('Bulk status update failed:', error);
+    }
   };
 
   return (
@@ -533,6 +681,19 @@ export function ResumeGrid({ initialSearchQuery = '' }: ResumeGridProps) {
       <div className="flex flex-col gap-3 sm:gap-4 bg-white rounded-2xl border border-gray-100 p-4 sm:p-6 shadow-sm">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2 sm:gap-4">
+            {/* Select All Checkbox */}
+            {paginatedResumes.length > 0 && (
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={selectedResumeIds.size === paginatedResumes.length && paginatedResumes.length > 0}
+                  onChange={(e) => handleSelectAll(e.target.checked)}
+                  className="w-4 h-4 text-yellow-600 bg-gray-100 border-gray-300 rounded focus:ring-yellow-500 focus:ring-2"
+                />
+                <span className="text-sm text-gray-600">Select All</span>
+              </div>
+            )}
+
             <h2 className="text-lg sm:text-xl font-semibold text-gray-900">
               {filteredResumes.length} Resume{filteredResumes.length !== 1 ? 's' : ''}
             </h2>
@@ -598,6 +759,55 @@ export function ResumeGrid({ initialSearchQuery = '' }: ResumeGridProps) {
         </div>
       </div>
 
+      {/* Bulk Actions Bar */}
+      {showBulkActions && (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-2xl p-4 shadow-sm">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <span className="text-sm font-medium text-yellow-800">
+                {selectedResumeIds.size} resume{selectedResumeIds.size !== 1 ? 's' : ''} selected
+              </span>
+              <button
+                onClick={() => {
+                  setSelectedResumeIds(new Set());
+                  setShowBulkActions(false);
+                }}
+                className="text-xs text-yellow-600 hover:text-yellow-800 underline"
+              >
+                Clear selection
+              </button>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Bulk Status Update */}
+              <select
+                onChange={(e) => {
+                  if (e.target.value) {
+                    handleBulkStatusUpdate(e.target.value);
+                    e.target.value = '';
+                  }
+                }}
+                className="px-3 py-1.5 text-sm border border-yellow-300 rounded-lg bg-white text-yellow-800 focus:outline-none focus:ring-2 focus:ring-yellow-500"
+              >
+                <option value="">Update Status</option>
+                <option value="pending">Pending</option>
+                <option value="processing">Processing</option>
+                <option value="completed">Completed</option>
+                <option value="failed">Failed</option>
+              </select>
+
+              {/* Bulk Delete */}
+              <button
+                onClick={handleBulkDelete}
+                className="px-3 py-1.5 text-sm bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors duration-200"
+              >
+                Delete Selected
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Main Content with Sidebar */}
       <div className="flex gap-6">
         {/* Resume Grid/List */}
@@ -627,6 +837,8 @@ export function ResumeGrid({ initialSearchQuery = '' }: ResumeGridProps) {
                       onDownload={handleDownload}
                       onDelete={handleDelete}
                       onStatusChange={handleStatusChange}
+                      isSelected={selectedResumeIds.has(resume.id)}
+                      onSelect={handleSelectResume}
                     />
                   ))}
                 </div>

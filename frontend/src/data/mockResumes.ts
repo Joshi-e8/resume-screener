@@ -21,6 +21,7 @@ export interface Resume {
   tags: string[];
   lastActivity: string;
   source: string;
+  filename?: string; // Original filename for downloads
 }
 
 export const mockResumes: Resume[] = [

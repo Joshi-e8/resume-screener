@@ -126,6 +126,29 @@ def process_direct_resume_file(self, resume_id: str, tmp_file_path: str, filenam
             "error": None
         }
 
+        # Save file permanently before processing
+        self.update_state(state='PROGRESS', meta={'current': 0, 'total': 1, 'status': 'Saving file...'})
+
+        try:
+            # Get resume metadata to get the file_id for permanent storage
+            meta = loop.run_until_complete(ResumeMetadata.get(resume_id))
+            if meta:
+                # Create uploads directory if it doesn't exist
+                from app.core.config import settings
+                upload_dir = getattr(settings, "UPLOAD_DIR", "./uploads")
+                import os
+                os.makedirs(upload_dir, exist_ok=True)
+
+                # Copy temporary file to permanent location
+                permanent_file_path = os.path.join(upload_dir, meta.file_id)
+                import shutil
+                shutil.copy2(tmp_file_path, permanent_file_path)
+                logger.info(f"✅ Saved resume file permanently: {permanent_file_path}")
+            else:
+                logger.error(f"❌ Could not find resume metadata for {resume_id}")
+        except Exception as save_error:
+            logger.error(f"❌ Failed to save file permanently: {save_error}")
+
         # Parse resume with timeout for robustness
         self.update_state(state='PROGRESS', meta={'current': 0, 'total': 1, 'status': 'Parsing resume...'})
 
@@ -567,6 +590,21 @@ def process_resume_task(self, file_id: str, access_token: str, credentials_dict:
                 drive_service.save_file_temporarily(credentials_dict, file_id)
             )
 
+            # Save file permanently for downloads
+            try:
+                from app.core.config import settings
+                upload_dir = getattr(settings, "UPLOAD_DIR", "./uploads")
+                import os
+                os.makedirs(upload_dir, exist_ok=True)
+
+                # Copy temporary file to permanent location using file_id as filename
+                permanent_file_path = os.path.join(upload_dir, file_id)
+                import shutil
+                shutil.copy2(tmp_file_path, permanent_file_path)
+                logger.info(f"✅ Google Drive: Saved resume file permanently: {permanent_file_path}")
+            except Exception as save_error:
+                logger.error(f"❌ Google Drive: Failed to save file permanently: {save_error}")
+
             # Parse resume
             self.update_state(
                 state='PROGRESS',
@@ -763,6 +801,26 @@ def process_direct_resume_files_batch(self, items: List[Dict[str, Any]], user_id
             pass
         async with sem:
             try:
+                # Save file permanently before processing
+                try:
+                    meta = await ResumeMetadata.get(resume_id)
+                    if meta:
+                        # Create uploads directory if it doesn't exist
+                        from app.core.config import settings
+                        upload_dir = getattr(settings, "UPLOAD_DIR", "./uploads")
+                        import os
+                        os.makedirs(upload_dir, exist_ok=True)
+
+                        # Copy temporary file to permanent location
+                        permanent_file_path = os.path.join(upload_dir, meta.file_id)
+                        import shutil
+                        shutil.copy2(tmp_file_path, permanent_file_path)
+                        logger.info(f"✅ Batch: Saved resume file permanently: {permanent_file_path}")
+                    else:
+                        logger.error(f"❌ Batch: Could not find resume metadata for {resume_id}")
+                except Exception as save_error:
+                    logger.error(f"❌ Batch: Failed to save file permanently: {save_error}")
+
                 # Add delay between files to prevent rate limiting
                 if idx > 0:
                     await asyncio.sleep(2)  # 2 second delay between files
@@ -1248,6 +1306,21 @@ def process_chunk_sync(file_ids: List[str], credentials_dict: Dict[str, Any],
                     try:
                         # Download file directly to memory and parse
                         file_content, filename, file_extension = await drive_service.download_file_to_memory(credentials_dict, file_id)
+
+                        # Save file permanently for downloads (bulk processing)
+                        try:
+                            from app.core.config import settings
+                            upload_dir = getattr(settings, "UPLOAD_DIR", "./uploads")
+                            import os
+                            os.makedirs(upload_dir, exist_ok=True)
+
+                            # Save file content to permanent location using file_id as filename
+                            permanent_file_path = os.path.join(upload_dir, file_id)
+                            with open(permanent_file_path, 'wb') as f:
+                                f.write(file_content)
+                            logger.info(f"✅ Bulk: Saved resume file permanently: {permanent_file_path}")
+                        except Exception as save_error:
+                            logger.error(f"❌ Bulk: Failed to save file permanently: {save_error}")
 
                         parsed_data = await asyncio.wait_for(
                             parser.parse_resume_from_memory(file_content, filename, file_extension),

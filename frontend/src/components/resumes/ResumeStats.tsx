@@ -1,14 +1,48 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { FileText, Clock, CheckCircle, TrendingUp } from "lucide-react";
+import useResumeServices from "@/lib/services/resumeServices";
+
+interface StatsData {
+  total_resumes: number;
+  processing: number;
+  completed: number;
+  failed: number;
+  this_month: number;
+  this_week: number;
+  match_rate: number;
+  high_matches: number;
+}
 
 export function ResumeStats() {
-  // Mock data - will be replaced with real data from Redux store
-  const stats = [
+  const [statsData, setStatsData] = useState<StatsData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const { getResumeStats } = useResumeServices();
+
+  useEffect(() => {
+    const fetchStats = async () => {
+      try {
+        const response = await getResumeStats();
+        if (response?.result === 'success') {
+          setStatsData(response.stats);
+        }
+      } catch (error) {
+        console.error('Failed to fetch resume stats:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchStats();
+  }, []);
+
+  // Use real data if available, otherwise show loading or fallback
+  const stats = statsData ? [
     {
       title: "Total Resumes",
-      value: "247",
-      change: "+12",
+      value: statsData.total_resumes.toString(),
+      change: `+${statsData.this_month}`,
       changeType: "increase" as const,
       changeText: "this month",
       icon: FileText,
@@ -16,8 +50,8 @@ export function ResumeStats() {
     },
     {
       title: "Processing",
-      value: "8",
-      change: "+3",
+      value: statsData.processing.toString(),
+      change: statsData.processing > 0 ? `${statsData.processing}` : "0",
       changeType: "increase" as const,
       changeText: "in queue",
       icon: Clock,
@@ -25,17 +59,55 @@ export function ResumeStats() {
     },
     {
       title: "Processed",
-      value: "239",
-      change: "+15",
+      value: statsData.completed.toString(),
+      change: `+${statsData.this_week}`,
       changeType: "increase" as const,
       changeText: "this week",
       icon: CheckCircle,
       color: "green"
     },
     {
-      title: "Matches Found",
-      value: "156",
-      change: "+8%",
+      title: "High Matches",
+      value: statsData.high_matches.toString(),
+      change: `${statsData.match_rate}%`,
+      changeType: "increase" as const,
+      changeText: "match rate",
+      icon: TrendingUp,
+      color: "purple"
+    }
+  ] : [
+    // Loading placeholders
+    {
+      title: "Total Resumes",
+      value: loading ? "..." : "0",
+      change: loading ? "..." : "+0",
+      changeType: "increase" as const,
+      changeText: "this month",
+      icon: FileText,
+      color: "blue"
+    },
+    {
+      title: "Processing",
+      value: loading ? "..." : "0",
+      change: loading ? "..." : "0",
+      changeType: "increase" as const,
+      changeText: "in queue",
+      icon: Clock,
+      color: "yellow"
+    },
+    {
+      title: "Processed",
+      value: loading ? "..." : "0",
+      change: loading ? "..." : "+0",
+      changeType: "increase" as const,
+      changeText: "this week",
+      icon: CheckCircle,
+      color: "green"
+    },
+    {
+      title: "High Matches",
+      value: loading ? "..." : "0",
+      change: loading ? "..." : "0%",
       changeType: "increase" as const,
       changeText: "match rate",
       icon: TrendingUp,

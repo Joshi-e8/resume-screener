@@ -26,6 +26,8 @@ interface ResumeCardProps {
   onDownload?: (resume: Resume) => void;
   onDelete?: (resume: Resume) => void;
   onStatusChange?: (resume: Resume, status: Resume['status']) => void;
+  isSelected?: boolean;
+  onSelect?: (resumeId: string, selected: boolean) => void;
 }
 
 export function ResumeCard({
@@ -33,7 +35,9 @@ export function ResumeCard({
   onView,
   onDownload,
   onDelete,
-  onStatusChange
+  onStatusChange,
+  isSelected = false,
+  onSelect
 }: ResumeCardProps) {
   const [showActions, setShowActions] = useState(false);
 
@@ -70,10 +74,22 @@ export function ResumeCard({
   };
 
   return (
-    <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm hover:shadow-md transition-all duration-200 group">
+    <div className={`bg-white rounded-2xl border p-6 shadow-sm hover:shadow-md transition-all duration-200 group ${
+      isSelected ? 'border-yellow-500 bg-yellow-50' : 'border-gray-100'
+    }`}>
       {/* Header */}
       <div className="flex items-start justify-between mb-4">
         <div className="flex items-center gap-3">
+          {/* Selection Checkbox */}
+          {onSelect && (
+            <input
+              type="checkbox"
+              checked={isSelected}
+              onChange={(e) => onSelect(resume.id, e.target.checked)}
+              className="w-4 h-4 text-yellow-600 bg-gray-100 border-gray-300 rounded focus:ring-yellow-500 focus:ring-2"
+            />
+          )}
+
           <div className="w-12 h-12 bg-gradient-to-br from-yellow-400 to-yellow-500 rounded-xl flex items-center justify-center text-white font-semibold text-lg">
             {resume.name.split(' ').map(n => n[0]).join('')}
           </div>
@@ -101,7 +117,10 @@ export function ResumeCard({
                 View Details
               </button>
               <button
-                onClick={() => onDownload?.(resume)}
+                onClick={() => {
+                  console.log('Download button clicked in dropdown for:', resume.id);
+                  onDownload?.(resume);
+                }}
                 className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
               >
                 <Download className="w-4 h-4" />
@@ -233,8 +252,19 @@ export function ResumeCard({
           View Resume
         </button>
         <button
-          onClick={() => onDownload?.(resume)}
+          onClick={() => {
+            console.log('🚨 Download button clicked in footer for:', resume.id);
+            console.log('🚨 onDownload function exists:', !!onDownload);
+            console.log('🚨 Resume object:', resume);
+            if (onDownload) {
+              onDownload(resume);
+            } else {
+              console.error('🚨 onDownload function is not provided!');
+              alert('Download function not available');
+            }
+          }}
           className="px-3 py-2 border border-gray-200 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors"
+          title="Download Resume"
         >
           <Download className="w-4 h-4" />
         </button>
