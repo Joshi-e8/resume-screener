@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { 
   FileText, 
   MapPin, 
@@ -25,17 +25,69 @@ interface ResumeListViewProps {
   onDownload?: (resume: Resume) => void;
   onDelete?: (resume: Resume) => void;
   onStatusChange?: (resume: Resume, status: Resume['status']) => void;
+  onBulkDownload?: (resumeIds: string[]) => void;
+  onBulkDelete?: (resumeIds: string[]) => void;
+  onBulkStatusChange?: (resumeIds: string[], status: Resume['status']) => void;
 }
 
-export function ResumeListView({ 
-  resumes, 
-  onView, 
-  onDownload, 
-  onDelete, 
-  // onStatusChange 
-}: ResumeListViewProps) {
+export function ResumeListView(props: ResumeListViewProps) {
+  const {
+    resumes,
+    onView,
+    onDownload,
+    onDelete,
+    onStatusChange,
+    onBulkDownload,
+    onBulkDelete,
+    onBulkStatusChange
+  } = props;
   const [selectedResumes, setSelectedResumes] = useState<string[]>([]);
   const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
+  const [showStatusDropdown, setShowStatusDropdown] = useState(false);
+  const statusDropdownRef = useRef<HTMLDivElement>(null);
+
+
+
+  // Close status dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (statusDropdownRef.current && !statusDropdownRef.current.contains(event.target as Node)) {
+        setShowStatusDropdown(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
+  const handleBulkDownload = () => {
+    if (selectedResumes.length > 0 && onBulkDownload) {
+      onBulkDownload(selectedResumes);
+    }
+  };
+
+  const handleBulkDelete = () => {
+    if (selectedResumes.length > 0 && onBulkDelete) {
+      onBulkDelete(selectedResumes);
+    }
+  };
+
+  const handleBulkStatusChange = (status: Resume['status']) => {
+    if (selectedResumes.length === 0) {
+      alert('Please select resumes first');
+      setShowStatusDropdown(false);
+      return;
+    }
+    if (onBulkStatusChange) {
+      onBulkStatusChange(selectedResumes, status);
+      setShowStatusDropdown(false);
+    } else {
+      alert('Bulk status change not available');
+      setShowStatusDropdown(false);
+    }
+  };
 
   const getStatusColor = (status: Resume['status']) => {
     switch (status) {
@@ -70,8 +122,8 @@ export function ResumeListView({
   };
 
   const toggleResumeSelection = (resumeId: string) => {
-    setSelectedResumes(prev => 
-      prev.includes(resumeId) 
+    setSelectedResumes(prev =>
+      prev.includes(resumeId)
         ? prev.filter(id => id !== resumeId)
         : [...prev, resumeId]
     );
@@ -161,10 +213,18 @@ export function ResumeListView({
 
                 {/* Status */}
                 <div className="col-span-2">
-                  <div className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium border ${getStatusColor(resume.status)}`}>
-                    {getStatusIcon(resume.status)}
-                    {resume.status.charAt(0).toUpperCase() + resume.status.slice(1)}
-                  </div>
+                  <select
+                    value={resume.status}
+                    onChange={(e) => onStatusChange?.(resume, e.target.value as Resume['status'])}
+                    className="px-2 py-1 text-xs border border-gray-200 rounded-md bg-white focus:outline-none focus:ring-1 focus:ring-yellow-500 focus:border-yellow-500"
+                  >
+                    <option value="new">New</option>
+                    <option value="reviewed">Reviewed</option>
+                    <option value="shortlisted">Shortlisted</option>
+                    <option value="interviewed">Interviewed</option>
+                    <option value="rejected">Rejected</option>
+                    <option value="hired">Hired</option>
+                  </select>
                 </div>
 
                 {/* Experience */}
@@ -264,13 +324,99 @@ export function ResumeListView({
               {selectedResumes.length} resume{selectedResumes.length !== 1 ? 's' : ''} selected
             </div>
             <div className="flex items-center gap-2">
-              <button className="px-3 py-1 text-sm font-medium text-yellow-700 hover:text-yellow-800">
+              <button
+                onClick={() => {
+                  console.log('Download All clicked');
+                  console.log('selectedResumes:', selectedResumes);
+                  console.log('onBulkDownload exists:', !!onBulkDownload);
+                  console.log('onBulkDownload type:', typeof onBulkDownload);
+
+                  if (selectedResumes.length === 0) {
+                    alert('Please select resumes first');
+                    return;
+                  }
+                  if (onBulkDownload) {
+                    console.log('Calling onBulkDownload with:', selectedResumes);
+                    onBulkDownload(selectedResumes);
+                  } else {
+                    alert('Bulk download not available');
+                  }
+                }}
+                className="px-3 py-1 text-sm font-medium text-blue-600 hover:text-blue-700 transition-colors duration-200"
+              >
                 Download All
               </button>
-              <button className="px-3 py-1 text-sm font-medium text-yellow-700 hover:text-yellow-800">
-                Change Status
-              </button>
-              <button className="px-3 py-1 text-sm font-medium text-red-600 hover:text-red-700">
+
+              <div className="relative" ref={statusDropdownRef}>
+                <button
+                  onClick={() => setShowStatusDropdown(!showStatusDropdown)}
+                  className="px-3 py-1 text-sm font-medium text-yellow-700 hover:text-yellow-800 transition-colors duration-200"
+                >
+                  Change Status
+                </button>
+
+                {showStatusDropdown && (
+                  <div className="absolute bottom-full left-0 mb-1 bg-white border border-gray-200 rounded-lg shadow-xl z-50 min-w-[120px]">
+                    <button
+                      onClick={() => handleBulkStatusChange('new')}
+                      className="block w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                    >
+                      New
+                    </button>
+                    <button
+                      onClick={() => handleBulkStatusChange('reviewed')}
+                      className="block w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                    >
+                      Reviewed
+                    </button>
+                    <button
+                      onClick={() => handleBulkStatusChange('shortlisted')}
+                      className="block w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                    >
+                      Shortlisted
+                    </button>
+                    <button
+                      onClick={() => handleBulkStatusChange('interviewed')}
+                      className="block w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                    >
+                      Interviewed
+                    </button>
+                    <button
+                      onClick={() => handleBulkStatusChange('rejected')}
+                      className="block w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                    >
+                      Rejected
+                    </button>
+                    <button
+                      onClick={() => handleBulkStatusChange('hired')}
+                      className="block w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                    >
+                      Hired
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <button
+                onClick={() => {
+                  console.log('Delete All clicked');
+                  console.log('selectedResumes:', selectedResumes);
+                  console.log('onBulkDelete exists:', !!onBulkDelete);
+                  console.log('onBulkDelete type:', typeof onBulkDelete);
+
+                  if (selectedResumes.length === 0) {
+                    alert('Please select resumes first');
+                    return;
+                  }
+                  if (onBulkDelete) {
+                    console.log('Calling onBulkDelete with:', selectedResumes);
+                    onBulkDelete(selectedResumes);
+                  } else {
+                    alert('Bulk delete not available');
+                  }
+                }}
+                className="px-3 py-1 text-sm font-medium text-red-600 hover:text-red-700 transition-colors duration-200"
+              >
                 Delete All
               </button>
             </div>

@@ -218,6 +218,49 @@ const useResumeServices = () => {
     }
   };
 
+  // Bulk download resumes as ZIP
+  const bulkDownloadResumes = async (resumeIds) => {
+    try {
+      console.log('Requesting bulk download for resumes:', resumeIds);
+
+      const response = await axios.post(CONSTANTS.RESUMES.BULK_DOWNLOAD, {
+        resume_ids: resumeIds
+      }, {
+        responseType: 'blob'
+      });
+
+      console.log('Bulk download response received:', response.status);
+
+      // Check if response is actually a blob
+      if (response.data instanceof Blob) {
+        // Create blob URL and trigger download
+        const blob = new Blob([response.data]);
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `resumes_${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.zip`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
+
+        console.log('Bulk download triggered successfully');
+        return { success: true };
+      } else {
+        console.error('Response is not a blob:', response.data);
+        return { success: false, error: 'Invalid response format' };
+      }
+    } catch (error) {
+      console.error('Bulk download error:', error);
+      if (error.response?.status === 401) {
+        return { success: false, error: 'Authentication required' };
+      } else if (error.response?.status === 404) {
+        return { success: false, error: 'No valid resumes found' };
+      }
+      return errorHandler(error);
+    }
+  };
+
   return {
     uploadSingleResume,
     uploadMultipleResumes,
@@ -234,6 +277,7 @@ const useResumeServices = () => {
     bulkDeleteResumes,
     bulkUpdateStatus,
     downloadResume,
+    bulkDownloadResumes,
   };
 };
 

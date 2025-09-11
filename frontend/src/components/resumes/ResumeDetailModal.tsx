@@ -1,14 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { 
-  X, 
-  Download, 
-  Edit, 
-  Trash2, 
-  Mail, 
-  Phone, 
-  MapPin, 
+import {
+  X,
+  Download,
+  Trash2,
+  Mail,
+  Phone,
+  MapPin,
 
   Briefcase,
   GraduationCap,
@@ -24,7 +23,6 @@ interface ResumeDetailModalProps {
   isOpen: boolean;
   onClose: () => void;
   onDownload?: (resume: Resume) => void;
-  onEdit?: (resume: Resume) => void;
   onDelete?: (resume: Resume) => void;
   onStatusChange?: (resume: Resume, status: Resume['status']) => void;
 }
@@ -34,7 +32,6 @@ export function ResumeDetailModal({
   isOpen,
   onClose,
   onDownload,
-  onEdit,
   onDelete,
   onStatusChange
 }: ResumeDetailModalProps) {
@@ -106,13 +103,6 @@ export function ResumeDetailModal({
                 title="Download Resume"
               >
                 <Download className="w-4 h-4 sm:w-5 sm:h-5" />
-              </button>
-              <button
-                onClick={() => onEdit?.(resume)}
-                className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-all duration-200 hover:scale-110"
-                title="Edit Resume"
-              >
-                <Edit className="w-4 h-4 sm:w-5 sm:h-5" />
               </button>
               <button
                 onClick={() => onDelete?.(resume)}

@@ -270,20 +270,22 @@ export function ResumeCard({
         </button>
       </div>
 
-      {/* Status Change Dropdown - Hidden but accessible for functionality */}
-      <select
-        value={resume.status}
-        onChange={(e) => onStatusChange?.(resume, e.target.value as Resume['status'])}
-        className="hidden"
-        aria-hidden="true"
-      >
-        <option value="new">New</option>
-        <option value="reviewed">Reviewed</option>
-        <option value="shortlisted">Shortlisted</option>
-        <option value="interviewed">Interviewed</option>
-        <option value="rejected">Rejected</option>
-        <option value="hired">Hired</option>
-      </select>
+      {/* Status Change Dropdown - Now visible for easy status updates */}
+      <div className="mt-3 pt-3 border-t border-gray-100">
+        <label className="block text-xs font-medium text-gray-500 mb-1">Status</label>
+        <select
+          value={resume.status}
+          onChange={(e) => onStatusChange?.(resume, e.target.value as Resume['status'])}
+          className="w-full px-2 py-1 text-xs border border-gray-200 rounded-md bg-white focus:outline-none focus:ring-1 focus:ring-yellow-500 focus:border-yellow-500"
+        >
+          <option value="new">New</option>
+          <option value="reviewed">Reviewed</option>
+          <option value="shortlisted">Shortlisted</option>
+          <option value="interviewed">Interviewed</option>
+          <option value="rejected">Rejected</option>
+          <option value="hired">Hired</option>
+        </select>
+      </div>
     </div>
   );
 }

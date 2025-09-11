@@ -65,23 +65,23 @@ export function ConfirmDialogProvider({ children }: ConfirmDialogProviderProps) 
     switch (type) {
       case 'danger':
         return {
-          iconBg: 'bg-red-100',
-          iconColor: 'text-red-600',
-          confirmBg: 'bg-red-600 hover:bg-red-700',
+          iconBg: 'bg-yellow-100',
+          iconColor: 'text-yellow-600',
+          confirmBg: 'bg-gradient-to-r from-yellow-500 to-yellow-600 hover:from-yellow-600 hover:to-yellow-700',
           confirmText: 'text-white'
         };
       case 'warning':
         return {
           iconBg: 'bg-yellow-100',
           iconColor: 'text-yellow-600',
-          confirmBg: 'bg-yellow-600 hover:bg-yellow-700',
+          confirmBg: 'bg-gradient-to-r from-yellow-500 to-yellow-600 hover:from-yellow-600 hover:to-yellow-700',
           confirmText: 'text-white'
         };
       default:
         return {
-          iconBg: 'bg-blue-100',
-          iconColor: 'text-blue-600',
-          confirmBg: 'bg-blue-600 hover:bg-blue-700',
+          iconBg: 'bg-yellow-100',
+          iconColor: 'text-yellow-600',
+          confirmBg: 'bg-gradient-to-r from-yellow-500 to-yellow-600 hover:from-yellow-600 hover:to-yellow-700',
           confirmText: 'text-white'
         };
     }
@@ -112,7 +112,7 @@ export function ConfirmDialogProvider({ children }: ConfirmDialogProviderProps) 
             />
             
             {/* Dialog */}
-            <div className="relative bg-white rounded-2xl p-6 w-full max-w-md shadow-xl transform transition-all duration-300 scale-100">
+            <div className="relative bg-white rounded-2xl p-6 w-full max-w-md shadow-xl border border-gray-100 transform transition-all duration-300 scale-100">
               <div className="flex items-start gap-4">
                 {/* Icon */}
                 <div className={`
@@ -147,14 +147,14 @@ export function ConfirmDialogProvider({ children }: ConfirmDialogProviderProps) 
               <div className="flex items-center gap-3 mt-6 pt-4 border-t border-gray-100">
                 <button
                   onClick={handleCancel}
-                  className="flex-1 px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors duration-200 font-medium"
+                  className="flex-1 px-4 py-2 text-gray-700 bg-white border-2 border-gray-200 rounded-lg hover:bg-gray-50 hover:border-gray-300 transition-all duration-200 font-medium"
                 >
                   {dialog.options.cancelText || 'Cancel'}
                 </button>
                 <button
                   onClick={handleConfirm}
                   className={`
-                    flex-1 px-4 py-2 rounded-lg transition-colors duration-200 font-medium
+                    flex-1 px-4 py-2 rounded-lg transition-all duration-200 font-medium shadow-sm
                     ${getTypeStyles(dialog.options.type).confirmBg}
                     ${getTypeStyles(dialog.options.type).confirmText}
                   `}

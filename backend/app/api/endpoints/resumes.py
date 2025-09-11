@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 from typing import Any, List
 from uuid import uuid4
 
-from fastapi import (APIRouter, Depends, File, Form, HTTPException, UploadFile,
+from fastapi import (APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile,
                      status)
 from fastapi.responses import FileResponse
 from loguru import logger
@@ -497,6 +497,11 @@ async def list_resumes_by_job(job_id: str, current_user: User = Depends(get_curr
                     first = exp[0] or {}
                     title = first.get("title")
 
+        # Get UI status from details if available, default to 'new'
+        ui_status = "new"  # Default status for new resumes
+        if details and details.analysis_results and isinstance(details.analysis_results, dict):
+            ui_status = details.analysis_results.get('ui_status', 'new')
+
         results.append({
             "id": str(m.id),
             "file_id": m.file_id,
@@ -515,6 +520,7 @@ async def list_resumes_by_job(job_id: str, current_user: User = Depends(get_curr
             "file_size": file_size,
             "mime_type": mime_type,
             "source": "Google Drive",
+            "ui_status": ui_status,  # Add UI status for frontend
         })
 
     return {
@@ -649,6 +655,11 @@ async def list_resumes(current_user: User = Depends(get_current_user)) -> Any:
             # Take first 3 skills as tags
             tags = comprehensive_skills[:3]
 
+        # Get UI status from details if available, default to 'new'
+        ui_status = "new"  # Default status for new resumes
+        if details and details.analysis_results and isinstance(details.analysis_results, dict):
+            ui_status = details.analysis_results.get('ui_status', 'new')
+
         # Keep the original backend format that frontend maps from
         resume = {
             "id": str(m.id),
@@ -672,6 +683,7 @@ async def list_resumes(current_user: User = Depends(get_current_user)) -> Any:
             "mime_type": mime_type,
             "total_experience_years": experience_years,
             "source": "upload",
+            "ui_status": ui_status,  # Add UI status for frontend
         }
         results.append(resume)
 
@@ -682,6 +694,89 @@ async def list_resumes(current_user: User = Depends(get_current_user)) -> Any:
         "records": results,
         "total": len(results)
     }
+
+
+@router.post("/bulk-download")
+async def bulk_download_resumes(
+    request: dict,
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user)
+) -> Any:
+    """
+    Download multiple resumes as a ZIP file
+    """
+    try:
+        logger.info(f"[bulk-download] Request received: {request}")
+        resume_ids = request.get("resume_ids", [])
+        logger.info(f"[bulk-download] Resume IDs: {resume_ids}")
+
+        if not resume_ids:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No resume IDs provided"
+            )
+
+        # Get resume metadata for all requested IDs
+        resumes = []
+        upload_dir = getattr(settings, "UPLOAD_DIR", "./uploads")
+        logger.info(f"[bulk-download] Upload directory: {upload_dir}")
+
+        for resume_id in resume_ids:
+            logger.info(f"[bulk-download] Processing resume ID: {resume_id}")
+            meta = await ResumeMetadata.get(resume_id)
+            if meta:
+                file_path = os.path.join(upload_dir, meta.file_id)
+                logger.info(f"[bulk-download] File path: {file_path}, exists: {os.path.exists(file_path)}")
+                if os.path.exists(file_path):
+                    resumes.append((meta, file_path))
+                    logger.info(f"[bulk-download] Added resume: {meta.filename}")
+            else:
+                logger.warning(f"[bulk-download] Resume metadata not found for ID: {resume_id}")
+
+        logger.info(f"[bulk-download] Found {len(resumes)} valid resumes")
+        if not resumes:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No valid resumes found"
+            )
+
+        # Create temporary ZIP file
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.zip') as tmp_zip:
+            tmp_zip_path = tmp_zip.name
+
+        try:
+            with zipfile.ZipFile(tmp_zip_path, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+                for meta, file_path in resumes:
+                    # Add file to ZIP with a clean name
+                    zip_file.write(file_path, meta.filename)
+
+            # Return the ZIP file
+            def cleanup():
+                if os.path.exists(tmp_zip_path):
+                    os.unlink(tmp_zip_path)
+
+            background_tasks.add_task(cleanup)
+
+            return FileResponse(
+                path=tmp_zip_path,
+                filename=f"resumes_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip",
+                media_type='application/zip'
+            )
+
+        except Exception as e:
+            # Clean up on error
+            if os.path.exists(tmp_zip_path):
+                os.unlink(tmp_zip_path)
+            raise e
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to create bulk download: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to create download archive"
+        )
 
 
 @router.get("/{resume_id}/download")
@@ -969,6 +1064,140 @@ async def bulk_delete_resumes(
         )
 
 
+@router.delete("/{resume_id}")
+async def delete_resume(
+    resume_id: str,
+    current_user: User = Depends(get_current_user)
+) -> Any:
+    """
+    Delete a single resume by ID
+    """
+    try:
+        # Get metadata
+        meta = await ResumeMetadata.get(resume_id)
+        if not meta:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Resume not found"
+            )
+
+        # Delete file from disk
+        upload_dir = getattr(settings, "UPLOAD_DIR", "./uploads")
+        file_path = os.path.join(upload_dir, meta.file_id)
+        if os.path.exists(file_path):
+            os.unlink(file_path)
+
+        # Delete metadata
+        await meta.delete()
+
+        # Delete details
+        details = await ResumeDetails.find_one({"resume_id": resume_id})
+        if details:
+            await details.delete()
+
+        # TODO: Delete from vector database if needed
+        # This would require implementing vector deletion by resume_key
+
+        return {
+            "result": "success",
+            "message": "Resume deleted successfully",
+            "resume_id": resume_id
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to delete resume {resume_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to delete resume"
+        )
+
+
+@router.patch("/{resume_id}/status")
+async def update_resume_status(
+    resume_id: str,
+    request: dict,
+    current_user: User = Depends(get_current_user)
+) -> Any:
+    """
+    Update status for a single resume
+    """
+    try:
+        new_status = request.get("status")
+
+        if not new_status:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="status is required"
+            )
+
+        # Map frontend statuses to backend ProcessingStatus
+        # Frontend: 'new' | 'reviewed' | 'shortlisted' | 'interviewed' | 'rejected' | 'hired'
+        # Backend: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled'
+        status_mapping = {
+            'new': 'completed',  # New resumes are completed processing
+            'reviewed': 'completed',
+            'shortlisted': 'completed',
+            'interviewed': 'completed',
+            'rejected': 'completed',
+            'hired': 'completed',
+            # Direct backend statuses
+            'pending': 'pending',
+            'processing': 'processing',
+            'completed': 'completed',
+            'failed': 'failed',
+            'cancelled': 'cancelled'
+        }
+
+        backend_status = status_mapping.get(new_status)
+        if not backend_status:
+            valid_statuses = list(status_mapping.keys())
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid status. Must be one of: {valid_statuses}"
+            )
+
+        # Get metadata
+        meta = await ResumeMetadata.get(resume_id)
+        if not meta:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Resume not found"
+            )
+
+        # Update status
+        meta.status = ProcessingStatus(backend_status)
+        await meta.save()
+
+        # For frontend statuses, we also need to store the UI status somewhere
+        # Let's add it to the details analysis_results for now
+        if new_status in ['new', 'reviewed', 'shortlisted', 'interviewed', 'rejected', 'hired']:
+            details = await ResumeDetails.find_one({"resume_id": resume_id})
+            if details:
+                if not details.analysis_results:
+                    details.analysis_results = {}
+                details.analysis_results['ui_status'] = new_status
+                await details.save()
+
+        return {
+            "result": "success",
+            "message": "Resume status updated successfully",
+            "resume_id": resume_id,
+            "new_status": new_status,
+            "backend_status": backend_status
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to update status for resume {resume_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to update resume status"
+        )
+
+
 @router.post("/bulk-status")
 async def bulk_update_status(
     request: dict,
@@ -993,9 +1222,24 @@ async def bulk_update_status(
                 detail="status is required"
             )
 
-        # Validate status
-        valid_statuses = ["pending", "processing", "completed", "failed", "cancelled"]
-        if new_status not in valid_statuses:
+        # Use same status mapping as individual update
+        status_mapping = {
+            'new': 'completed',
+            'reviewed': 'completed',
+            'shortlisted': 'completed',
+            'interviewed': 'completed',
+            'rejected': 'completed',
+            'hired': 'completed',
+            'pending': 'pending',
+            'processing': 'processing',
+            'completed': 'completed',
+            'failed': 'failed',
+            'cancelled': 'cancelled'
+        }
+
+        backend_status = status_mapping.get(new_status)
+        if not backend_status:
+            valid_statuses = list(status_mapping.keys())
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Invalid status. Must be one of: {valid_statuses}"
@@ -1014,8 +1258,18 @@ async def bulk_update_status(
             try:
                 meta = await ResumeMetadata.get(resume_id)
                 if meta:
-                    meta.status = ProcessingStatus(new_status)
+                    meta.status = ProcessingStatus(backend_status)
                     await meta.save()
+
+                    # Update UI status in details if it's a frontend status
+                    if new_status in ['new', 'reviewed', 'shortlisted', 'interviewed', 'rejected', 'hired']:
+                        details = await ResumeDetails.find_one({"resume_id": resume_id})
+                        if details:
+                            if not details.analysis_results:
+                                details.analysis_results = {}
+                            details.analysis_results['ui_status'] = new_status
+                            await details.save()
+
                     updated_count += 1
                 else:
                     failed_ids.append(resume_id)
@@ -1030,7 +1284,8 @@ async def bulk_update_status(
             "updated_count": updated_count,
             "failed_count": len(failed_ids),
             "failed_ids": failed_ids,
-            "new_status": new_status
+            "new_status": new_status,
+            "backend_status": backend_status
         }
 
     except HTTPException:

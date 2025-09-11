@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useSession } from "next-auth/react";
+import { useToast } from "@/components/ui/Toast";
+import { useConfirmDialog } from "@/components/ui/ConfirmDialog";
 import {
   ChevronDown,
   ChevronRight,
@@ -53,12 +55,17 @@ export function JobGroupedResumeView({
   onStatusChange
 }: JobGroupedResumeViewProps) {
   const { data: session, status } = useSession();
+  const { showToast } = useToast();
+  const { confirm } = useConfirmDialog();
   const [jobGroups, setJobGroups] = useState<JobGroup[]>([]);
   const [expandedJobs, setExpandedJobs] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+
+  // Services
+  const { bulkDownloadResumes } = useResumeServices();
 
   // Modal state
   const [selectedResume, setSelectedResume] = useState<Resume | null>(null);
@@ -157,7 +164,7 @@ export function JobGroupedResumeView({
                 }))
               : [],
             summary: resume.summary || '',
-            status: 'reviewed' as Resume['status'], // Match ResumeGrid status
+            status: (resume.ui_status || 'new') as Resume['status'],
             uploadDate: resume.created_at || new Date().toISOString(),
             fileType: (resume.mime_type?.includes('pdf') ? 'pdf' : resume.mime_type?.includes('word') ? 'docx' : undefined) as 'pdf' | 'doc' | 'docx' | undefined as any,
             fileSize: typeof resume.file_size === 'number' ? resume.file_size : 0,
@@ -276,7 +283,11 @@ export function JobGroupedResumeView({
       // Check if user is authenticated
       if (status !== 'authenticated') {
         console.error('User not authenticated, status:', status);
-        alert('Please log in to download resumes');
+        showToast({
+          type: 'error',
+          title: 'Authentication Required',
+          message: 'Please log in to download resumes'
+        });
         return;
       }
 
@@ -285,24 +296,109 @@ export function JobGroupedResumeView({
 
       if (result?.success) {
         console.log('Download completed for:', resume.filename);
+        showToast({
+          type: 'success',
+          title: 'Download Complete',
+          message: `Successfully downloaded ${resume.filename}`
+        });
       } else {
         console.error('Download failed:', result);
-        alert('Download failed. Please try again.');
+        showToast({
+          type: 'error',
+          title: 'Download Failed',
+          message: 'Please try again.'
+        });
       }
     } catch (error) {
       console.error('Download failed:', error);
-      alert('Download failed. Please check your connection and try again.');
+      showToast({
+        type: 'error',
+        title: 'Download Failed',
+        message: 'Please check your connection and try again.'
+      });
     }
   };
 
-  const handleDelete = (resume: Resume) => {
-    console.log('Delete resume:', resume.id);
-    // TODO: Implement delete functionality
+  const handleDelete = async (resume: Resume) => {
+    const confirmed = await confirm({
+      title: 'Delete Resume',
+      message: `Are you sure you want to delete the resume for ${resume.name}? This action cannot be undone.`,
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
+      type: 'danger'
+    });
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      const result = await resumeServices.deleteResume(resume.id);
+      if (result?.result === 'success') {
+        // Remove from local state
+        setJobGroups(prevGroups =>
+          prevGroups.map(group => ({
+            ...group,
+            resumes: group.resumes.filter(r => r.id !== resume.id)
+          })).filter(group => group.resumes.length > 0 || group.job.id !== 'unassigned')
+        );
+
+        showToast({
+          type: 'success',
+          title: 'Resume Deleted',
+          message: `Successfully deleted resume for ${resume.name}`
+        });
+      } else {
+        showToast({
+          type: 'error',
+          title: 'Delete Failed',
+          message: result?.error || 'Unknown error occurred'
+        });
+      }
+    } catch (error) {
+      console.error('Delete failed:', error);
+      showToast({
+        type: 'error',
+        title: 'Delete Failed',
+        message: 'Please try again.'
+      });
+    }
   };
 
-  const handleStatusChange = (resume: Resume, status: Resume['status']) => {
-    console.log('Change status:', resume.id, status);
-    // TODO: Implement status change
+  const handleStatusChange = async (resume: Resume, status: Resume['status']) => {
+    try {
+      const result = await resumeServices.updateResumeStatus(resume.id, status);
+      if (result?.result === 'success') {
+        // Update local state
+        setJobGroups(prevGroups =>
+          prevGroups.map(group => ({
+            ...group,
+            resumes: group.resumes.map(r =>
+              r.id === resume.id ? { ...r, status } : r
+            )
+          }))
+        );
+
+        showToast({
+          type: 'success',
+          title: 'Status Updated',
+          message: `Resume status updated to ${status}`
+        });
+      } else {
+        showToast({
+          type: 'error',
+          title: 'Update Failed',
+          message: result?.error || 'Unknown error occurred'
+        });
+      }
+    } catch (error) {
+      console.error('Status update failed:', error);
+      showToast({
+        type: 'error',
+        title: 'Update Failed',
+        message: 'Failed to update resume status. Please try again.'
+      });
+    }
   };
 
   // Show loading state while session is loading or data is being fetched
@@ -499,6 +595,27 @@ export function JobGroupedResumeView({
                       onDownload={handleDownload}
                       onDelete={handleDelete}
                       onStatusChange={handleStatusChange}
+                      onBulkDownload={async (resumeIds) => {
+                        try {
+                          const result = await bulkDownloadResumes(resumeIds);
+                          if (result.success) {
+                            showToast('Resumes downloaded successfully', 'success');
+                          } else {
+                            showToast(result.error || 'Failed to download resumes', 'error');
+                          }
+                        } catch (error) {
+                          console.error('Bulk download error:', error);
+                          showToast('Failed to download resumes', 'error');
+                        }
+                      }}
+                      onBulkDelete={(resumeIds) => {
+                        const selectedResumes = group.resumes.filter(r => resumeIds.includes(r.id));
+                        selectedResumes.forEach(resume => handleDelete(resume));
+                      }}
+                      onBulkStatusChange={(resumeIds, status) => {
+                        const selectedResumes = group.resumes.filter(r => resumeIds.includes(r.id));
+                        selectedResumes.forEach(resume => handleStatusChange(resume, status));
+                      }}
                     />
                   )}
                 </div>
