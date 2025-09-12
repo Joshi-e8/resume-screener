@@ -155,11 +155,19 @@ const useResumeServices = () => {
   // Bulk delete resumes
   const bulkDeleteResumes = async (resumeIds) => {
     try {
-      const response = await axios.post(CONSTANTS.RESUMES.BULK_DELETE, {
-        resume_ids: resumeIds
-      });
+      console.log('🔍 bulkDeleteResumes service called with:', resumeIds);
+      console.log('🔍 bulkDeleteResumes resumeIds length:', resumeIds?.length);
+      console.log('🔍 bulkDeleteResumes API endpoint:', CONSTANTS.RESUMES.BULK_DELETE);
+
+      const requestData = { resume_ids: resumeIds };
+      console.log('🔍 bulkDeleteResumes request data:', requestData);
+
+      const response = await axios.post(CONSTANTS.RESUMES.BULK_DELETE, requestData);
+      console.log('🔍 bulkDeleteResumes API response:', response?.data);
+
       return response?.data;
     } catch (error) {
+      console.error('❌ bulkDeleteResumes error:', error);
       return errorHandler(error);
     }
   };

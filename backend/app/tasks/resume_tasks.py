@@ -22,6 +22,7 @@ from app.models.job import Job
 from app.models.resume_processing import BatchProcessingJob, ProcessingStatus, ResumeMetadata, ResumeDetails, ProcessingMode
 from app.scoring.llm_client import LLMClient, reset_llm_gate
 from app.scoring.service import score_resume_against_job
+from app.services.duplicate_detector import DuplicateDetector
 from app.services.google_drive_service import GoogleDriveService
 from app.services.resume_parser import ResumeParser
 from app.vector.store import upsert_resume_chunks, Chunk, get_mode
@@ -315,6 +316,14 @@ def process_direct_resume_file(self, resume_id: str, tmp_file_path: str, filenam
                 meta.key_skills = key_skills[:20] if isinstance(key_skills, list) else []
                 meta.job_id = job_id or meta.job_id
                 meta.processing_mode = ProcessingMode.STANDARD
+
+                # Calculate and store file hash if not already present
+                if not meta.file_hash and os.path.exists(tmp_file_path):
+                    try:
+                        meta.file_hash = DuplicateDetector.calculate_file_hash_from_path(tmp_file_path)
+                    except Exception as e:
+                        logger.warning(f"Failed to calculate file hash for {filename}: {e}")
+
                 loop.run_until_complete(meta.save())
             else:
                 # Fallback if metadata not created

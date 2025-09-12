@@ -27,6 +27,7 @@ from app.models.user import User
 from app.scoring.service import score_resume_against_job
 from app.services.analytics_service import AnalyticsService
 from app.services.candidate_service import CandidateService
+from app.services.duplicate_detector import DuplicateDetector
 from app.services.resume_parser import ResumeParser
 from app.tasks.resume_tasks import (process_direct_resume_file,
                                   process_direct_resume_files_batch)
@@ -121,6 +122,27 @@ async def upload_resume(
         tmp_file_path = tmp_file.name
 
     try:
+        # Calculate file hash for duplicate detection
+        file_hash = DuplicateDetector.calculate_file_hash(file_content)
+
+        # Check for exact duplicates
+        existing_duplicate = await DuplicateDetector.find_duplicate_by_hash(file_hash, str(current_user.id))
+        if existing_duplicate:
+            logger.info(f"[upload] Duplicate file detected: {file.filename} matches existing resume {existing_duplicate.id}")
+            return {
+                "message": "Duplicate file detected",
+                "status": "duplicate",
+                "duplicate_info": {
+                    "existing_resume_id": str(existing_duplicate.id),
+                    "existing_filename": existing_duplicate.filename,
+                    "existing_candidate_name": existing_duplicate.candidate_name,
+                    "existing_candidate_email": existing_duplicate.candidate_email,
+                    "created_at": existing_duplicate.created_at.isoformat(),
+                    "duplicate_type": "exact_file"
+                },
+                "user_id": str(current_user.id),
+            }
+
         # Create initial metadata with PROCESSING status
         file_id = uuid4().hex
         meta = ResumeMetadata(
@@ -133,6 +155,7 @@ async def upload_resume(
             processing_mode=ProcessingMode.STANDARD,
             job_id=job_id,
             source=source,
+            file_hash=file_hash,  # Store the calculated hash
         )
         await meta.insert()
 
@@ -203,20 +226,52 @@ async def upload_multiple_resumes(
     max_size = 10 * 1024 * 1024  # 10MB per file
 
     tmp_payloads = []
+    duplicate_warnings = []
+    skipped_files = []
     try:
         # Create initial metadata entries and save temp files
         for f in files:
             ext = os.path.splitext(f.filename)[1].lower()
             if ext not in allowed_extensions:
-                raise HTTPException(status_code=400, detail=f"Unsupported file type for {f.filename}")
+                skipped_files.append({
+                    "filename": f.filename,
+                    "reason": "unsupported_file_type",
+                    "message": f"File type {ext} not supported"
+                })
+                continue
 
             content = await f.read()
             if len(content) > max_size:
-                raise HTTPException(status_code=400, detail=f"File too large: {f.filename} (max 10MB)")
+                skipped_files.append({
+                    "filename": f.filename,
+                    "reason": "file_too_large",
+                    "message": f"File size {len(content)} bytes exceeds {max_size} bytes limit"
+                })
+                continue
 
             with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmpf:
                 tmpf.write(content)
                 tmp_path = tmpf.name
+
+            # Calculate file hash for duplicate detection
+            file_hash = DuplicateDetector.calculate_file_hash(content)
+
+            # Check for exact duplicates
+            existing_duplicate = await DuplicateDetector.find_duplicate_by_hash(file_hash, str(current_user.id))
+            if existing_duplicate:
+                logger.info(f"[upload/multiple] Found duplicate file: {f.filename} matches existing resume {existing_duplicate.id}")
+                duplicate_warnings.append({
+                    "filename": f.filename,
+                    "duplicate_type": "exact_file",
+                    "existing_resume": {
+                        "id": str(existing_duplicate.id),
+                        "filename": existing_duplicate.filename,
+                        "candidate_name": getattr(existing_duplicate, 'candidate_name', 'Unknown'),
+                        "created_at": existing_duplicate.created_at.isoformat() if existing_duplicate.created_at else None
+                    },
+                    "message": f"Exact duplicate of '{existing_duplicate.filename}'"
+                })
+                continue  # Skip this file and continue with the next one
 
             # Create metadata with PROCESSING status
             file_id = uuid4().hex
@@ -230,6 +285,7 @@ async def upload_multiple_resumes(
                 processing_mode=ProcessingMode.STANDARD,
                 job_id=job_id,
                 source="direct",
+                file_hash=file_hash,  # Store the calculated hash
             )
             await meta.insert()
 
@@ -241,6 +297,21 @@ async def upload_multiple_resumes(
                 "mime_type": getattr(f, "content_type", None),
             })
 
+        # Check if we have any files to process
+        total_files_uploaded = len(files)
+
+        if not tmp_payloads:
+            # All files were skipped (duplicates, unsupported, etc.)
+            return {
+                "message": "Multiple files processed but no new files were added",
+                "status": "completed_with_warnings",
+                "async_processing": False,
+                "processed": 0,
+                "total_uploaded": total_files_uploaded,
+                "duplicate_warnings": duplicate_warnings,
+                "skipped_files": skipped_files,
+            }
+
         if async_processing:
             # Enqueue single batch task that processes all provided files at once
             task = process_direct_resume_files_batch.delay(tmp_payloads, str(current_user.id), job_id)
@@ -251,7 +322,10 @@ async def upload_multiple_resumes(
                 "async_processing": True,
                 "user_id": str(current_user.id),
                 "total": len(tmp_payloads),
+                "total_uploaded": total_files_uploaded,
                 "task_id": task.id,
+                "duplicate_warnings": duplicate_warnings,
+                "skipped_files": skipped_files,
             }
         else:
             # Synchronous (not recommended for many files) — process sequentially using the same parser
@@ -271,6 +345,9 @@ async def upload_multiple_resumes(
                 "async_processing": False,
                 "processed": processed,
                 "total": len(tmp_payloads),
+                "total_uploaded": total_files_uploaded,
+                "duplicate_warnings": duplicate_warnings,
+                "skipped_files": skipped_files,
             }
 
     except HTTPException:
@@ -312,6 +389,8 @@ async def upload_zip_resumes(
     max_file_size = 10 * 1024 * 1024  # 10MB per individual file
     tmp_payloads = []
     extracted_files = []
+    duplicate_warnings = []
+    skipped_files = []
 
     # Save ZIP file temporarily
     with tempfile.NamedTemporaryFile(delete=False, suffix='.zip') as tmp_zip:
@@ -333,11 +412,21 @@ async def upload_zip_resumes(
                 file_ext = os.path.splitext(zip_info.filename)[1].lower()
                 if file_ext not in allowed_extensions:
                     logger.warning(f"Skipping unsupported file type: {zip_info.filename}")
+                    skipped_files.append({
+                        "filename": os.path.basename(zip_info.filename),
+                        "reason": "unsupported_file_type",
+                        "message": f"File type {file_ext} not supported"
+                    })
                     continue
 
                 # Check individual file size
                 if zip_info.file_size > max_file_size:
                     logger.warning(f"Skipping large file: {zip_info.filename} ({zip_info.file_size} bytes)")
+                    skipped_files.append({
+                        "filename": os.path.basename(zip_info.filename),
+                        "reason": "file_too_large",
+                        "message": f"File size {zip_info.file_size} bytes exceeds {max_file_size} bytes limit"
+                    })
                     continue
 
                 # Extract file content
@@ -352,6 +441,26 @@ async def upload_zip_resumes(
                     # Get clean filename (remove directory path)
                     clean_filename = os.path.basename(zip_info.filename)
 
+                    # Calculate file hash for duplicate detection
+                    file_hash = DuplicateDetector.calculate_file_hash(file_content)
+
+                    # Check for exact duplicates
+                    existing_duplicate = await DuplicateDetector.find_duplicate_by_hash(file_hash, str(current_user.id))
+                    if existing_duplicate:
+                        logger.info(f"[upload/zip] Found duplicate file: {clean_filename} matches existing resume {existing_duplicate.id}")
+                        duplicate_warnings.append({
+                            "filename": clean_filename,
+                            "duplicate_type": "exact_file",
+                            "existing_resume": {
+                                "id": str(existing_duplicate.id),
+                                "filename": existing_duplicate.filename,
+                                "candidate_name": getattr(existing_duplicate, 'candidate_name', 'Unknown'),
+                                "created_at": existing_duplicate.created_at.isoformat() if existing_duplicate.created_at else None
+                            },
+                            "message": f"Exact duplicate of '{existing_duplicate.filename}'"
+                        })
+                        continue  # Skip this file and continue with the next one
+
                     # Create metadata with PROCESSING status
                     file_id = uuid4().hex
                     meta = ResumeMetadata(
@@ -364,6 +473,7 @@ async def upload_zip_resumes(
                         processing_mode=ProcessingMode.STANDARD,
                         job_id=job_id,
                         source="zip_upload",
+                        file_hash=file_hash,  # Store the calculated hash
                     )
                     await meta.insert()
 
@@ -381,11 +491,27 @@ async def upload_zip_resumes(
                     logger.error(f"Failed to extract file {zip_info.filename}: {e}")
                     continue
 
-        if not tmp_payloads:
+        # Check if we have any files to process
+        total_files_in_zip = len([f for f in zip_info_list if not f.is_dir() and not f.filename.startswith('.') and not f.filename.startswith('__MACOSX/')])
+
+        if not tmp_payloads and total_files_in_zip == 0:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="No valid resume files found in ZIP archive"
+                detail="ZIP archive is empty or contains no files"
             )
+
+        if not tmp_payloads:
+            # All files were skipped (duplicates, unsupported, etc.)
+            return {
+                "message": "ZIP file processed but no new files were added",
+                "status": "completed_with_warnings",
+                "async_processing": False,
+                "processed": 0,
+                "total_in_zip": total_files_in_zip,
+                "duplicate_warnings": duplicate_warnings,
+                "skipped_files": skipped_files,
+                "zip_filename": zip_file.filename,
+            }
 
         logger.info(f"[upload/zip] Extracted {len(tmp_payloads)} files from ZIP: {extracted_files}")
 
@@ -399,8 +525,11 @@ async def upload_zip_resumes(
                 "async_processing": True,
                 "user_id": str(current_user.id),
                 "total": len(tmp_payloads),
+                "total_in_zip": total_files_in_zip,
                 "task_id": task.id,
                 "extracted_files": extracted_files,
+                "duplicate_warnings": duplicate_warnings,
+                "skipped_files": skipped_files,
                 "zip_filename": zip_file.filename,
             }
         else:
@@ -430,7 +559,10 @@ async def upload_zip_resumes(
                 "async_processing": False,
                 "processed": processed,
                 "total": len(tmp_payloads),
+                "total_in_zip": total_files_in_zip,
                 "extracted_files": extracted_files,
+                "duplicate_warnings": duplicate_warnings,
+                "skipped_files": skipped_files,
                 "zip_filename": zip_file.filename,
             }
 
@@ -1004,7 +1136,13 @@ async def bulk_delete_resumes(
     """
     try:
         resume_ids = request.get("resume_ids", [])
+        logger.info(f"🔍 Bulk delete request received: {request}")
+        logger.info(f"🔍 Bulk delete resume_ids: {resume_ids}")
+        logger.info(f"🔍 Bulk delete resume_ids type: {type(resume_ids)}")
+        logger.info(f"🔍 Bulk delete resume_ids length: {len(resume_ids) if resume_ids else 0}")
+
         if not resume_ids or not isinstance(resume_ids, list):
+            logger.error(f"❌ Invalid resume_ids: {resume_ids}")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="resume_ids must be a non-empty list"
@@ -1019,40 +1157,55 @@ async def bulk_delete_resumes(
         deleted_count = 0
         failed_ids = []
 
-        for resume_id in resume_ids:
+        for i, resume_id in enumerate(resume_ids):
+            logger.info(f"🔍 Processing resume {i+1}/{len(resume_ids)}: {resume_id}")
             try:
                 # Get metadata
                 meta = await ResumeMetadata.get(resume_id)
                 if meta:
+                    logger.info(f"✅ Found metadata for resume {resume_id}: {meta.filename}")
+
                     # Delete file from disk
                     upload_dir = getattr(settings, "UPLOAD_DIR", "./uploads")
                     file_path = os.path.join(upload_dir, meta.file_id)
                     if os.path.exists(file_path):
                         os.unlink(file_path)
+                        logger.info(f"🗑️ Deleted file: {file_path}")
+                    else:
+                        logger.warning(f"⚠️ File not found: {file_path}")
 
                     # Delete metadata
                     await meta.delete()
+                    logger.info(f"🗑️ Deleted metadata for resume {resume_id}")
 
                     # Delete details
                     details = await ResumeDetails.find_one({"resume_id": resume_id})
                     if details:
                         await details.delete()
+                        logger.info(f"🗑️ Deleted details for resume {resume_id}")
+                    else:
+                        logger.info(f"ℹ️ No details found for resume {resume_id}")
 
                     deleted_count += 1
+                    logger.info(f"✅ Successfully deleted resume {resume_id} ({deleted_count}/{len(resume_ids)})")
                 else:
+                    logger.warning(f"❌ Resume metadata not found: {resume_id}")
                     failed_ids.append(resume_id)
 
             except Exception as e:
-                logger.warning(f"Failed to delete resume {resume_id}: {e}")
+                logger.error(f"❌ Failed to delete resume {resume_id}: {e}")
                 failed_ids.append(resume_id)
 
-        return {
+        result = {
             "result": "success",
             "message": f"Bulk delete completed",
             "deleted_count": deleted_count,
             "failed_count": len(failed_ids),
             "failed_ids": failed_ids
         }
+
+        logger.info(f"🎉 Bulk delete completed: {result}")
+        return result
 
     except HTTPException:
         raise
@@ -1295,4 +1448,121 @@ async def bulk_update_status(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Bulk status update operation failed"
+        )
+
+
+@router.get("/duplicates")
+async def get_duplicate_groups(current_user: User = Depends(get_current_user)) -> Any:
+    """
+    Get all duplicate groups for the current user
+    """
+    try:
+        duplicate_groups = await DuplicateDetector.get_duplicate_groups(str(current_user.id))
+        return {
+            "duplicate_groups": duplicate_groups,
+            "total_groups": len(duplicate_groups),
+            "total_duplicates": sum(group["count"] - 1 for group in duplicate_groups)  # Subtract 1 for original
+        }
+    except Exception as e:
+        logger.error(f"Failed to get duplicate groups: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve duplicate groups"
+        )
+
+
+@router.post("/check-duplicates")
+async def check_for_duplicates(
+    request: dict,
+    current_user: User = Depends(get_current_user)
+) -> Any:
+    """
+    Check if a file or candidate information has duplicates
+    Expects: {"file_hash": "...", "candidate_name": "...", "candidate_email": "..."}
+    """
+    try:
+        file_hash = request.get("file_hash")
+        candidate_name = request.get("candidate_name")
+        candidate_email = request.get("candidate_email")
+
+        if not file_hash and not candidate_name and not candidate_email:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="At least one of file_hash, candidate_name, or candidate_email is required"
+            )
+
+        duplicate_info = await DuplicateDetector.check_for_duplicates(
+            file_hash=file_hash,
+            candidate_name=candidate_name,
+            candidate_email=candidate_email,
+            user_id=str(current_user.id)
+        )
+
+        return duplicate_info
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to check for duplicates: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to check for duplicates"
+        )
+
+
+@router.delete("/duplicates/{resume_id}")
+async def delete_duplicate_resume(
+    resume_id: str,
+    current_user: User = Depends(get_current_user)
+) -> Any:
+    """
+    Delete a duplicate resume
+    """
+    try:
+        # Get the resume to verify ownership
+        resume = await ResumeMetadata.get(resume_id)
+        if not resume:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Resume not found"
+            )
+
+        if resume.user_id != str(current_user.id):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Not authorized to delete this resume"
+            )
+
+        # Delete the resume metadata
+        await resume.delete()
+
+        # Also delete the associated ResumeDetails if it exists
+        try:
+            details = await ResumeDetails.find_one({"resume_id": resume_id})
+            if details:
+                await details.delete()
+        except Exception as e:
+            logger.warning(f"Could not delete ResumeDetails for {resume_id}: {e}")
+
+        # Delete the physical file if it exists
+        try:
+            upload_dir = getattr(settings, "UPLOAD_DIR", "./uploads")
+            file_path = os.path.join(upload_dir, resume.file_id)
+            if os.path.exists(file_path):
+                os.unlink(file_path)
+        except Exception as e:
+            logger.warning(f"Could not delete physical file for {resume_id}: {e}")
+
+        return {
+            "message": "Duplicate resume deleted successfully",
+            "resume_id": resume_id
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to delete duplicate resume {resume_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to delete duplicate resume"
         )

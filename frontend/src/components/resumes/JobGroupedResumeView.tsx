@@ -65,7 +65,7 @@ export function JobGroupedResumeView({
   const [statusFilter, setStatusFilter] = useState<string>('all');
 
   // Services
-  const { bulkDownloadResumes } = useResumeServices();
+  const { bulkDownloadResumes, bulkDeleteResumes, bulkUpdateStatus } = useResumeServices();
 
   // Modal state
   const [selectedResume, setSelectedResume] = useState<Resume | null>(null);
@@ -599,22 +599,110 @@ export function JobGroupedResumeView({
                         try {
                           const result = await bulkDownloadResumes(resumeIds);
                           if (result.success) {
-                            showToast('Resumes downloaded successfully', 'success');
+                            showToast({
+                              type: 'success',
+                              title: 'Bulk Download Complete',
+                              message: 'Resumes downloaded successfully'
+                            });
                           } else {
-                            showToast(result.error || 'Failed to download resumes', 'error');
+                            showToast({
+                              type: 'error',
+                              title: 'Bulk Download Failed',
+                              message: result.error || 'Failed to download resumes'
+                            });
                           }
                         } catch (error) {
                           console.error('Bulk download error:', error);
-                          showToast('Failed to download resumes', 'error');
+                          showToast({
+                            type: 'error',
+                            title: 'Bulk Download Failed',
+                            message: 'Failed to download resumes'
+                          });
                         }
                       }}
-                      onBulkDelete={(resumeIds) => {
-                        const selectedResumes = group.resumes.filter(r => resumeIds.includes(r.id));
-                        selectedResumes.forEach(resume => handleDelete(resume));
+                      onBulkDelete={async (resumeIds) => {
+                        console.log('🔍 JobGroupedResumeView onBulkDelete called with:', resumeIds);
+
+                        if (resumeIds.length === 0) return;
+
+                        try {
+                          console.log('🚀 Calling bulkDeleteResumes API...');
+                          const response = await bulkDeleteResumes(resumeIds);
+                          console.log('📡 Bulk delete API response:', response);
+
+                          if (response?.result === 'success') {
+                            console.log(`Successfully deleted ${response.deleted_count} resumes`);
+
+                            // Remove deleted resumes from local state
+                            setJobGroups(prevGroups =>
+                              prevGroups.map(jobGroup => ({
+                                ...jobGroup,
+                                resumes: jobGroup.resumes.filter(r => !resumeIds.includes(r.id))
+                              })).filter(jobGroup => jobGroup.resumes.length > 0)
+                            );
+
+                            showToast({
+                              type: 'success',
+                              title: 'Bulk Delete Complete',
+                              message: `Successfully deleted ${response.deleted_count} resume${response.deleted_count > 1 ? 's' : ''}`
+                            });
+                          } else {
+                            showToast({
+                              type: 'error',
+                              title: 'Bulk Delete Failed',
+                              message: response?.error || 'Failed to delete resumes'
+                            });
+                          }
+                        } catch (error) {
+                          console.error('Bulk delete error:', error);
+                          showToast({
+                            type: 'error',
+                            title: 'Bulk Delete Failed',
+                            message: 'Failed to delete resumes'
+                          });
+                        }
                       }}
-                      onBulkStatusChange={(resumeIds, status) => {
-                        const selectedResumes = group.resumes.filter(r => resumeIds.includes(r.id));
-                        selectedResumes.forEach(resume => handleStatusChange(resume, status));
+                      onBulkStatusChange={async (resumeIds, status) => {
+                        console.log('🔍 JobGroupedResumeView onBulkStatusChange called with:', resumeIds, status);
+
+                        if (resumeIds.length === 0) return;
+
+                        try {
+                          const response = await bulkUpdateStatus(resumeIds, status);
+
+                          if (response?.result === 'success') {
+                            console.log(`Successfully updated ${response.updated_count} resumes`);
+
+                            // Update status in local state
+                            setJobGroups(prevGroups =>
+                              prevGroups.map(jobGroup => ({
+                                ...jobGroup,
+                                resumes: jobGroup.resumes.map(r =>
+                                  resumeIds.includes(r.id) ? { ...r, ui_status: status } : r
+                                )
+                              }))
+                            );
+
+                            showToast({
+                              type: 'success',
+                              title: 'Bulk Status Update Complete',
+                              message: `Successfully updated ${response.updated_count} resume${response.updated_count > 1 ? 's' : ''}`
+                            });
+                          } else {
+                            showToast({
+                              type: 'error',
+                              title: 'Bulk Status Update Failed',
+                              message: response?.error || 'Failed to update resume status'
+                            });
+                          }
+                        } catch (error) {
+                          console.error('Bulk status update error:', error);
+                          showToast({
+                            type: 'error',
+                            title: 'Bulk Status Update Failed',
+                            message: 'Failed to update resume status'
+                          });
+                        }
                       }}
                     />
                   )}

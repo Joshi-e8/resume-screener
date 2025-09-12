@@ -618,18 +618,18 @@ export function ResumeGrid({ initialSearchQuery = '' }: ResumeGridProps) {
         // Update local state - update the API response data which will trigger useMemo re-run
         if (apiResumes) {
           setApiResumes(prevApiResumes =>
-            prevApiResumes.map(r =>
+            prevApiResumes ? prevApiResumes.map(r =>
               r.id === resume.id ? { ...r, ui_status: status } : r
-            )
+            ) : prevApiResumes
           );
         }
 
         // Also update cached results if present
         if (cachedResults) {
           setCachedResults(prevCachedResults =>
-            prevCachedResults.map(r =>
+            prevCachedResults ? prevCachedResults.map(r =>
               r.file_id === resume.id ? { ...r, ui_status: status } : r
-            )
+            ) : prevCachedResults
           );
         }
 
@@ -708,12 +708,23 @@ export function ResumeGrid({ initialSearchQuery = '' }: ResumeGridProps) {
     }
   };
 
-  const handleBulkDelete = async () => {
-    if (selectedResumeIds.size === 0) return;
+  const handleBulkDelete = async (resumeIdsToDelete?: string[]) => {
+    // Use provided IDs or fall back to selected IDs
+    const idsToDelete = resumeIdsToDelete || Array.from(selectedResumeIds);
+
+    console.log('🔍 handleBulkDelete called with resumeIdsToDelete:', resumeIdsToDelete);
+    console.log('🔍 handleBulkDelete selectedResumeIds:', Array.from(selectedResumeIds));
+    console.log('🔍 handleBulkDelete final idsToDelete:', idsToDelete);
+    console.log('🔍 handleBulkDelete idsToDelete length:', idsToDelete.length);
+
+    if (idsToDelete.length === 0) {
+      console.log('❌ No IDs to delete, returning');
+      return;
+    }
 
     const confirmed = await confirm({
       title: 'Delete Multiple Resumes',
-      message: `Are you sure you want to delete ${selectedResumeIds.size} resume${selectedResumeIds.size > 1 ? 's' : ''}? This action cannot be undone.`,
+      message: `Are you sure you want to delete ${idsToDelete.length} resume${idsToDelete.length > 1 ? 's' : ''}? This action cannot be undone.`,
       confirmText: 'Delete All',
       cancelText: 'Cancel',
       type: 'danger'
@@ -724,18 +735,19 @@ export function ResumeGrid({ initialSearchQuery = '' }: ResumeGridProps) {
     }
 
     try {
-      const resumeIdsArray = Array.from(selectedResumeIds);
-      console.log('Bulk deleting resumes:', resumeIdsArray);
+      console.log('🚀 Calling bulkDeleteResumes API with:', idsToDelete);
 
-      const response = await bulkDeleteResumes(resumeIdsArray);
+      const response = await bulkDeleteResumes(idsToDelete);
+      console.log('📡 API response:', response);
 
       if (response?.result === 'success') {
         console.log(`Successfully deleted ${response.deleted_count} resumes`);
 
         // Remove deleted resumes from local state using functional updates
         if (apiResumes) {
+          const deletedIdsSet = new Set(idsToDelete);
           setApiResumes(prevApiResumes =>
-            prevApiResumes.filter(r => !selectedResumeIds.has(r.id))
+            prevApiResumes ? prevApiResumes.filter(r => !deletedIdsSet.has(r.id)) : prevApiResumes
           );
         }
 
@@ -765,30 +777,34 @@ export function ResumeGrid({ initialSearchQuery = '' }: ResumeGridProps) {
     }
   };
 
-  const handleBulkStatusUpdate = async (newStatus: string) => {
-    if (selectedResumeIds.size === 0) return;
+  const handleBulkStatusUpdate = async (newStatus: string, resumeIdsToUpdate?: string[]) => {
+    // Use provided IDs or fall back to selected IDs
+    const idsToUpdate = resumeIdsToUpdate || Array.from(selectedResumeIds);
+
+    if (idsToUpdate.length === 0) return;
 
     try {
-      const resumeIdsArray = Array.from(selectedResumeIds);
-      console.log('Bulk updating status:', resumeIdsArray, newStatus);
+      console.log('Bulk updating status:', idsToUpdate, newStatus);
 
-      const response = await bulkUpdateStatus(resumeIdsArray, newStatus);
+      const response = await bulkUpdateStatus(idsToUpdate, newStatus);
 
       if (response?.result === 'success') {
         console.log(`Successfully updated ${response.updated_count} resumes`);
 
         // Update status in local state
         if (apiResumes) {
+          const updatedIdsSet = new Set(idsToUpdate);
           const updatedResumes = apiResumes.map(r =>
-            selectedResumeIds.has(r.id) ? { ...r, ui_status: newStatus } : r
+            updatedIdsSet.has(r.id) ? { ...r, ui_status: newStatus } : r
           );
           setApiResumes(updatedResumes);
         }
 
         // Also update cached results if present
         if (cachedResults) {
+          const updatedIdsSet = new Set(idsToUpdate);
           const updatedCached = cachedResults.map(r =>
-            selectedResumeIds.has(r.file_id) ? { ...r, ui_status: newStatus } : r
+            updatedIdsSet.has(r.file_id) ? { ...r, ui_status: newStatus } : r
           );
           setCachedResults(updatedCached);
         }
@@ -1042,7 +1058,7 @@ export function ResumeGrid({ initialSearchQuery = '' }: ResumeGridProps) {
 
               {/* Bulk Delete */}
               <button
-                onClick={handleBulkDelete}
+                onClick={() => handleBulkDelete()}
                 className="px-3 py-1.5 text-sm bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors duration-200"
               >
                 Delete Selected
@@ -1097,22 +1113,35 @@ export function ResumeGrid({ initialSearchQuery = '' }: ResumeGridProps) {
                       try {
                         const result = await bulkDownloadResumes(resumeIds);
                         if (result.success) {
-                          showToast(`Downloaded ${resumeIds.length} resumes as ZIP file`, 'success');
+                          showToast({
+                            type: 'success',
+                            title: 'Download Complete',
+                            message: `Downloaded ${resumeIds.length} resumes as ZIP file`
+                          });
                         } else {
-                          showToast(result.error || 'Failed to download resumes', 'error');
+                          showToast({
+                            type: 'error',
+                            title: 'Download Failed',
+                            message: result.error || 'Failed to download resumes'
+                          });
                         }
                       } catch (error) {
                         console.error('Bulk download error:', error);
-                        showToast('Failed to download resumes', 'error');
+                        showToast({
+                          type: 'error',
+                          title: 'Download Failed',
+                          message: 'Failed to download resumes'
+                        });
                       }
                     }}
                     onBulkDelete={(resumeIds) => {
-                      setSelectedResumeIds(new Set(resumeIds));
-                      handleBulkDelete();
+                      console.log('🔍 ResumeGrid onBulkDelete called with:', resumeIds);
+                      console.log('🔍 ResumeGrid resumeIds length:', resumeIds.length);
+                      console.log('🔍 ResumeGrid resumeIds type:', typeof resumeIds, Array.isArray(resumeIds));
+                      handleBulkDelete(resumeIds);
                     }}
                     onBulkStatusChange={(resumeIds, status) => {
-                      setSelectedResumeIds(new Set(resumeIds));
-                      handleBulkStatusUpdate(status);
+                      handleBulkStatusUpdate(status, resumeIds);
                     }}
                   />
               )}

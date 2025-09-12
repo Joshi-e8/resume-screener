@@ -64,6 +64,10 @@ class ResumeMetadata(Document):
     candidate_email: Optional[str] = Field(None, description="Candidate email for quick search")
     key_skills: List[str] = Field(default_factory=list, description="Top skills for quick filtering")
 
+    # Duplicate detection fields
+    duplicate_info: Optional[Dict[str, Any]] = Field(None, description="Duplicate detection information")
+    source: Optional[str] = Field("direct", description="Upload source (direct, google_drive, zip_upload)")
+
     @field_validator('candidate_email', mode='before')
     @classmethod
     def validate_candidate_email(cls, v):

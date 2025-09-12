@@ -44,9 +44,11 @@ import {
 import { sseService } from "@/lib/services/sseService";
 import GoogleDriveService from "@/lib/services/googleDriveServices";
 import useResumeServices from "@/lib/services/resumeServices";
+import useDuplicateServices from "@/lib/services/duplicateServices";
 import { SSEProgressBar } from "@/components/ui/SSEProgressBar";
 import { useSSEProgress } from "@/hooks/useSSEProgress";
 import useJobServices from "@/lib/services/jobServices";
+import { useToast } from "@/components/ui/Toast";
 
 interface ResumeUploadProps {
   onFilesUploaded: (files: File[]) => void;
@@ -78,8 +80,11 @@ function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
   // Optional job selection (kept inside upload component for clarity)
   const [jobs, setJobs] = useState<any[]>([]);
   const [selectedJobId, setSelectedJobId] = useState<string>("");
+  const [duplicateWarnings, setDuplicateWarnings] = useState<{[filename: string]: any}>({});
   const { getAllJobs } = useJobServices();
+  const { checkFileBeforeUpload } = useDuplicateServices();
   const { status, data: session } = useSession();
+  const { showToast } = useToast();
   const fetchedJobsRef = useRef(false);
   useEffect(() => {
     // For testing purposes, create mock jobs if not authenticated
@@ -269,6 +274,7 @@ function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
       const fileArray = Array.from(files);
       const newErrors: string[] = [];
       const validFiles: File[] = [];
+      const newDuplicateWarnings: {[filename: string]: any} = {};
 
       for (const file of fileArray) {
         const error = validateFile(file);
@@ -291,11 +297,30 @@ function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
             newErrors.push(`${file.name}: ZIP files are only allowed in ZIP upload mode`);
           }
         } else {
-          validFiles.push(file);
+          // Check for duplicates for non-ZIP files
+          try {
+            console.log(`🔍 Checking duplicates for file: ${file.name}`);
+            const duplicateCheck = await checkFileBeforeUpload(file);
+
+            if (duplicateCheck.success && duplicateCheck.data?.duplicate_info?.has_duplicates) {
+              console.log(`⚠️ Duplicate detected for ${file.name}`);
+              newDuplicateWarnings[file.name] = duplicateCheck.data.duplicate_info;
+              // Still add the file but with a warning
+              validFiles.push(file);
+            } else {
+              validFiles.push(file);
+            }
+          } catch (error) {
+            console.warn(`❌ Failed to check duplicates for ${file.name}:`, error);
+            // Continue with upload even if duplicate check fails
+            validFiles.push(file);
+          }
         }
       }
 
       dispatch(setErrors(newErrors));
+      setDuplicateWarnings(newDuplicateWarnings);
+
       if (validFiles.length > 0) {
         if (uploadMode === "single") {
           dispatch(setSelectedFiles([validFiles[0]])); // Only keep the first file in single mode
@@ -304,7 +329,7 @@ function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
         }
       }
     },
-    [uploadMode, allowedZipTypes, validateFile, selectedFiles, dispatch]
+    [uploadMode, allowedZipTypes, validateFile, selectedFiles, dispatch, checkFileBeforeUpload]
   );
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -388,6 +413,22 @@ function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
           currentProgress[file.name] = displayProgress;
           dispatch(setUploadProgress(currentProgress));
         });
+
+        // Handle duplicate response for single file upload
+        if (uploadResponse?.status === 'duplicate') {
+          showToast({
+            type: 'warning',
+            title: 'Duplicate File Found',
+            message: `File "${file.name}" is an exact duplicate of "${uploadResponse.duplicate_info?.existing_filename}"`
+          });
+          // Complete the progress bar and mark as successful
+          const currentProgress = { ...uploadProgress };
+          currentProgress[file.name] = 100;
+          dispatch(setUploadProgress(currentProgress));
+          setTimeout(() => dispatch(setUploadProgress({})), 2000);
+          resolve();
+          return;
+        }
 
         // If we got a user_id from the response, setup SSE for processing updates
         if (uploadResponse?.user_id) {
@@ -531,6 +572,43 @@ function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
         // Kick off batch upload (pass selected job for AI scoring)
         const resp = await uploadMultipleResumes(selectedFiles, selectedJobId, true);
 
+        // Handle duplicate warnings and skipped files
+        if (resp?.duplicate_warnings && resp.duplicate_warnings.length > 0) {
+          const duplicateMessages = resp.duplicate_warnings.map((warning: any) =>
+            `⚠️ ${warning.filename}: ${warning.message}`
+          );
+          console.log('Duplicate warnings:', duplicateMessages);
+          showToast({
+            type: 'warning',
+            title: 'Duplicate Files Found',
+            message: `${resp.duplicate_warnings.length} duplicate file(s) were skipped`
+          });
+        }
+
+        if (resp?.skipped_files && resp.skipped_files.length > 0) {
+          const skippedMessages = resp.skipped_files.map((skipped: any) =>
+            `⚠️ ${skipped.filename}: ${skipped.message}`
+          );
+          console.log('Skipped files:', skippedMessages);
+          showToast({
+            type: 'warning',
+            title: 'Files Skipped',
+            message: `${resp.skipped_files.length} file(s) were skipped`
+          });
+        }
+
+        // Handle case where all files were duplicates/skipped
+        if (resp?.status === 'completed_with_warnings') {
+          showToast({
+            type: 'info',
+            title: 'Files Processed',
+            message: 'Files processed but no new files were added (all were duplicates or invalid)'
+          });
+          dispatch(setUploadSuccess(true));
+          dispatch(setIsUploading(false));
+          return;
+        }
+
         // Wire SSE if backend returned user_id
         if (resp?.user_id) {
           dispatch(setUserId(resp.user_id));
@@ -605,6 +683,44 @@ function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
           current[zipFile.name] = fileUploadProgress;
           dispatch(setUploadProgress(current));
         });
+
+        // Handle duplicate warnings and skipped files
+        if (resp?.duplicate_warnings && resp.duplicate_warnings.length > 0) {
+          const duplicateMessages = resp.duplicate_warnings.map((warning: any) =>
+            `⚠️ ${warning.filename}: ${warning.message}`
+          );
+          console.log('Duplicate warnings:', duplicateMessages);
+          // Show warnings but don't treat as errors
+          showToast({
+            type: 'warning',
+            title: 'Duplicate Files Found',
+            message: `${resp.duplicate_warnings.length} duplicate file(s) were skipped`
+          });
+        }
+
+        if (resp?.skipped_files && resp.skipped_files.length > 0) {
+          const skippedMessages = resp.skipped_files.map((skipped: any) =>
+            `⚠️ ${skipped.filename}: ${skipped.message}`
+          );
+          console.log('Skipped files:', skippedMessages);
+          showToast({
+            type: 'warning',
+            title: 'Files Skipped',
+            message: `${resp.skipped_files.length} file(s) were skipped`
+          });
+        }
+
+        // Handle case where all files were duplicates/skipped
+        if (resp?.status === 'completed_with_warnings') {
+          showToast({
+            type: 'info',
+            title: 'ZIP Processed',
+            message: 'ZIP file processed but no new files were added (all were duplicates or invalid)'
+          });
+          dispatch(setUploadSuccess(true));
+          dispatch(setIsUploading(false));
+          return;
+        }
 
         // Wire SSE if backend returned user_id for processing progress
         if (resp?.user_id) {
@@ -1418,6 +1534,18 @@ function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
                       <p className="text-sm text-gray-500">
                         {(file.size / 1024 / 1024).toFixed(2)} MB
                       </p>
+                      {duplicateWarnings[file.name] && (
+                        <div className="flex items-center gap-1 mt-1">
+                          <AlertCircle className="w-3 h-3 text-yellow-500" />
+                          <p className="text-xs text-yellow-600">
+                            {duplicateWarnings[file.name].exact_duplicate
+                              ? `Exact duplicate of "${duplicateWarnings[file.name].exact_duplicate.filename}"`
+                              : `Similar to ${duplicateWarnings[file.name].similar_duplicates?.length || 0} existing resume(s)`
+                            }
+                          </p>
+                        </div>
+                      )}
+
                     </div>
                   </div>
 
@@ -1523,8 +1651,6 @@ function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
           </div>
 
           {/* SSE Progress Bar for Regular Uploads (Single/Multiple/ZIP) */}
-          {/* Debug: isAsyncProcessing={isAsyncProcessing}, isUploading={isUploading}, uploadMode={uploadMode}, processingProgress={JSON.stringify(processingProgress)} */}
-          {console.log('🔍 Progress Bar Visibility Check:', { isAsyncProcessing, isUploading, uploadMode, processingProgress, shouldShow: (isAsyncProcessing || isUploading) && uploadMode !== "google-drive" })}
           {((isAsyncProcessing || isUploading) && uploadMode !== "google-drive") || (processingProgress && processingProgress.status === 'processing') && (
             <div className="mt-6">
               <SSEProgressBar
