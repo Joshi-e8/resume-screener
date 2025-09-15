@@ -15,7 +15,7 @@ import {
   Copy,
   ExternalLink
 } from "lucide-react";
-import { Job, jobStatuses } from "@/data/mockJobs";
+import { jobStatuses } from "@/data/mockJobs";
 import { formatDistanceToNow } from "date-fns";
 
 // Flexible job type that can handle API responses with optional fields
@@ -37,8 +37,8 @@ interface FlexibleJob {
   benefits?: string[];
   skills?: string[];
   status?: string;
-  applicants?: number;
-  views?: number;
+  total_applications?: number;
+  total_views?: number;
   postedDate?: string;
   created_at?: string;
   closingDate?: string;
@@ -244,11 +244,11 @@ export function JobCard({ job, onAction }: JobCardProps) {
         <div className="flex items-center gap-4 text-sm text-gray-600">
           <div className="flex items-center gap-1">
             <Users className="w-4 h-4" />
-            <span>{job.applicants || 0} applicants</span>
+            <span>{job.total_applications || 0} applicants</span>
           </div>
           <div className="flex items-center gap-1">
             <Eye className="w-4 h-4" />
-            <span>{job.views || 0} views</span>
+            <span>{job.total_views || 0} views</span>
           </div>
         </div>
 

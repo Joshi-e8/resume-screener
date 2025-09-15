@@ -15,7 +15,7 @@ import {
   Copy,
   ExternalLink
 } from "lucide-react";
-import { Job, jobStatuses } from "@/data/mockJobs";
+import { jobStatuses } from "@/data/mockJobs";
 import { formatDistanceToNow } from "date-fns";
 
 // Flexible job type that can handle API responses with optional fields
@@ -37,8 +37,8 @@ interface FlexibleJob {
   benefits?: string[];
   skills?: string[];
   status?: string;
-  applicants?: number;
-  views?: number;
+  total_applications?: number;
+  total_views?: number;
   postedDate?: string;
   created_at?: string;
   closingDate?: string;
@@ -84,7 +84,7 @@ export function JobListView({ jobs, onAction }: JobListViewProps) {
   };
 
   return (
-    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-visible">
       {/* Table Header */}
       <div className="bg-gray-50 px-6 py-4 border-b border-gray-100">
         <div className="grid grid-cols-12 gap-4 text-sm font-medium text-gray-700">
@@ -159,11 +159,11 @@ export function JobListView({ jobs, onAction }: JobListViewProps) {
                   <div className="flex items-center gap-4 text-sm text-gray-600">
                     <div className="flex items-center gap-1">
                       <Users className="w-4 h-4" />
-                      <span>{job.applicants || 0}</span>
+                      <span>{job.total_applications || 0}</span>
                     </div>
                     <div className="flex items-center gap-1">
                       <Eye className="w-4 h-4" />
-                      <span>{job.views || 0}</span>
+                      <span>{job.total_views || 0}</span>
                     </div>
                   </div>
                   <Link
@@ -186,11 +186,11 @@ export function JobListView({ jobs, onAction }: JobListViewProps) {
 
                     {activeMenu === job.id && (
                       <>
-                        <div 
-                          className="fixed inset-0 z-10" 
+                        <div
+                          className="fixed inset-0 z-40"
                           onClick={() => setActiveMenu(null)}
                         />
-                        <div className="absolute right-0 top-full mt-1 w-48 bg-white border border-gray-200 rounded-lg shadow-lg z-20">
+                        <div className="absolute right-0 top-full mt-1 w-48 bg-white border border-gray-200 rounded-lg shadow-lg z-50">
                           <div className="py-1">
                             <Link
                               href={`/dashboard/jobs/${job.id}/edit`}

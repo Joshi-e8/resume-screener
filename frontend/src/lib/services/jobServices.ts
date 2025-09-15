@@ -208,7 +208,7 @@ const useJobServices = () => {
   const publishJob = async (jobId: string) => {
     try {
       const response = await axios.post(
-        `${CONSTANTS.JOBS.DETAIL(jobId)}/publish`
+        `${CONSTANTS.JOBS.DETAIL(jobId)}publish`
       );
       return response?.data;
     } catch (error) {
@@ -220,7 +220,7 @@ const useJobServices = () => {
   const pauseJob = async (jobId: string) => {
     try {
       const response = await axios.post(
-        `${CONSTANTS.JOBS.DETAIL(jobId)}/pause`
+        `${CONSTANTS.JOBS.DETAIL(jobId)}pause`
       );
       return response?.data;
     } catch (error) {
@@ -232,7 +232,7 @@ const useJobServices = () => {
   const getJobAnalytics = async (jobId: string) => {
     try {
       const response = await axios.get(
-        `${CONSTANTS.JOBS.DETAIL(jobId)}/analytics`
+        `${CONSTANTS.JOBS.DETAIL(jobId)}analytics`
       );
       return response?.data;
     } catch (error) {

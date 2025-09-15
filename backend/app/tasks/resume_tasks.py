@@ -380,6 +380,22 @@ def process_direct_resume_file(self, resume_id: str, tmp_file_path: str, filenam
             loop.run_until_complete(details.insert())
         except Exception as db2_e:
             logger.warning(f"[celery] Failed to persist details: {db2_e}")
+        # Increment job application count if associated to a job
+        try:
+            if job_id:
+                job_doc = loop.run_until_complete(Job.get(job_id))
+                if job_doc:
+                    try:
+                        current = getattr(job_doc, 'total_applications', 0) or 0
+                        job_doc.total_applications = current + 1
+                        job_doc.updated_at = datetime.now(timezone.utc)
+                        loop.run_until_complete(job_doc.save())
+                        logger.info(f"[job] Incremented total_applications for job {job_id} -> {job_doc.total_applications}")
+                    except Exception as inc_e:
+                        logger.warning(f"[job] Failed to increment applications for job {job_id}: {inc_e}")
+        except Exception:
+            pass
+
 
         # Vector indexing
         # Send SSE progress update for vector indexing stage
@@ -671,6 +687,19 @@ def process_resume_task(self, file_id: str, access_token: str, credentials_dict:
                     analysis_results=analysis_results,
                 )
                 loop.run_until_complete(details.insert())
+                # Increment job application count if associated to a job
+                try:
+                    if job_id:
+                        job_doc = loop.run_until_complete(Job.get(job_id))
+                        if job_doc:
+                            cur = getattr(job_doc, 'total_applications', 0) or 0
+                            job_doc.total_applications = cur + 1
+                            job_doc.updated_at = datetime.now(timezone.utc)
+                            loop.run_until_complete(job_doc.save())
+                            logger.info(f"[job] Incremented total_applications for job {job_id} -> {job_doc.total_applications}")
+                except Exception as inc_e:
+                    logger.warning(f"[job] Failed to increment applications for job {job_id}: {inc_e}")
+
             except Exception as persist_err:
                 logger.warning(f"⚠️ Failed to persist resume data for {filename}: {persist_err}")
 
@@ -838,6 +867,22 @@ def process_direct_resume_files_batch(self, items: List[Dict[str, Any]], user_id
                     ai_payload = {"ai_overall_score": overall, "ai_scoring": scoring_obj or {}}
                     details = ResumeDetails(resume_id=str(resume_id), raw_text=None, parsed_data=parsed_data, analysis_results=ai_payload)
                     await details.insert()
+                    # Increment job application count for batch if job_id provided
+                    try:
+                        if job_id:
+                            job_doc = await Job.get(job_id)
+                            if job_doc:
+                                try:
+                                    current = getattr(job_doc, 'total_applications', 0) or 0
+                                    job_doc.total_applications = current + 1
+                                    job_doc.updated_at = datetime.now(timezone.utc)
+                                    await job_doc.save()
+                                    logger.info(f"[batch][job] Incremented total_applications for job {job_id} -> {job_doc.total_applications}")
+                                except Exception as inc_e:
+                                    logger.warning(f"[batch][job] Failed to increment applications for job {job_id}: {inc_e}")
+                    except Exception:
+                        pass
+
                 except Exception as me:
                     logger.warning(f"[batch] metadata/details persist failed for {filename}: {me}")
                 try:
@@ -1655,6 +1700,22 @@ def process_chunk_sync(file_ids: List[str], credentials_dict: Dict[str, Any],
                             analysis_results=analysis_results,
                         )
                         loop.run_until_complete(details.insert())
+                        # Increment job application count if associated to a job (ultra-fast chunk path)
+                        try:
+                            if job_id:
+                                job_doc = loop.run_until_complete(Job.get(job_id))
+                                if job_doc:
+                                    try:
+                                        current = getattr(job_doc, 'total_applications', 0) or 0
+                                        job_doc.total_applications = current + 1
+                                        job_doc.updated_at = datetime.now(timezone.utc)
+                                        loop.run_until_complete(job_doc.save())
+                                        logger.info(f"[ultra][job] Incremented total_applications for job {job_id} -> {job_doc.total_applications}")
+                                    except Exception as inc_e:
+                                        logger.warning(f"[ultra][job] Failed to increment applications for job {job_id}: {inc_e}")
+                        except Exception:
+                            pass
+
                     except Exception as persist_err:
                         logger.warning(f"⚠️ Failed to persist resume data for {result.get('filename')}: {persist_err}")
 

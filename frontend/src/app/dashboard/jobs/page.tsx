@@ -65,7 +65,8 @@ export default function JobsPage() {
   // Initialize job services
   const {
     getAllJobs,
-    updateJobStatus,
+    publishJob,
+    pauseJob,
     deleteJob,
   } = useJobServices();
 
@@ -147,8 +148,8 @@ export default function JobsPage() {
           bValue = new Date(b.created_at || b.postedDate || 0).getTime();
           break;
         case "applicants":
-          aValue = a.applicants || 0;
-          bValue = b.applicants || 0;
+          aValue = (a as any).total_applications || 0;
+          bValue = (b as any).total_applications || 0;
           break;
         case "department":
           aValue = a.department || "";
@@ -176,37 +177,36 @@ export default function JobsPage() {
     try {
       switch (action) {
         case "delete":
-          const deleteResponse = await deleteJob(jobId);
-          // if (deleteResponse?.success) {
-          //   setJobs((prev) => prev.filter((job) => job.id !== jobId));
-          // } else {
-          //   setError(deleteResponse?.message || "Failed to delete job");
-          // }
-          break;
-
-        case "activate":
-          const activateResponse = await updateJobStatus(jobId, "active");
-          if (activateResponse?.success) {
-            setJobs((prev) =>
-              prev.map((job) =>
-                job.id === jobId ? { ...job, status: "active" } : job
-              )
-            );
-          } else {
-            setError(activateResponse?.message || "Failed to activate job");
+          {
+            const resp = await deleteJob(jobId);
+            // Backend returns { message: "Job deleted successfully" }
+            if (resp?.message || resp?.result === "success") {
+              setJobs((prev) => prev.filter((job) => job.id !== jobId));
+            } else {
+              setError(resp?.message || "Failed to delete job");
+            }
           }
           break;
 
-        case "deactivate":
-          const deactivateResponse = await updateJobStatus(jobId, "inactive");
-          if (deactivateResponse?.success) {
-            setJobs((prev) =>
-              prev.map((job) =>
-                job.id === jobId ? { ...job, status: "inactive" } : job
-              )
-            );
-          } else {
-            setError(deactivateResponse?.message || "Failed to deactivate job");
+        case "activate":
+          {
+            const resp = await publishJob(jobId);
+            if (resp?.id || resp?.result === "success" || resp?.success || resp?.message) {
+              setJobs((prev) => prev.map((job) => (job.id === jobId ? { ...job, status: "active" } : job)));
+            } else {
+              setError(resp?.message || "Failed to activate job");
+            }
+          }
+          break;
+
+        case "pause":
+          {
+            const resp = await pauseJob(jobId);
+            if (resp?.id || resp?.result === "success" || resp?.success || resp?.message) {
+              setJobs((prev) => prev.map((job) => (job.id === jobId ? { ...job, status: "paused" } : job)));
+            } else {
+              setError(resp?.message || "Failed to pause job");
+            }
           }
           break;
 

@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
 import { ArrowLeft, Search, Users, Download, Mail, Phone, MapPin, Calendar, Star } from "lucide-react";
 import Link from "next/link";
-import { mockJobs } from "@/data/mockJobs";
-import { mockResumes } from "@/data/mockResumes";
+import useResumeServices from "@/lib/services/resumeServices";
+import useJobServices from "@/lib/services/jobServices";
+import { ResumeDetailModal } from "@/components/resumes/ResumeDetailModal";
 import { formatDistanceToNow } from "date-fns";
 
 export default function JobApplicantsPage() {
@@ -13,17 +14,60 @@ export default function JobApplicantsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [sortBy, setSortBy] = useState<'date' | 'name' | 'match'>('date');
-  
-  const jobId = params.id as string;
-  const job = mockJobs.find(j => j.id === jobId);
 
-  // For demo purposes, we'll use some of the mock resumes as applicants
-  const applicants = mockResumes.slice(0, job?.applicants || 0).map((resume) => ({
-    ...resume,
-    appliedDate: new Date(Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000).toISOString(),
-    matchScore: Math.floor(Math.random() * 40) + 60, // 60-100% match
-    applicationStatus: ['pending', 'reviewed', 'shortlisted', 'rejected'][Math.floor(Math.random() * 4)] as 'pending' | 'reviewed' | 'shortlisted' | 'rejected'
-  }));
+  const jobId = params.id as string;
+  const { getResumesByJob, getResumeById, updateResumeStatus, downloadResume } = useResumeServices();
+  const { getJobById } = useJobServices();
+  const [job, setJob] = useState<any>(null);
+  const [applicants, setApplicants] = useState<any[]>([]);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [modalResume, setModalResume] = useState<any>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const [jobResp, resResp] = await Promise.all([
+          getJobById(jobId),
+          getResumesByJob(jobId),
+        ]);
+        if (cancelled) return;
+        if (jobResp?.result === "success") {
+          setJob(jobResp.records);
+        }
+        if (resResp?.result === "success") {
+          const mapped = (resResp.records || []).map((r: any) => {
+            const ai = r.ai_scoring || {};
+            const derived = (ai && typeof ai === 'object' ? ai.derived : {}) || {};
+            const expYears = derived?.total_experience_years || 0;
+            return {
+              id: r.id,
+              name: r.candidate_name || "Unknown",
+              email: r.candidate_email || "",
+              phone: r.phone || "",
+              location: r.location || "",
+              title: r.title || "",
+              experience: expYears || 0,
+              appliedDate: r.created_at,
+              skills: Array.isArray(r.key_skills) ? r.key_skills : [],
+              matchScore: Math.round(r.ai_overall_score || 0),
+              applicationStatus: (r.ui_status || 'new'),
+              filename: r.filename,
+              fileSize: r.file_size || 0,
+              mimeType: r.mime_type || '',
+              summary: r.summary || '',
+              education: Array.isArray(r.education) ? r.education : [],
+              ai_scoring: r.ai_scoring || null,
+            };
+          });
+          setApplicants(mapped);
+        }
+      } catch (e) {
+        // keep UI resilient
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [jobId]);
 
   if (!job) {
     return (
@@ -49,9 +93,9 @@ export default function JobApplicantsPage() {
       const matchesSearch = applicant.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                            applicant.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
                            applicant.skills.some(skill => skill.toLowerCase().includes(searchQuery.toLowerCase()));
-      
+
       const matchesStatus = statusFilter === 'all' || applicant.applicationStatus === statusFilter;
-      
+
       return matchesSearch && matchesStatus;
     })
     .sort((a, b) => {
@@ -68,11 +112,74 @@ export default function JobApplicantsPage() {
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'pending': return 'bg-yellow-100 text-yellow-800';
-      case 'reviewed': return 'bg-blue-100 text-blue-800';
+      case 'new': return 'bg-blue-100 text-blue-800';
+      case 'reviewed': return 'bg-yellow-100 text-yellow-800';
       case 'shortlisted': return 'bg-green-100 text-green-800';
+      case 'interviewed': return 'bg-purple-100 text-purple-800';
       case 'rejected': return 'bg-red-100 text-red-800';
+      case 'hired': return 'bg-emerald-100 text-emerald-800';
       default: return 'bg-gray-100 text-gray-800';
+    }
+  };
+  // Helpers: modal mapping and handlers
+  const deriveFileType = (filename?: string, mime?: string) => {
+    if (mime) {
+      if (mime.includes('word') || mime.includes('docx')) return 'docx';
+      if (mime.includes('msword')) return 'doc';
+    }
+    const f = (filename || '').toLowerCase();
+    if (f.endsWith('.docx')) return 'docx';
+    if (f.endsWith('.doc')) return 'doc';
+    return 'pdf';
+  };
+
+  const buildModalResume = (a: any) => {
+    const fileType = deriveFileType(a?.filename, a?.mimeType);
+    return {
+      id: a.id,
+      name: a.name,
+      title: a.title,
+      status: a.applicationStatus || 'new',
+      matchScore: a.matchScore,
+      email: a.email,
+      phone: a.phone,
+      location: a.location,
+      experience: a.experience,
+      summary: a.summary || '',
+      skills: Array.isArray(a.skills) ? a.skills : [],
+      tags: Array.isArray(a.skills) ? a.skills.slice(0, 3) : [],
+      education: Array.isArray(a.education) ? a.education : [],
+      fileType,
+      fileSize: a.fileSize || 0,
+      uploadDate: a.appliedDate,
+      ai_scoring: a.ai_scoring || null,
+      // experience_array optional; component supports fallback
+    } as any;
+  };
+
+  const handleOpenResume = (applicant: any) => {
+    setModalResume(buildModalResume(applicant));
+    setIsModalOpen(true);
+  };
+
+  const handleCloseModal = () => setIsModalOpen(false);
+
+  const handleStatusChange = async (resumeObj: any, newStatus: string) => {
+    try {
+      const resp = await updateResumeStatus(resumeObj.id, newStatus);
+      // Optimistically update UI
+      setModalResume((prev: any) => (prev ? { ...prev, status: newStatus } : prev));
+      setApplicants((prev) => prev.map((a) => a.id === resumeObj.id ? { ...a, applicationStatus: newStatus } : a));
+    } catch (e) {
+      // no-op; could add toast later
+    }
+  };
+
+  const handleDownload = async (resumeObj: any) => {
+    try {
+      await downloadResume(resumeObj.id, resumeObj?.filename || undefined);
+    } catch (e) {
+      // no-op
     }
   };
 
@@ -92,10 +199,10 @@ export default function JobApplicantsPage() {
         >
           <ArrowLeft className="w-5 h-5" />
         </Link>
-        
+
         <div className="flex-1">
           <h1 className="text-2xl lg:text-3xl font-bold text-gray-900">
-            Applicants for {job.title}
+            Applicants for {job?.title || 'Job'}
           </h1>
           <p className="text-gray-600 mt-1">
             {filteredApplicants.length} of {applicants.length} applicants
@@ -107,7 +214,7 @@ export default function JobApplicantsPage() {
             <Download className="w-4 h-4 mr-2 inline" />
             Export
           </button>
-          
+
           <button className="px-4 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 transition-colors duration-200">
             <Mail className="w-4 h-4 mr-2 inline" />
             Bulk Email
@@ -137,7 +244,7 @@ export default function JobApplicantsPage() {
             <div>
               <p className="text-sm text-gray-600">Pending Review</p>
               <p className="text-2xl font-bold text-gray-900">
-                {applicants.filter(a => a.applicationStatus === 'pending').length}
+                {applicants.filter(a => a.applicationStatus === 'new').length}
               </p>
             </div>
           </div>
@@ -165,7 +272,7 @@ export default function JobApplicantsPage() {
             <div>
               <p className="text-sm text-gray-600">Avg Match Score</p>
               <p className="text-2xl font-bold text-gray-900">
-                {Math.round(applicants.reduce((sum, a) => sum + a.matchScore, 0) / applicants.length)}%
+                {applicants.length ? Math.round(applicants.reduce((sum, a) => sum + a.matchScore, 0) / applicants.length) : 0}%
               </p>
             </div>
           </div>
@@ -193,10 +300,12 @@ export default function JobApplicantsPage() {
               className="px-3 py-2 border border-gray-200 rounded-lg focus:ring-1 focus:ring-yellow-500 focus:border-transparent"
             >
               <option value="all">All Status</option>
-              <option value="pending">Pending</option>
+              <option value="new">New</option>
               <option value="reviewed">Reviewed</option>
               <option value="shortlisted">Shortlisted</option>
+              <option value="interviewed">Interviewed</option>
               <option value="rejected">Rejected</option>
+              <option value="hired">Hired</option>
             </select>
 
             <select
@@ -276,12 +385,12 @@ export default function JobApplicantsPage() {
                   </div>
 
                   <div className="flex items-center gap-2 ml-4">
-                    <Link
-                      href={`/dashboard/resumes/${applicant.id}`}
+                    <button
+                      onClick={() => handleOpenResume(applicant)}
                       className="px-3 py-1 text-sm text-yellow-600 hover:text-yellow-700 font-medium transition-colors duration-200"
                     >
                       View Resume
-                    </Link>
+                    </button>
                     <button className="px-3 py-1 text-sm text-gray-600 hover:text-gray-700 font-medium transition-colors duration-200">
                       Contact
                     </button>
@@ -307,6 +416,15 @@ export default function JobApplicantsPage() {
           </div>
         </div>
       )}
+
+      <ResumeDetailModal
+        resume={modalResume}
+        isOpen={isModalOpen}
+        onClose={handleCloseModal}
+        onDownload={handleDownload}
+        onStatusChange={handleStatusChange}
+      />
+
     </div>
   );
 }

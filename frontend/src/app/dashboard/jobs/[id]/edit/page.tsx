@@ -4,17 +4,18 @@ import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft, Save, Eye, Plus, X } from "lucide-react";
 import Link from "next/link";
-import { Job, mockJobs, jobDepartments, jobTypes, experienceLevels } from "@/data/mockJobs";
+import { jobDepartments, jobTypes, experienceLevels } from "@/data/mockJobs";
+import useJobServices from "@/lib/services/jobServices";
 
 interface JobFormData {
   title: string;
   department: string;
   location: string;
-  type: Job['type'];
-  experience: Job['experience'];
+  type: string;
+  experience: string;
   salary: {
-    min: number;
-    max: number;
+    min?: number;
+    max?: number;
     currency: string;
   };
   description: string;
@@ -23,40 +24,80 @@ interface JobFormData {
   benefits: string[];
   skills: string[];
   closingDate: string;
-  status: Job['status'];
+  status: string;
 }
 
 export default function EditJobPage() {
   const params = useParams();
   const router = useRouter();
+  const { getJobById, updateJob, publishJob } = useJobServices();
+
   const [formData, setFormData] = useState<JobFormData | null>(null);
   const [currentSkill, setCurrentSkill] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const jobId = params.id as string;
-  const job = mockJobs.find(j => j.id === jobId);
 
   useEffect(() => {
-    if (job) {
-      setFormData({
-        title: job.title,
-        department: job.department,
-        location: job.location,
-        type: job.type,
-        experience: job.experience,
-        salary: job.salary,
-        description: job.description,
-        requirements: job.requirements,
-        responsibilities: job.responsibilities,
-        benefits: job.benefits,
-        skills: job.skills,
-        closingDate: job.closingDate,
-        status: job.status
-      });
-    }
-  }, [job]);
+    const load = async () => {
+      try {
+        setLoading(true);
+        setLoadError(null);
+        const resp = await getJobById(jobId);
+        const job = resp?.records || resp?.record || resp;
+        if (!job) {
+          setLoadError("Job not found");
+          return;
+        }
+        setFormData({
+          title: job.title || "",
+          department: job.department || "",
+          location: job.location || "",
+          type: job.job_type || job.type || "full-time",
+          experience: job.experience_level || job.experience || "entry",
+          salary: {
+            min: job.salary?.min,
+            max: job.salary?.max,
+            currency: job.salary?.currency || "USD",
+          },
+          description: job.description || "",
+          requirements: job.requirements || [""],
+          responsibilities: job.responsibilities || [""],
+          benefits: job.benefits || [""],
+          skills: job.skills || [],
+          closingDate: (job.closing_date || job.closingDate) ? new Date(job.closing_date || job.closingDate).toISOString().slice(0,10) : "",
+          status: job.status || "draft",
+        });
+      } catch (e) {
+        setLoadError("Failed to load job");
+      } finally {
+        setLoading(false);
+      }
+    };
+    load();
+  }, [jobId]);
 
-  if (!job || !formData) {
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="text-center">
+          <h2 className="text-xl font-semibold text-gray-900 mb-2">Loading job...</h2>
+          <p className="text-gray-600 mb-4">Please wait while we fetch the job details.</p>
+          <Link
+            href="/dashboard/jobs"
+            className="inline-flex items-center px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors duration-200"
+          >
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            Back to Jobs
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  if (loadError || !formData) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
         <div className="text-center">
@@ -129,19 +170,39 @@ export default function EditJobPage() {
     }) : null);
   };
 
-  const handleSubmit = async (newStatus?: Job['status']) => {
+  const handleSubmit = async (publishAfterSave = false) => {
     if (!formData) return;
-    
+
     setIsSubmitting(true);
-    
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    const updatedData = newStatus ? { ...formData, status: newStatus } : formData;
-    console.log('Updating job:', updatedData);
-    
-    // Redirect to job detail page
-    router.push(`/dashboard/jobs/${jobId}`);
+    try {
+      const payload: any = {
+        title: formData.title,
+        description: formData.description,
+        department: formData.department,
+        location: formData.location,
+        job_type: formData.type,
+        experience_level: formData.experience,
+        requirements: formData.requirements,
+        responsibilities: formData.responsibilities,
+        benefits: formData.benefits,
+        skills: formData.skills,
+        salary: formData.salary,
+        closing_date: formData.closingDate ? new Date(formData.closingDate).toISOString() : undefined,
+        status: formData.status,
+      };
+
+      await updateJob(jobId, payload);
+
+      if (publishAfterSave) {
+        await publishJob(jobId);
+      }
+
+      router.push(`/dashboard/jobs/${jobId}`);
+    } catch (e) {
+      // no-op; keep UI minimal as per existing pattern
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const isFormValid = formData.title && formData.department && formData.location && formData.description;
@@ -178,7 +239,7 @@ export default function EditJobPage() {
           
           {formData.status === 'draft' && (
             <button
-              onClick={() => handleSubmit('active')}
+              onClick={() => handleSubmit(true)}
               disabled={!isFormValid || isSubmitting}
               className="px-4 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
             >
@@ -244,7 +305,7 @@ export default function EditJobPage() {
                 </label>
                 <select
                   value={formData.type}
-                  onChange={(e) => handleInputChange('type', e.target.value as Job['type'])}
+                  onChange={(e) => handleInputChange('type', e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-yellow-500 focus:border-transparent"
                 >
                   {jobTypes.map(type => (
@@ -259,7 +320,7 @@ export default function EditJobPage() {
                 </label>
                 <select
                   value={formData.experience}
-                  onChange={(e) => handleInputChange('experience', e.target.value as Job['experience'])}
+                  onChange={(e) => handleInputChange('experience', e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-yellow-500 focus:border-transparent"
                 >
                   {experienceLevels.map(level => (

@@ -183,6 +183,17 @@ async def upload_resume(
             meta.status = ProcessingStatus.COMPLETED
             await meta.save()
 
+            # Increment job applications counter for synchronous single upload
+            try:
+                if job_id:
+                    job_doc = await Job.get(job_id)
+                    if job_doc:
+                        current = getattr(job_doc, 'total_applications', 0) or 0
+                        job_doc.total_applications = current + 1
+                        await job_doc.save()
+            except Exception:
+                pass
+
             return {
                 "message": "Resume uploaded and processed successfully",
                 "filename": file.filename,
@@ -338,6 +349,16 @@ async def upload_multiple_resumes(
                 if m:
                     m.status = ProcessingStatus.COMPLETED
                     await m.save()
+                    # Increment job applications counter for synchronous multiple upload
+                    try:
+                        if job_id:
+                            job_doc = await Job.get(job_id)
+                            if job_doc:
+                                current = getattr(job_doc, 'total_applications', 0) or 0
+                                job_doc.total_applications = current + 1
+                                await job_doc.save()
+                    except Exception:
+                        pass
                 processed += 1
             return {
                 "message": "Batch processed synchronously",
@@ -544,6 +565,16 @@ async def upload_zip_resumes(
                     if m:
                         m.status = ProcessingStatus.COMPLETED
                         await m.save()
+                        # Increment job applications counter for synchronous ZIP upload
+                        try:
+                            if job_id:
+                                job_doc = await Job.get(job_id)
+                                if job_doc:
+                                    current = getattr(job_doc, 'total_applications', 0) or 0
+                                    job_doc.total_applications = current + 1
+                                    await job_doc.save()
+                        except Exception:
+                            pass
                     processed += 1
                 except Exception as e:
                     logger.error(f"Failed to process {p['filename']}: {e}")

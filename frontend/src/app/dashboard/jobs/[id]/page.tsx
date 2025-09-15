@@ -86,7 +86,7 @@ export default function JobDetailPage() {
   const [error, setError] = useState<string | null>(null);
   
   const jobId = params.id as string;
-  const { getJobById, updateJobStatus, deleteJob } = useJobServices();
+  const { getJobById, publishJob, pauseJob, deleteJob } = useJobServices();
 
   // Load job data on component mount
   useEffect(() => {
@@ -235,33 +235,39 @@ export default function JobDetailPage() {
 
   const handleAction = async (action: string) => {
     setShowMenu(false);
-    
+
     try {
       switch (action) {
         case 'delete':
-          const deleteResponse = await deleteJob(jobId);
-          if (deleteResponse?.success) {
-            router.push('/dashboard/jobs');
-          } else {
-            setError(deleteResponse?.message || 'Failed to delete job');
+          {
+            const resp = await deleteJob(jobId);
+            if (resp?.message || resp?.result === 'success') {
+              router.push('/dashboard/jobs');
+            } else {
+              setError(resp?.message || 'Failed to delete job');
+            }
           }
           break;
 
         case 'activate':
-          const activateResponse = await updateJobStatus(jobId, 'active');
-          if (activateResponse?.success) {
-            setJob(prev => prev ? { ...prev, status: 'active' } : null);
-          } else {
-            setError(activateResponse?.message || 'Failed to activate job');
+          {
+            const resp = await publishJob(jobId);
+            if (resp?.id || resp?.result === 'success' || resp?.success || resp?.message) {
+              setJob(prev => prev ? { ...prev, status: 'active' } : null);
+            } else {
+              setError(resp?.message || 'Failed to activate job');
+            }
           }
           break;
 
         case 'pause':
-          const pauseResponse = await updateJobStatus(jobId, 'paused');
-          if (pauseResponse?.success) {
-            setJob(prev => prev ? { ...prev, status: 'paused' } : null);
-          } else {
-            setError(pauseResponse?.message || 'Failed to pause job');
+          {
+            const resp = await pauseJob(jobId);
+            if (resp?.id || resp?.result === 'success' || resp?.success || resp?.message) {
+              setJob(prev => prev ? { ...prev, status: 'paused' } : null);
+            } else {
+              setError(resp?.message || 'Failed to pause job');
+            }
           }
           break;
 

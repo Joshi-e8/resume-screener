@@ -791,7 +791,7 @@ function ResumeUpload({ onFilesUploaded }: ResumeUploadProps) {
         return;
       }
 
-      const jobId = undefined; // keep UI unchanged; can be integrated with SmartJobAssociation later
+      const jobId = selectedJobId || undefined;
 
       for (const file of selectedFiles) {
         await simulateUpload(file, jobId);
